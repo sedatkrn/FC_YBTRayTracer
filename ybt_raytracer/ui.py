@@ -27,7 +27,7 @@ def main():
             old.close()
         except Exception:
             pass
-    g = globals()
+    g = vars(S)                      # ayarlar settings modülünde durur
 
     dlg = QtGui.QDialog(Gui.getMainWindow())
     dlg.setWindowTitle("FC YBT Raytracer")
