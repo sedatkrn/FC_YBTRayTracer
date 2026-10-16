@@ -26,6 +26,15 @@ def _find_here():
         cands.append(FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Macro").GetString("MacroPath", ""))
     except Exception:
         pass
+    try:                                # Addon Manager depoyu Mod/ altına da koyabilir
+        import FreeCAD
+        for base in (FreeCAD.getUserAppDataDir(), FreeCAD.getHomePath()):
+            moddir = os.path.join(base, "Mod")
+            if os.path.isdir(moddir):
+                for sub in sorted(os.listdir(moddir)):
+                    cands.append(os.path.join(moddir, sub))
+    except Exception:
+        pass
     for c in cands:
         if c and os.path.isdir(os.path.join(c, "ybt_raytracer")):
             return c

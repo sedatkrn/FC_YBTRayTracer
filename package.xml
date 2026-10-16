@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>FC YBT Raytracer</name>
+  <description>FreeCAD için bağımlılıksız numpy ışın izleyici: gölge, cam, yansıma, sanal zemin, çok çekirdekli render.</description>
+  <version>0.7.0</version>
+  <date>2026-10-16</date>
+  <maintainer email="sedatkuran@gmail.com">sedatkrn</maintainer>
+  <license file="LICENSE">MIT</license>
+  <url type="repository" branch="main">https://github.com/sedatkrn/FC_YBTRayTracer</url>
+  <content>
+    <macro>
+      <name>FC_ybt_raytracer</name>
+      <description>Ray tracer macro (launcher + ybt_raytracer package)</description>
+      <file>FC_ybt_raytracer.FCMacro</file>
+      <file>ybt_raytracer/__init__.py</file>
+      <file>ybt_raytracer/settings.py</file>
+      <file>ybt_raytracer/core.py</file>
+      <file>ybt_raytracer/parallel.py</file>
+      <file>ybt_raytracer/accel.py</file>
+      <file>ybt_raytracer/render.py</file>
+      <file>ybt_raytracer/output.py</file>
+      <file>ybt_raytracer/freecad_scene.py</file>
+      <file>ybt_raytracer/ui.py</file>
+    </macro>
+  </content>
+</package>
