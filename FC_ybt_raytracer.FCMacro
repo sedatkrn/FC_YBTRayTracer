@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-FC_ybt_raytracer.FCMacro  --  v0.4
+FC_ybt_raytracer.FCMacro  --  v0.5
 FreeCAD içinde yerleşik, basit numpy ışın izleyici (harici program gerekmez).
 
 Ne yapar:
@@ -9,6 +9,8 @@ Ne yapar:
   * Doğrudan ışık + gölge + parlama (Whitted tarzı, gürültüsüz)
   * Görüntü satır satır önizleme penceresinde belirir, sonunda PNG kaydedilir
 
+v0.5:   * Çok çekirdekli render: bantlar ve kenar yumuşatma parçaları iş parçacığı havuzunda paralel çizilir
+          (ayar panelinde Çekirdek: Otomatik/1/2/4). Sonuç tek çekirdekle birebir aynıdır.
 v0.4:   * Işıklar: ortam (renk/şiddet) + en çok 3 ışık (yatay/dikey açı, renk, güç, ışık başına gölge).
         * Kenar yumuşatma (AA): yalnız kenar piksellerinde 2x2/3x3/4x4 örnekleme (ayar panelinde).
         * Render penceresi ayar paneliyle açılır; render 'Render' düğmesiyle başlar. Pencere açıkken 3B
@@ -36,6 +38,8 @@ Kullanım: Macro > Macros... > bu dosyayı çalıştır.
 import os
 import sys
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
 import zlib
 import struct
 import numpy as np
@@ -65,6 +69,7 @@ REFLECT_SURF = 0.0     # opak yüzeylerin sabit yansıması (0..0.6); 0 = kapal�
 AA = 2                 # kenar yumuşatma: 0/1 = kapalı, 2 = 2x2, 3 = 3x3, 4 = 4x4 örnek (yalnız kenar piksellerinde)
 AA_THRESH = 0.05       # komşu piksellerle renk farkı bu eşiği aşarsa kenar sayılır
 BOUNCES = 2            # en çok yansıma sayısı
+THREADS = 0            # render iş parçacığı sayısı; 0 = otomatik (işlemci çekirdek sayısı, en çok 8)
 DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz
 OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazsa ~/Pictures, sonra ~)
 # -----------------------------------------------------------------------
@@ -163,8 +168,15 @@ class _Ticker(object):
 
     def __init__(self, fn, every=0.15):
         self.fn, self.every, self.last = fn, every, 0.0
+        self.owner = threading.current_thread()
+        self.cancel = threading.Event()      # işçi iş parçacıklarına "dur" demek için
 
     def __call__(self):
+        if threading.current_thread() is not self.owner:
+            # işçi iş parçacığı: arayüze dokunmaz, yalnız iptal bayrağına bakar
+            if self.cancel.is_set():
+                raise _Cancelled()
+            return
         if self.fn is None:
             return
         now = time.time()
@@ -688,17 +700,63 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     def to_srgb(lin):
         return np.clip(lin, 0, 1) ** (1 / 2.2)
 
+    nthr = int(THREADS) if int(THREADS) > 0 else min(os.cpu_count() or 1, 8)
+    nthr = max(1, nthr)
+
+    def run_parallel(items, fn, on_done):
+        """items için fn(item) çalıştırır (nthr iş parçacığı); sırayla biten iş sayısı için on_done(n) çağrılır.
+        on_done False dönerse False döner (iptal). Arayüz çağrıları yalnız ana iş parçacığında yapılır."""
+        if nthr <= 1 or len(items) < 2:
+            for i, it in enumerate(items):
+                fn(it)
+                if on_done(i + 1) is False:
+                    return False
+            return True
+        try:
+            from threadpoolctl import threadpool_limits as _tpl      # varsa BLAS'ı 1 iş parçacığına sabitle
+            lim = _tpl(limits=1)
+        except Exception:
+            lim = None
+        ex = ThreadPoolExecutor(max_workers=nthr)
+        futs = [ex.submit(fn, it) for it in items]
+        n = 0
+        ok = True
+        try:
+            while n < len(futs):
+                tk()
+                try:
+                    futs[n].result(timeout=0.05)
+                except _FutTimeout:
+                    continue
+                n += 1
+                if on_done(n) is False:
+                    ok = False
+                    break
+        finally:
+            tk.cancel.set()
+            for f in futs:
+                f.cancel()
+            ex.shutdown(wait=True)
+            tk.cancel.clear()
+            if lim is not None:
+                lim.restore_original_limits()
+        return ok
+
     # ---- 1. geçiş: piksel başına 1 örnek (piksel merkezi), bant bant ----
-    px_all = np.tile(np.arange(w), tile)
-    for ty in range(ny):
+    def band(ty):
         r0, r1 = ty * tile, min(ty * tile + tile, h)
         nrow = r1 - r0
-        px = px_all[:nrow * w] if nrow == tile else np.tile(np.arange(w), nrow)
+        px = np.tile(np.arange(w), nrow)
         py = np.repeat(np.arange(r0, r1), w)
-        acc = trace(px, py, 0.5, 0.5)
-        img[r0:r1] = to_srgb(acc).reshape(nrow, w, 3)
-        if progress is not None and progress(img, r1) is False:
-            return None
+        img[r0:r1] = to_srgb(trace(px, py, 0.5, 0.5)).reshape(nrow, w, 3)
+
+    def band_done(n):
+        if progress is not None:
+            return progress(img, min(n * tile, h))
+        return True
+
+    if run_parallel(list(range(ny)), band, band_done) is False:
+        return None
 
     # ---- 2. geçiş: kenar yumuşatma (yalnız kenar piksellerinde k x k örnek) ----
     k = int(AA)
@@ -711,22 +769,30 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         d = np.abs(img[1:, :] - img[:-1, :]).max(2)
         gx[1:, :] = np.maximum(gx[1:, :], d)
         gx[:-1, :] = np.maximum(gx[:-1, :], d)
-        ey, ex = np.nonzero(gx > AA_THRESH)
+        ey, ex_ = np.nonzero(gx > AA_THRESH)
         ne = len(ey)
         say("kenar yumuşatma: %d piksel x %d örnek..." % (ne, k * k))
         offs_s = (np.arange(k) + 0.5) / k
-        chunk = 6000
-        for s0 in range(0, ne, chunk):
-            tk()
-            cy, cx = ey[s0:s0 + chunk], ex[s0:s0 + chunk]
+        chunk = 3000 if nthr > 1 else 6000
+        starts = list(range(0, ne, chunk))
+        # AA, 1. geçişin görüntüsünü okur; yazılan pikseller ayrık olduğundan kopya gerekmez
+        # (kenar tespiti yukarıda bitti)
+
+        def aa_job(s0):
+            cy, cx = ey[s0:s0 + chunk], ex_[s0:s0 + chunk]
             tot = np.zeros((len(cy), 3))
             for oy in offs_s:
                 for ox in offs_s:
                     tot += trace(cx, cy, ox, oy)
             img[cy, cx] = to_srgb(tot / (k * k))
-            if progress is not None and progress(img, h, min(1.0, (s0 + chunk) / float(max(ne, 1))),
-                                                 "kenar yumuşatma") is False:
-                return None
+
+        def aa_done(n):
+            if progress is not None:
+                return progress(img, h, min(1.0, n * chunk / float(max(ne, 1))), "kenar yumuşatma")
+            return True
+
+        if run_parallel(starts, aa_job, aa_done) is False:
+            return None
     return (np.clip(img, 0, 1) * 255.0 + 0.5).astype(np.uint8)
 
 
@@ -1264,6 +1330,12 @@ def main():
         cb_aa.addItem(name)
     cb_aa.setCurrentIndex(0 if int(AA) < 2 else min(3, int(AA) - 1))
     sp_bn = spin(0, 3, BOUNCES)
+    cb_th = QtGui.QComboBox()
+    _TH = [0, 1, 2, 4]
+    for name in ("Otomatik", "1", "2", "4"):
+        cb_th.addItem(name)
+    cb_th.setCurrentIndex(_TH.index(int(THREADS)) if int(THREADS) in _TH else 0)
+    cb_th.setToolTip("Render için kullanılacak çekirdek (iş parçacığı) sayısı; Otomatik = işlemci çekirdek sayısı")
     sp_rg = spin(0, 200, REFLECT_GLASS * 100, 10, " %")
     sp_rs = spin(0, 60, REFLECT_SURF * 100, 5, " %")
     ck_sh = QtGui.QCheckBox("Gölgeler")
@@ -1281,15 +1353,17 @@ def main():
     sp_bn.setToolTip("Bir ışının en çok kaç kez yansıyacağı")
     qrows = [("Genişlik", sp_w, "Kalite", cb_q),
              ("Kenar yumuşatma", cb_aa, "Yansıma sayısı", sp_bn),
-             ("Cam yansıması", sp_rg, "Yüzey yansıması", sp_rs)]
+             ("Cam yansıması", sp_rg, "Yüzey yansıması", sp_rs),
+             ("Çekirdek", cb_th, "", None)]
     for r, (l1, w1, l2, w2) in enumerate(qrows):
         qg.addWidget(QtGui.QLabel(l1), r * 2, 0)
         qg.addWidget(QtGui.QLabel(l2), r * 2, 1)
         qg.addWidget(w1, r * 2 + 1, 0)
-        qg.addWidget(w2, r * 2 + 1, 1)
-    qg.addWidget(ck_sh, 6, 0)
-    qg.addWidget(ck_gl, 6, 1)
-    qg.addWidget(ck_sv, 7, 0, 1, 2)
+        if w2 is not None:
+            qg.addWidget(w2, r * 2 + 1, 1)
+    qg.addWidget(ck_sh, 8, 0)
+    qg.addWidget(ck_gl, 8, 1)
+    qg.addWidget(ck_sv, 9, 0, 1, 2)
     lv.addWidget(qbox)
 
     # ---- Işık Ayarları: ortam + en çok 3 ışık ----
@@ -1521,7 +1595,7 @@ def main():
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + [ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, sp_rg, sp_rs, sp_bn, ck_sv]:
+        for wd in light_widgets + [ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, sp_rg, sp_rs, sp_bn, cb_th, ck_sv]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -1549,6 +1623,7 @@ def main():
             g["REFLECT_GLASS"] = sp_rg.value() / 100.0
             g["REFLECT_SURF"] = sp_rs.value() / 100.0
             g["BOUNCES"] = sp_bn.value()
+            g["THREADS"] = _TH[cb_th.currentIndex()]
             fc_info = ""
             fc = None
             if ck_fc.isChecked():
@@ -1642,7 +1717,7 @@ def main():
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl,
-                                                            rglass=sp_rg, rsurf=sp_rs, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, lights=lrows, ambient=sp_amb, fclights=ck_fc),
+                                                            rglass=sp_rg, rsurf=sp_rs, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)
 
 

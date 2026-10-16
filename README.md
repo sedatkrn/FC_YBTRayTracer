@@ -17,6 +17,7 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - 4 kalite kademesi (Low, **Hızlı** varsayılan, ...); büyük montajlar için hızlı mod
 - Büyük sahnelerde hızlandırma: ekran karoları, ışık ızgarası, küme hiyerarşisi, sahne önbelleği
 - Part, Body, App::Part, App::Link, Assembly, BIM (Arch) kapsayıcıları; renkler `ShapeAppearance`'tan
+- **Çok çekirdekli render** (Çekirdek: Otomatik/1/2/4; sonuç tek çekirdekle birebir aynı)
 - Ayar paneli ile açılan pencere, alt kısımda ilerleme çubuğu, durdurma, farklı kaydet
 
 ![Cam ve yansıma](docs/cam_yansima.png)
@@ -39,12 +40,12 @@ FreeCAD 1.0 veya üstü (1.1 / 26.x ile denendi), numpy (FreeCAD ile birlikte ge
 ## Sınırlar
 
 - Kırılma (Snell) yok; cam yalnızca saydam + Fresnel yansıması verir.
-- Tek iş parçacığı; çok büyük sahnelerde cam/yansıma yavaştır (düşük kalite kademesi önerilir).
+- Sahne hazırlığı (üçgenleme, karo/ızgara/küme ağacı) tek çekirdekte; çok büyük sahnelerde cam/yansıma yavaştır (düşük kalite kademesi önerilir).
 - Malzeme parlaklığı/yansıtıcılığı henüz nesneden okunmuyor.
 
 ## Yol haritası
 
-Çok çekirdekli render, malzemeden parlaklık/yansıma, yumuşak gölge / gökyüzü ışığı, ayarların hatırlanması, ışık ön ayarları, turntable animasyonu.
+Malzemeden parlaklık/yansıma, yumuşak gölge / gökyüzü ışığı, ayarların hatırlanması, ışık ön ayarları, turntable animasyonu.
 
 ## Lisans
 
@@ -66,6 +67,7 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - 4 quality levels (Low, **Fast** default, ...), suited to large assemblies
 - Large-scene acceleration: screen tiles, light-space grid, cluster hierarchy, scene cache
 - Part, Body, App::Part, App::Link, Assembly and BIM (Arch) containers; colours from `ShapeAppearance`
+- **Multi-core rendering** (Cores: Auto/1/2/4; output identical to single-core)
 - Settings panel opens first; progress bar, stop button, save-as
 
 ### Install
@@ -83,12 +85,12 @@ FreeCAD 1.0+ (tested with 1.1 / 26.x) and numpy (bundled with FreeCAD).
 ### Limitations
 
 - No refraction (Snell); glass is transparent with Fresnel reflection only.
-- Single-threaded; glass/reflections on very large scenes are slow (use a lower quality level).
+- Scene preparation (tessellation, tile/grid/cluster build) is single-threaded; glass/reflections on very large scenes are slow (use a lower quality level).
 - Material shininess/reflectivity is not yet read from objects.
 
 ### Roadmap
 
-Multi-core rendering, material-based shininess/reflection, soft shadows / sky light, remembered settings, light presets, turntable animation.
+Material-based shininess/reflection, soft shadows / sky light, remembered settings, light presets, turntable animation.
 
 ### License
 
