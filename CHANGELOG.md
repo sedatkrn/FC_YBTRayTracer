@@ -1,6 +1,8 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v0.8.1: * Ayar paneli artık içeriğine göre geniş açılır, ara çubuğu sürüklenerek ayarlanır; değerler kırpılmaz.
+        * Ortografik kamerada zemin sisi kaldırıldı (sahne sisli görünüyordu); perspektifte sis azaltıldı; zemin yansıması taban değeri düşürüldü.
 v0.8:   * Zemin dokuları: 7 hazır doku (travertin, çakıl, mermer, taş kaplama, terrakota, sıva, ahşap) + kendi görüntü dosyanız;
           doku boyu ayarlanır, uzak zeminde mip süzme (benek/moire yok). Eğik ortografik kamerada zeminin köşede kaybolması giderildi.
 

@@ -36,7 +36,7 @@ FLOOR_TEX_SCALE = 0.0  # mm; dokunun (orijinal görüntünün) zemindeki genişl
 FLOOR_OFFSET = 0.0     # mm; sahnenin en alt z değerine eklenir (eksi = aşağı)
 FLOOR_FADE = 0.7      # zeminden yansıyan nesnenin silikleşme uzunluğu (sahne köşegeni x bu sayı)
 FLOOR_SKY_REFL = 0.35  # zeminin gökyüzü yansımasının gücü (1 = tam)
-FLOOR_HAZE = 6.0       # ufka doğru sis uzunluğu (sahne köşegeni x bu sayı)
+FLOOR_HAZE = 12.0       # ufka doğru sis uzunluğu (sahne köşegeni x bu sayı)
 FLOOR_RADIUS = 25.0    # zemin yarıçapı = sahne köşegeni x bu sayı (ufuk çizgisine kadar)
 THREADS = 0            # render iş parçacığı sayısı; 0 = otomatik (işlemci çekirdek sayısı, en çok 8)
 DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz

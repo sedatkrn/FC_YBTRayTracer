@@ -305,7 +305,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             surf = albedo * lit + spec_sum
             if f_on:
                 isf = tid == fid
-                if isf.any():                                   # ufka doğru hafif sis (kameraya göre sahne merkezinin gerisinde başlar)
+                if isf.any() and persp:                         # ufka doğru hafif sis (yalnız perspektif; ortografikte atmosfer derinliği yok) (kameraya göre sahne merkezinin gerisinde başlar)
                     depth_c = np.clip(((P[isf] - pos) * fwd).sum(1) - cam_dist, 0.0, None)
                     haze = (1.0 - np.exp(-depth_c / (S.FLOOR_HAZE * scene.diag)))[:, None]
                     surf[isf] = surf[isf] * (1.0 - haze) + bot_l * haze
@@ -314,7 +314,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             cosv = np.clip(-(nrm * Dh).sum(1), 0, 1)
             R = np.where(glass, np.clip(r_glass * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), r_surf)
             if f_on:
-                f0 = 0.04 + 0.5 * f_refl                         # cilalı zemin: dik bakışta %4, kaydırıcı arttıkça aynaya yaklaşır
+                f0 = 0.03 + 0.35 * f_refl                         # cilalı zemin: dik bakışta %4, kaydırıcı arttıkça aynaya yaklaşır
                 R = np.where(tid == fid, np.clip(f0 + (1.0 - f0) * (1 - cosv) ** 5, 0, 0.95) if f_refl > 0 else 0.0, R)
             wl = a * (1 - R)
             wr = R

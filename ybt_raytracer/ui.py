@@ -272,7 +272,7 @@ def main():
     sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
     sc_left.setWidget(left)
     sc_left.setWidgetResizable(True)
-    sc_left.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    sc_left.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)   # içerik sığmazsa kırpmak yerine kaydır
     lcol = QtGui.QVBoxLayout()                        # üstte sabit: başlık + düğmeler, altta kaydırılabilir ayarlar
     head = QtGui.QLabel("Settings")
     head.setStyleSheet("font-weight: bold; font-size: 14px;")
@@ -282,8 +282,11 @@ def main():
     lcol.addWidget(sc_left, 1)
     lw = QtGui.QWidget()
     lw.setLayout(lcol)
-    lw.setFixedWidth(410)
-    outer.addWidget(lw)
+    lw.setMinimumWidth(360)
+    outer.setContentsMargins(6, 6, 6, 6)
+    split = QtGui.QSplitter(QtCore.Qt.Horizontal)       # ayar paneli ile ön izleme arasındaki çubuk sürüklenebilir
+    split.setChildrenCollapsible(False)
+    split.addWidget(lw)
 
     # ================= SAĞ: Ön izleme ekranı (ortalanmış) =================
     right = QtGui.QVBoxLayout()
@@ -365,8 +368,17 @@ def main():
 
     lbl_st = _St()
     lbl_st.setText("Hazır. Ayarları seç, 3B görünümü çevir ve Render'a bas.")
-    outer.addLayout(right, 1)
-    dlg.resize(1180, 760)
+    rw = QtGui.QWidget()
+    rw.setLayout(right)
+    split.addWidget(rw)
+    split.setStretchFactor(0, 0)
+    split.setStretchFactor(1, 1)
+    outer.addWidget(split, 1)
+    # ayar paneli, içeriğinin gerçek genişliğine (+ kaydırma çubuğu) göre açılır; kullanıcı çubukla değiştirebilir
+    pw = max(460, left.sizeHint().width() + sc_left.verticalScrollBar().sizeHint().width() + 24)
+    pw = min(pw, 620)
+    dlg.resize(pw + 880, 820)
+    split.setSizes([pw, 880])
 
     def sync_enabled(*_a):
         gl = ck_gl.isChecked()
