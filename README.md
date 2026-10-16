@@ -100,6 +100,11 @@ Material-based shininess/reflection, soft shadows / sky light, remembered settin
 MIT, see [LICENSE](LICENSE).
 
 
+## Zemin dokuları / Floor textures
+
+Sanal zemin için hazır dokular: travertin, çakıl, beyaz mermer, taş kaplama, terrakota, sıva, ahşap; ayrıca *Dosyadan…* ile kendi PNG/JPG görüntünüz. *Doku boyu* ile ölçek ayarlanır.
+Ready-made floor textures (7) or your own image via *Dosyadan…*; *Doku boyu* sets the scale.
+
 ## Kod yapısı / Code layout
 
 ```

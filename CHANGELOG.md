@@ -1,6 +1,9 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v0.8:   * Zemin dokuları: 7 hazır doku (travertin, çakıl, mermer, taş kaplama, terrakota, sıva, ahşap) + kendi görüntü dosyanız;
+          doku boyu ayarlanır, uzak zeminde mip süzme (benek/moire yok). Eğik ortografik kamerada zeminin köşede kaybolması giderildi.
+
 FC_ybt_raytracer.FCMacro  --  v0.6
 FreeCAD içinde yerleşik, basit numpy ışın izleyici (harici program gerekmez).
 

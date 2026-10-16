@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from . import settings as S
+from .textures import load as load_texture
 from .core import _any, _closest, _norm, camera_basis
 from .parallel import _Ticker, _limit_blas
 from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins
@@ -82,6 +83,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         alpha_ext = np.concatenate([alpha_t, [f_alpha]])
         f_rad2 = (float(S.FLOOR_RADIUS) * scene.diag) ** 2
         cam_dist = float(max((-pos) @ fwd, 0.0))             # kameradan sahne merkezine derinlik
+        ftex = load_texture(S.FLOOR_TEXTURE)                  # None = düz renk
+        if ftex is not None:
+            tex_w = float(S.FLOOR_TEX_SCALE) if S.FLOOR_TEX_SCALE > 0 else ftex.rel * scene.diag
+            tex_w = max(tex_w, 1e-6 * scene.diag)
+            texel = tex_w / ftex.base_w                      # düzey-0 bir texel'in zemindeki uzunluğu
+            pix_ang = 2.0 * half_y / h                        # bir pikselin kapladığı açı (ortografikte uzunluk)
     else:
         n_ext, col_ext, alpha_ext = scene.n_unit, scene.colors, alpha_t
 
@@ -89,6 +96,13 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     # Bu yüzden ışın başlangıcını tüm sahnenin gerisine çekiyoruz (izdüşüm değişmez).
     zmin = float((scene.tri @ fwd).min() - pos @ fwd)
     o_ortho = pos - fwd * (max(0.0, -zmin) + 0.05 * scene.diag)
+    if f_on and not persp and fwd[2] < -1e-6:
+        # eğik ortografik kamerada ışın başlangıç düzlemi zemin düzleminin altına inebilir (köşede zemin kaybolurdu):
+        # düzlemi, bütün başlangıç noktaları zeminin üstünde kalana dek geri çek
+        zlo = min((o_ortho + right * sx_ * half_x + up * sy_ * half_y)[2] for sx_ in (-1.0, 1.0) for sy_ in (-1.0, 1.0))
+        need = z_floor + 0.05 * scene.diag - zlo
+        if need > 0.0:
+            o_ortho = o_ortho - fwd * (need / -fwd[2])
 
     say("üçgenler ekran karolarına dağıtılıyor (%d üçgen)..." % scene.count)
     # Kamera/ışık aynı kaldıysa önceki render'ın ön hesapları (ekran karoları, gölge ızgarası, küme ağacı)
@@ -260,6 +274,18 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             nrm = n_ext[tid].copy()
             nrm[(nrm * Dh).sum(1) > 0] *= -1.0
             albedo = col_ext[tid] ** 2.2                        # sRGB -> doğrusal
+            if f_on and ftex is not None:
+                isf0 = tid == fid
+                if isf0.any():                                  # zemin dokusu: pikselin izdüşümüne göre mip düzeyi
+                    Pf = P[isf0] + scene.center
+                    cosg = np.maximum(np.abs(Dh[isf0, 2]), 0.2)
+                    dist = tb[hi][isf0] if persp else np.ones(int(isf0.sum()))
+                    foot = dist * pix_ang / cosg * (1.0 + 3.0 * RN[hi][isf0])
+                    lod = np.log2(np.maximum(foot / texel, 1.0))
+                    per = tex_w * ftex.span                      # bir tekrarın genişliği
+                    u = Pf[:, 0] / per
+                    v = Pf[:, 1] / (per * ftex.aspect)
+                    albedo[isf0] = ftex.sample(u, v, lod)
             a = alpha_ext[tid]
 
             lit = np.tile(amb, (len(hi), 1))

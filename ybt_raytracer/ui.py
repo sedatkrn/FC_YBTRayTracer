@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import os
 import numpy as np
 import time
 from . import settings as S
+from . import textures as _textures
 from .parallel import _Cancelled
 from .render import render
 from .output import pick_out_path, write_png
@@ -185,12 +187,63 @@ def main():
     fgl.addWidget(sp_fr, 2, 1)
     fgl.addWidget(QtGui.QLabel("Ofset"), 2, 2)
     fgl.addWidget(sp_fz, 2, 3)
+    # doku seçimi: düz renk / hazır dokular / kendi görüntü dosyanız
+    cb_ft = QtGui.QComboBox()
+    cb_ft.addItem("Düz renk", "")
+    for k, name, _fn, _mode, _rel in _textures.PRESETS:
+        cb_ft.addItem(name, k)
+    cb_ft.addItem("Dosyadan…", "__file__")
+    cb_ft.setToolTip("Zemin dokusu. 'Dosyadan…' ile kendi PNG/JPG görüntünüzü seçebilirsiniz.")
+    sp_fs = spin(0, 1000000, S.FLOOR_TEX_SCALE, 100, " mm")
+    sp_fs.setSpecialValueText("Otomatik")
+    sp_fs.setToolTip("Dokunun zemindeki genişliği (mm). Otomatik = doku türüne göre sahne büyüklüğüyle orantılı")
+    ft_state = {"key": S.FLOOR_TEXTURE or "", "last": 0}
+    for i in range(cb_ft.count()):
+        if cb_ft.itemData(i) == ft_state["key"]:
+            cb_ft.setCurrentIndex(i)
+    fgl.addWidget(QtGui.QLabel("Doku"), 3, 0)
+    fgl.addWidget(cb_ft, 3, 1)
+    fgl.addWidget(QtGui.QLabel("Doku boyu"), 3, 2)
+    fgl.addWidget(sp_fs, 3, 3)
     lv.insertWidget(1, fbox)                                    # Kalite ile Işık arasına
-    floor_widgets = [cb_fl, sp_fo, sp_fr, sp_fz]
+    floor_widgets = [cb_fl, sp_fo, sp_fr, sp_fz, cb_ft, sp_fs]
 
     def sync_floor(*_a):
+        on = ck_fl.isChecked()
         for wd in floor_widgets:
-            wd.setEnabled(ck_fl.isChecked())
+            wd.setEnabled(on)
+        cb_fl.setEnabled(on and not ft_state["key"])             # doku seçiliyken renk kullanılmaz
+        sp_fs.setEnabled(on and bool(ft_state["key"]))
+
+    def on_tex(idx):
+        data = cb_ft.itemData(idx)
+        if data == "__file__":
+            res = QtGui.QFileDialog.getOpenFileName(dlg, "Zemin dokusu seç", os.path.expanduser("~"),
+                                                    "Görüntü (*.png *.jpg *.jpeg *.bmp)")
+            path = res[0] if isinstance(res, (tuple, list)) else res
+            img = QtGui.QImage(path) if path else None
+            if not path or img is None or img.isNull():
+                cb_ft.blockSignals(True)
+                cb_ft.setCurrentIndex(ft_state["last"])           # vazgeçildi: öncekine dön
+                cb_ft.blockSignals(False)
+                return
+            if max(img.width(), img.height()) > 1024:             # bellek/hız: en çok 1024 px
+                img = img.scaled(1024, 1024, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            img = img.convertToFormat(QtGui.QImage.Format_RGB888)
+            w_, h_ = img.width(), img.height()
+            bpl = img.bytesPerLine()
+            buf = np.frombuffer(bytes(img.constBits()), dtype=np.uint8)[:bpl * h_].reshape(h_, bpl)[:, :w_ * 3]
+            _textures.register_custom(path, buf.reshape(h_, w_, 3), "mirror")
+            cb_ft.blockSignals(True)
+            cb_ft.setItemText(cb_ft.count() - 1, "Dosya: " + os.path.basename(path))
+            cb_ft.setItemData(cb_ft.count() - 1, path)
+            cb_ft.blockSignals(False)
+            ft_state["key"] = path
+        else:
+            ft_state["key"] = data or ""
+        ft_state["last"] = cb_ft.currentIndex()
+        sync_floor()
+    cb_ft.currentIndexChanged.connect(on_tex)
     ck_fl.toggled.connect(sync_floor)
     sync_floor()
 
@@ -391,6 +444,8 @@ def main():
             g["FLOOR_OPACITY"] = sp_fo.value() / 100.0
             g["FLOOR_REFLECT"] = sp_fr.value() / 100.0
             g["FLOOR_OFFSET"] = float(sp_fz.value())
+            g["FLOOR_TEXTURE"] = ft_state["key"]
+            g["FLOOR_TEX_SCALE"] = float(sp_fs.value())
             fc_info = ""
             fc = None
             if ck_fc.isChecked():
@@ -484,5 +539,5 @@ def main():
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl,
-                                                            rglass=sp_rg, rsurf=sp_rs, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, lights=lrows, ambient=sp_amb, fclights=ck_fc),
+                                                            rglass=sp_rg, rsurf=sp_rs, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)
