@@ -9,7 +9,9 @@ Ne yapar:
   * Doğrudan ışık + gölge + parlama (Whitted tarzı, gürültüsüz)
   * Görüntü satır satır önizleme penceresinde belirir, sonunda PNG kaydedilir
 
-v0.5:   * Çok çekirdekli render: bantlar ve kenar yumuşatma parçaları iş parçacığı havuzunda paralel çizilir
+v0.5:   * Gölge ızgarası artık sahne büyüklüğüne göre otomatik (64..256): 2,5 milyon üçgenli sahnede gölge
+          hesabı ~7 kat hızlandı (149 sn -> 20 sn, görüntü birebir aynı).
+        * Çok çekirdekli render: bantlar ve kenar yumuşatma parçaları iş parçacığı havuzunda paralel çizilir
           (ayar panelinde Çekirdek: Otomatik/1/2/4). Sonuç tek çekirdekle birebir aynıdır.
 v0.4:   * Işıklar: ortam (renk/şiddet) + en çok 3 ışık (yatay/dikey açı, renk, güç, ışık başına gölge).
         * Kenar yumuşatma (AA): yalnız kenar piksellerinde 2x2/3x3/4x4 örnekleme (ayar panelinde).
@@ -62,7 +64,7 @@ LIGHTS = [
 SPEC = 0.30
 SHININESS = 48.0
 TILE = 16              # ekran karosu (px); aynı zamanda önizleme bant yüksekliği
-SHADOW_GRID = 64       # ışık-uzayı ızgarası (SHADOW_GRID x SHADOW_GRID hücre)
+SHADOW_GRID = 0        # ışık-uzayı ızgarası (G x G hücre); 0 = otomatik (üçgen sayısına göre 64..256)
 GLASS = True           # saydam nesneler (Transparency) gerçekten saydam çizilsin
 REFLECT_GLASS = 1.0    # cam yansıması çarpanı (0 = yok, 1 = normal, 2 = güçlü)
 REFLECT_SURF = 0.0     # opak yüzeylerin sabit yansıması (0..0.6); 0 = kapalı
@@ -531,15 +533,18 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         say("gölge ızgaraları hazırlanıyor...")
         op_ids = np.nonzero(alpha_t >= 0.5)[0]
         gl_ids = np.nonzero(alpha_t < 0.5)[0]
+        G_sh = int(SHADOW_GRID)
+        if G_sh <= 0:       # üçgen sayısı arttıkça hücre başına üçgen sayısı sabit kalsın (ölçüm: 2,5 M üçgende G=256, G=64'ten 7 kat hızlı)
+            G_sh = int(min(256, max(64, 2 ** round(np.log2(max(np.sqrt(scene.count) / 6.0, 1.0))))))
         gcache = cache.setdefault("grids", {})
         if len(gcache) > 6:
             gcache.clear()
         for li, lt in enumerate(lights):
             if lt[3]:
-                gk = (lt[0].tobytes(), bool(GLASS), int(SHADOW_GRID))
+                gk = (lt[0].tobytes(), bool(GLASS), G_sh)
                 if gk not in gcache:
-                    gcache[gk] = (_LightGrid(scene, lt[0], SHADOW_GRID, op_ids) if len(op_ids) else None,
-                                  _LightGrid(scene, lt[0], SHADOW_GRID, gl_ids) if len(gl_ids) else None)
+                    gcache[gk] = (_LightGrid(scene, lt[0], G_sh, op_ids) if len(op_ids) else None,
+                                  _LightGrid(scene, lt[0], G_sh, gl_ids) if len(gl_ids) else None)
                 grids[li] = gcache[gk]
     clusters = None
     if secondary and not brute:

@@ -15,7 +15,7 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - Saydamlık (cam) ve Fresnel yansıması, isteğe bağlı yüzey yansıması
 - Kenar yumuşatma (yalnızca kenar piksellerinde 2x2 / 3x3 / 4x4)
 - 4 kalite kademesi (Low, **Hızlı** varsayılan, ...); büyük montajlar için hızlı mod
-- Büyük sahnelerde hızlandırma: ekran karoları, ışık ızgarası, küme hiyerarşisi, sahne önbelleği
+- Büyük sahnelerde hızlandırma: ekran karoları, otomatik boyutlu ışık ızgarası, küme hiyerarşisi, sahne önbelleği
 - Part, Body, App::Part, App::Link, Assembly, BIM (Arch) kapsayıcıları; renkler `ShapeAppearance`'tan
 - **Çok çekirdekli render** (Çekirdek: Otomatik/1/2/4; sonuç tek çekirdekle birebir aynı)
 - Ayar paneli ile açılan pencere, alt kısımda ilerleme çubuğu, durdurma, farklı kaydet
@@ -65,7 +65,7 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - Transparency (glass) with Fresnel reflection, optional surface reflection
 - Edge-only anti-aliasing (2x2 / 3x3 / 4x4)
 - 4 quality levels (Low, **Fast** default, ...), suited to large assemblies
-- Large-scene acceleration: screen tiles, light-space grid, cluster hierarchy, scene cache
+- Large-scene acceleration: screen tiles, auto-sized light-space grid, cluster hierarchy, scene cache
 - Part, Body, App::Part, App::Link, Assembly and BIM (Arch) containers; colours from `ShapeAppearance`
 - **Multi-core rendering** (Cores: Auto/1/2/4; output identical to single-core)
 - Settings panel opens first; progress bar, stop button, save-as
