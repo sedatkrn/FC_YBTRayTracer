@@ -29,6 +29,10 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 ![Cam kırılması: IOR kapalı / 1.5](docs/refraction.png)
 ![Işıklar](docs/bim_isiklar.png)
 
+## Dil / Language
+Panelin sağ üstündeki "Dil / Language" kutusundan Türkçe veya English seçilir; seçim hatırlanır (ilk açılışta FreeCAD arayüz dili Türkçeyse Türkçe, değilse English).
+The UI language (Türkçe / English) is chosen at the top-right of the panel; it is remembered (first run follows FreeCAD's locale).
+
 ## Kurulum
 
 1. `FC_ybt_raytracer.FCMacro` dosyasını **ve** `ybt_raytracer/` klasörünü FreeCAD makro klasörüne birlikte kopyalayın

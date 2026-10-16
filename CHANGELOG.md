@@ -1,6 +1,8 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.1:   * Arayüz dili: Türkçe / English (panelin üstünde "Dil / Language"); seçim kaydedilir, ilk açılışta FreeCAD diline göre belirlenir.
+        * Makro ikonu ve pencere ikonu eklendi.
 v1.0:   ilk yayın / first release (v0.10 ile aynı kod).
 v0.10:  * Cam kırılması (ışık kırınımı): Snell yasası, girişte/çıkışta bükülme, tam iç yansıma. Panelde 'Kırılma (IOR)' (Kapalı = düz geçiş).
         * Kırılan/yansıyan ışınlarda çakışan yüzeylerde (cam kutu masaya değiyor vb.) benek giderildi: ikincil ışın hızlandırıcısı

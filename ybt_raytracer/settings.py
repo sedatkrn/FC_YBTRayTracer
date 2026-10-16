@@ -53,3 +53,4 @@ INVISIBLE_ALPHA = 0.02  # opaklığı bu değerin altındaki (FreeCAD'de %98-100
 TIE_TOL = 2e-6         # çakışan yüzeylerde 'eşit uzaklık' toleransı (sahne köşegeni oranı)
 TIE_LAST = False       # eşitlikte False: ids içinde ilk (küçük indeks), True: son
 _MAXPAIR = 2_000_000   # bir seferde işlenen (ışın x üçgen) çifti üst sınırı (bellek)
+USE_FC_LIGHTS = False   # arayüz: "FreeCAD ışık ayarlarını kullan" işareti (dil değişiminde korunur)

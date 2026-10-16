@@ -2,6 +2,7 @@
 import numpy as np
 import time
 from . import settings as S
+from .i18n import T
 from .core import Scene
 
 
@@ -190,7 +191,7 @@ def _gather(doc, log, status=_nostatus):
     def rec(root, subname, depth, known=None):
         """known: nesne doğrudan belge ağacından biliniyorsa (Group listesi) yol çözümlemesi atlanır.
         (Arch BuildingPart içinde getSubObjectList yanlış nesne döndürüp üstel döngüye yol açıyordu.)"""
-        status("sahne taranıyor... %d nesne" % len(items), frac=min(1.0, len(seen) / float(ntot)))
+        status(T("sahne taranıyor... %d nesne") % len(items), frac=min(1.0, len(seen) / float(ntot)))
         if known is not None:
             seen.add(known.Name)
             if not _visible_chain([known]):
@@ -266,7 +267,7 @@ def _gather(doc, log, status=_nostatus):
     for o in doc.Objects:
         if o.Name in seen or not hasattr(o, "Shape"):
             continue
-        status("yedek tarama... %d nesne" % len(items))
+        status(T("yedek tarama... %d nesne") % len(items))
         try:
             if not o.Visibility:
                 continue
@@ -308,10 +309,10 @@ def collect_scene(doc, status=_nostatus):
             pass
 
     t0 = time.time()
-    status("sahne taranıyor...", True)
+    status(T("sahne taranıyor..."), True)
     items = _gather(doc, log, status)
     if not items:
-        raise RuntimeError("Görünür, yüzeyi olan nesne bulunamadı.")
+        raise RuntimeError(T("Görünür, yüzeyi olan nesne bulunamadı."))
     bb = FreeCAD.BoundBox()
     for it in items:
         bb.add(it[2].BoundBox)
@@ -320,7 +321,7 @@ def collect_scene(doc, status=_nostatus):
     tol = max(bb.DiagonalLength * S.TESS_FACTOR, 1e-6)
     if S.DEBUG:
         FreeCAD.Console.PrintMessage(
-            "RayTrace: %d nesne bulundu (%.1f sn), sahne köşegeni %.1f mm, tessellate toleransı %.3f mm\n"
+            T("RayTrace: %d nesne bulundu (%.1f sn), sahne köşegeni %.1f mm, tessellate toleransı %.3f mm\n")
             % (len(items), t1 - t0, bb.DiagonalLength, tol))
     tris, cols, alps = [], [], []
     invisible = []
@@ -352,7 +353,7 @@ def collect_scene(doc, status=_nostatus):
                     c = dc[0] if dc is not None else base
                     cols.append(np.tile(np.array(c, dtype=np.float64), (len(F), 1)))
                     alps.append(np.full(len(F), ad[0] if ad is not None else abase))
-                    status("üçgenleniyor %d/%d: %s (%d üçgen)" % (k + 1, len(items), name[:24], ntri),
+                    status(T("üçgenleniyor %d/%d: %s (%d üçgen)") % (k + 1, len(items), name[:24], ntri),
                            frac=(k + 1) / float(len(items)))
                     continue
             except Exception:
@@ -361,7 +362,7 @@ def collect_scene(doc, status=_nostatus):
             if ad is not None and ad[i] <= S.INVISIBLE_ALPHA:
                 continue                                # tek yüzü %100 saydam: atla
             if i % 100 == 0:
-                status("üçgenleniyor %d/%d: %s (%d üçgen)" % (k + 1, len(items), name[:24], ntri),
+                status(T("üçgenleniyor %d/%d: %s (%d üçgen)") % (k + 1, len(items), name[:24], ntri),
                        frac=(k + i / float(max(len(shp.Faces), 1))) / float(len(items)))
             try:
                 verts, facets = face.tessellate(tol)
@@ -384,14 +385,14 @@ def collect_scene(doc, status=_nostatus):
                    base[0], base[1], base[2], (min(ad) if ad is not None else abase), how,
                    b.XMin, b.XMax, b.YMin, b.YMax, b.ZMin, b.ZMax))
     if invisible:
-        FreeCAD.Console.PrintMessage("RayTrace: %d tamamen saydam (görünmez) nesne atlandı: %s\n"
+        FreeCAD.Console.PrintMessage(T("RayTrace: %d tamamen saydam (görünmez) nesne atlandı: %s\n")
                                      % (len(invisible), ", ".join(invisible[:8]) + (" ..." if len(invisible) > 8 else "")))
     if not tris:
-        raise RuntimeError("Tessellation üçgen üretmedi.")
+        raise RuntimeError(T("Tessellation üçgen üretmedi."))
     t2 = time.time()
-    status("ışın izleme ön hesapları (%d üçgen)..." % ntri, True)
+    status(T("ışın izleme ön hesapları (%d üçgen)...") % ntri, True)
     sc = Scene(np.concatenate(tris), np.concatenate(cols), np.concatenate(alps))
-    FreeCAD.Console.PrintMessage("RayTrace: hazırlık: tarama %.1f sn, üçgenleme %.1f sn, ön hesap %.1f sn\n"
+    FreeCAD.Console.PrintMessage(T("RayTrace: hazırlık: tarama %.1f sn, üçgenleme %.1f sn, ön hesap %.1f sn\n")
                                  % (t1 - t0, t2 - t1, time.time() - t2))
     return sc, len(items)
 
@@ -441,8 +442,8 @@ def read_freecad_lights(log=None):
         if hit:
             grp, used, keys = g, path, hit
             break
-    info = "ayarlar: %s (%d anahtar)" % (used.split(":")[-1], len(keys)) if grp is not None \
-        else "FreeCAD ışık parametreleri bulunamadı, varsayılan değerler kullanıldı"
+    info = T("ayarlar: %s (%d anahtar)") % (used.split(":")[-1], len(keys)) if grp is not None \
+        else T("FreeCAD ışık parametreleri bulunamadı, varsayılan değerler kullanıldı")
     if grp is None:
         try:
             gv = FreeCAD.ParamGet(pre)
@@ -474,8 +475,8 @@ def read_freecad_lights(log=None):
     except Exception:
         ac, ap = 0xFFFFFFFF, 0.2
     amb_col = (((ac >> 24) & 255) / 255.0, ((ac >> 16) & 255) / 255.0, ((ac >> 8) & 255) / 255.0)
-    info += " | ışıklar: " + ", ".join("%s %s %d%%" % (n, "açık" if l["on"] else "kapalı", round(l["power"] * 100))
-                                        for n, l in zip(("ana", "arka", "dolgu"), lights)) + ", ortam %d%%" % round(ap * 100)
+    info += T(" | ışıklar: ") + ", ".join("%s %s %d%%" % (n, T("açık") if l["on"] else T("kapalı"), round(l["power"] * 100))
+                                        for n, l in zip(("ana", "arka", "dolgu"), lights)) + T(", ortam %d%%") % round(ap * 100)
     if log:
         log(info)
     return lights, ap, amb_col, info

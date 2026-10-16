@@ -3,6 +3,7 @@ import os
 import numpy as np
 import time
 from . import settings as S
+from .i18n import T
 from . import textures as _textures
 from .parallel import _Cancelled
 from .render import render
@@ -13,15 +14,20 @@ from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 _QUALITY = [("Low", 0.012), ("Hızlı", 0.004), ("Normal", 0.0015), ("İnce", 0.0008)]   # Low: çok büyük montajlar için
 
 
-def main():
+def main(lang=None):
     """Ayar paneli olan, kapanmayan (modeless) bir pencere açar. Render, 'Render' düğmesine basınca başlar."""
     import FreeCAD
     import FreeCADGui as Gui
     from PySide import QtGui, QtCore
 
+    from . import i18n
+    if lang:
+        i18n.set_lang(lang)
+    else:
+        i18n.init_lang()
     doc = FreeCAD.ActiveDocument
     if doc is None or Gui.ActiveDocument is None:
-        FreeCAD.Console.PrintError("RayTrace: açık belge yok.\n")
+        FreeCAD.Console.PrintError(T("RayTrace: açık belge yok.\n"))
         return
     old = getattr(FreeCAD, "_raytrace_dlg", None)          # önceki pencere açıksa kapat
     if old is not None:
@@ -33,6 +39,12 @@ def main():
 
     dlg = QtGui.QDialog(Gui.getMainWindow())
     dlg.setWindowTitle("FC YBT Raytracer")
+    try:
+        _ic = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
+        if os.path.exists(_ic):
+            dlg.setWindowIcon(QtGui.QIcon(_ic))
+    except Exception:
+        pass
     outer = QtGui.QHBoxLayout(dlg)
 
     def spin(lo, hi, val, step=1, suffix=""):
@@ -50,54 +62,54 @@ def main():
     lv.setContentsMargins(0, 0, 0, 0)
 
     # ---- Kalite Ayarları ----
-    qbox = QtGui.QGroupBox("Kalite Ayarları")
+    qbox = QtGui.QGroupBox(T("Kalite Ayarları"))
     qg = QtGui.QGridLayout(qbox)
     sp_w = spin(160, 4000, S.WIDTH, 80, " px")
     cb_q = QtGui.QComboBox()
     for name, _f in _QUALITY:
-        cb_q.addItem(name)
+        cb_q.addItem(T(name))
     cb_q.setCurrentIndex(min(range(len(_QUALITY)), key=lambda i: abs(_QUALITY[i][1] - S.TESS_FACTOR)))
     cb_aa = QtGui.QComboBox()
-    for name in ("Kapalı", "2x2", "3x3", "4x4"):
+    for name in (T("Kapalı"), "2x2", "3x3", "4x4"):
         cb_aa.addItem(name)
     cb_aa.setCurrentIndex(0 if int(S.AA) < 2 else min(3, int(S.AA) - 1))
     sp_bn = spin(0, 3, S.BOUNCES)
     cb_th = QtGui.QComboBox()
     _TH = [0, 1, 2, 4]
-    for name in ("Otomatik", "1", "2", "4"):
+    for name in (T("Otomatik"), "1", "2", "4"):
         cb_th.addItem(name)
     cb_th.setCurrentIndex(_TH.index(int(S.THREADS)) if int(S.THREADS) in _TH else 0)
-    cb_th.setToolTip("Render için kullanılacak çekirdek (iş parçacığı) sayısı; Otomatik = işlemci çekirdek sayısı")
+    cb_th.setToolTip(T("Render için kullanılacak çekirdek (iş parçacığı) sayısı; Otomatik = işlemci çekirdek sayısı"))
     sp_rg = spin(0, 200, S.REFLECT_GLASS * 100, 10, " %")
     sp_rs = spin(0, 60, S.REFLECT_SURF * 100, 5, " %")
-    ck_sh = QtGui.QCheckBox("Gölgeler")
+    ck_sh = QtGui.QCheckBox(T("Gölgeler"))
     ck_sh.setChecked(bool(S.SHADOWS))
-    ck_gl = QtGui.QCheckBox("Saydamlık (cam)")
+    ck_gl = QtGui.QCheckBox(T("Saydamlık (cam)"))
     ck_gl.setChecked(bool(S.GLASS))
     sp_ior = QtGui.QDoubleSpinBox()
     sp_ior.setRange(1.0, 3.0)
     sp_ior.setSingleStep(0.05)
     sp_ior.setDecimals(2)
     sp_ior.setValue(float(S.IOR))
-    sp_ior.setSpecialValueText("Kapalı")
-    sp_ior.setToolTip("Cam kırılma indisi (Snell yasası): cam 1.5, su 1.33, elmas 2.4. Kapalı = ışık düz geçer (en hızlı). "
-                      "Kırılma için nesne saydam olmalı; küre/silindir gibi kapalı gövdelerde en iyi sonuç.")
-    ck_sm = QtGui.QCheckBox("Yumuşak yüzeyler")
+    sp_ior.setSpecialValueText(T("Kapalı"))
+    sp_ior.setToolTip(T("Cam kırılma indisi (Snell yasası): cam 1.5, su 1.33, elmas 2.4. Kapalı = ışık düz geçer (en hızlı). "
+                      "Kırılma için nesne saydam olmalı; küre/silindir gibi kapalı gövdelerde en iyi sonuç."))
+    ck_sm = QtGui.QCheckBox(T("Yumuşak yüzeyler"))
     ck_sm.setChecked(bool(S.SMOOTH))
-    ck_sm.setToolTip("Eğri yüzeyleri (küre, simit, silindir) pürüzsüz gölgeler; keskin kenarlar (küp, plaka) korunur. Kapalıysa üçgenler görünür.")
-    ck_sv = QtGui.QCheckBox("Bitince otomatik kaydet")
+    ck_sm.setToolTip(T("Eğri yüzeyleri (küre, simit, silindir) pürüzsüz gölgeler; keskin kenarlar (küp, plaka) korunur. Kapalıysa üçgenler görünür."))
+    ck_sv = QtGui.QCheckBox(T("Bitince otomatik kaydet"))
     ck_sv.setChecked(True)
-    sp_w.setToolTip("Çıktı genişliği; yükseklik 3B görünümün oranından gelir")
-    cb_q.setToolTip("Yüzey pürüzsüzlüğü (üçgenleme inceliği). Değişince sahne yeniden okunur")
-    cb_aa.setToolTip("Kenar yumuşatma: yalnız kenar piksellerinde çoklu örnekleme yapar")
-    ck_gl.setToolTip("Nesnenin Transparency (saydamlık) özelliğine göre arkası görünür")
-    sp_rg.setToolTip("Cam yüzeylerin yansıması (Fresnel: eğik bakışta daha çok)")
-    sp_rs.setToolTip("Opak yüzeylerin sabit yansıması; 0 = kapalı (en hızlı)")
-    sp_bn.setToolTip("Bir ışının en çok kaç kez yansıyacağı")
-    qrows = [("Genişlik", sp_w, "Kalite", cb_q),
-             ("Kenar yumuşatma", cb_aa, "Yansıma sayısı", sp_bn),
-             ("Cam yansıması", sp_rg, "Yüzey yansıması", sp_rs),
-             ("Çekirdek", cb_th, "Kırılma (IOR)", sp_ior)]
+    sp_w.setToolTip(T("Çıktı genişliği; yükseklik 3B görünümün oranından gelir"))
+    cb_q.setToolTip(T("Yüzey pürüzsüzlüğü (üçgenleme inceliği). Değişince sahne yeniden okunur"))
+    cb_aa.setToolTip(T("Kenar yumuşatma: yalnız kenar piksellerinde çoklu örnekleme yapar"))
+    ck_gl.setToolTip(T("Nesnenin Transparency (saydamlık) özelliğine göre arkası görünür"))
+    sp_rg.setToolTip(T("Cam yüzeylerin yansıması (Fresnel: eğik bakışta daha çok)"))
+    sp_rs.setToolTip(T("Opak yüzeylerin sabit yansıması; 0 = kapalı (en hızlı)"))
+    sp_bn.setToolTip(T("Bir ışının en çok kaç kez yansıyacağı"))
+    qrows = [(T("Genişlik"), sp_w, T("Kalite"), cb_q),
+             (T("Kenar yumuşatma"), cb_aa, T("Yansıma sayısı"), sp_bn),
+             (T("Cam yansıması"), sp_rg, T("Yüzey yansıması"), sp_rs),
+             (T("Çekirdek"), cb_th, T("Kırılma (IOR)"), sp_ior)]
     for r, (l1, w1, l2, w2) in enumerate(qrows):
         qg.addWidget(QtGui.QLabel(l1), r * 2, 0)
         qg.addWidget(QtGui.QLabel(l2), r * 2, 1)
@@ -111,11 +123,11 @@ def main():
     lv.addWidget(qbox)
 
     # ---- Işık Ayarları: ortam + en çok 3 ışık ----
-    lbox = QtGui.QGroupBox("Işık Ayarları")
+    lbox = QtGui.QGroupBox(T("Işık Ayarları"))
     lvb = QtGui.QVBoxLayout(lbox)
     colors = {}
 
-    def color_button(key, rgb, title="Işık rengi"):
+    def color_button(key, rgb, title=T("Işık rengi")):
         colors[key] = tuple(rgb)
         bt = QtGui.QPushButton("")
         bt.setFixedWidth(54)
@@ -134,11 +146,12 @@ def main():
         paint()
         return bt
 
-    ck_fc = QtGui.QCheckBox("FreeCAD ışık ayarlarını kullan")
-    ck_fc.setToolTip("İşaretliyse Tercihler > Display > Light Sources ayarları kullanılır; aşağıdaki ayarlar devre dışı kalır")
+    ck_fc = QtGui.QCheckBox(T("FreeCAD ışık ayarlarını kullan"))
+    ck_fc.setChecked(bool(getattr(S, "USE_FC_LIGHTS", False)))
+    ck_fc.setToolTip(T("İşaretliyse Tercihler > Display > Light Sources ayarları kullanılır; aşağıdaki ayarlar devre dışı kalır"))
     lvb.addWidget(ck_fc)
     lrows = []
-    names = ("Ana ışık", "Dolgu ışığı", "Arka ışık")
+    names = (T("Ana ışık"), T("Dolgu ışığı"), T("Arka ışık"))
     for i in range(3):
         lt = S.LIGHTS[i] if i < len(S.LIGHTS) else dict(on=False, h=0.0, v=0.0, color=(1, 1, 1), power=0.3, shadow=False)
         frame = QtGui.QFrame()
@@ -149,26 +162,26 @@ def main():
         ck.setChecked(bool(lt["on"]))
         cbn = color_button("l%d" % i, lt["color"])
         sp_ = spin(0, 200, float(lt["power"]) * 100, 5, " %")
-        sp_.setToolTip("Işık gücü")
+        sp_.setToolTip(T("Işık gücü"))
         sh = spin(-180, 180, lt["h"], 5, " °")
-        sh.setToolTip("Yatay açı (kameraya göre; eksi = sol, artı = sağ, 180 = arkadan)")
+        sh.setToolTip(T("Yatay açı (kameraya göre; eksi = sol, artı = sağ, 180 = arkadan)"))
         sv = spin(-90, 90, lt["v"], 5, " °")
-        sv.setToolTip("Dikey açı (artı = yukarıdan)")
-        cs = QtGui.QCheckBox("Gölge")
+        sv.setToolTip(T("Dikey açı (artı = yukarıdan)"))
+        cs = QtGui.QCheckBox(T("Gölge"))
         cs.setChecked(bool(lt["shadow"]))
-        cs.setToolTip("Bu ışık gölge düşürsün (her gölgeli ışık süreyi artırır)")
+        cs.setToolTip(T("Bu ışık gölge düşürsün (her gölgeli ışık süreyi artırır)"))
         fg.addWidget(ck, 0, 0, 1, 2)
         fg.addWidget(cbn, 0, 2)
         fg.addWidget(sp_, 0, 3)
-        fg.addWidget(QtGui.QLabel("Yatay"), 1, 0)
+        fg.addWidget(QtGui.QLabel(T("Yatay")), 1, 0)
         fg.addWidget(sh, 1, 1)
-        fg.addWidget(QtGui.QLabel("Dikey"), 1, 2)
+        fg.addWidget(QtGui.QLabel(T("Dikey")), 1, 2)
         fg.addWidget(sv, 1, 3)
         fg.addWidget(cs, 2, 0, 1, 4)
         lvb.addWidget(frame)
         lrows.append((ck, sh, sv, cbn, sp_, cs))
     arow = QtGui.QHBoxLayout()
-    arow.addWidget(QtGui.QLabel("Ortam ışığı"))
+    arow.addWidget(QtGui.QLabel(T("Ortam ışığı")))
     cb_amb = color_button("amb", S.AMBIENT_COLOR)
     sp_amb = spin(0, 100, S.AMBIENT * 100, 5, " %")
     arow.addWidget(cb_amb)
@@ -178,44 +191,44 @@ def main():
     light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb]
 
     # ---- Sanal Zemin ----
-    fbox = QtGui.QGroupBox("Sanal Zemin")
+    fbox = QtGui.QGroupBox(T("Sanal Zemin"))
     fgl = QtGui.QGridLayout(fbox)
-    ck_fl = QtGui.QCheckBox("Sanal zemin ekle")
+    ck_fl = QtGui.QCheckBox(T("Sanal zemin ekle"))
     ck_fl.setChecked(bool(S.FLOOR))
-    ck_fl.setToolTip("Sahnenin en alt noktasına (+ ofset) yatay, sonsuz bir zemin koyar. FreeCAD'de Z yukarı kabul edilir.")
-    cb_fl = color_button("floor", S.FLOOR_COLOR, "Zemin rengi")
+    ck_fl.setToolTip(T("Sahnenin en alt noktasına (+ ofset) yatay, sonsuz bir zemin koyar. FreeCAD'de Z yukarı kabul edilir."))
+    cb_fl = color_button("floor", S.FLOOR_COLOR, T("Zemin rengi"))
     sp_fo = spin(0, 100, S.FLOOR_OPACITY * 100, 10, " %")
-    sp_fo.setToolTip("Zemin opaklığı; 100 = opak, düşünce zemin saydamlaşır")
+    sp_fo.setToolTip(T("Zemin opaklığı; 100 = opak, düşünce zemin saydamlaşır"))
     sp_fr = spin(0, 100, S.FLOOR_REFLECT * 100, 10, " %")
-    sp_fr.setToolTip("Zemin yansıması (eğik bakışta güçlenir); 0 = yansımasız, en hızlı")
+    sp_fr.setToolTip(T("Zemin yansıması (eğik bakışta güçlenir); 0 = yansımasız, en hızlı"))
     sp_fz = spin(-1000000, 1000000, S.FLOOR_OFFSET, 10, " mm")
-    sp_fz.setToolTip("Zemin yüksekliği: sahnenin en alt z değerine göre ofset (eksi = aşağı, artı = yukarı)")
+    sp_fz.setToolTip(T("Zemin yüksekliği: sahnenin en alt z değerine göre ofset (eksi = aşağı, artı = yukarı)"))
     fgl.addWidget(ck_fl, 0, 0, 1, 4)
-    fgl.addWidget(QtGui.QLabel("Renk"), 1, 0)
+    fgl.addWidget(QtGui.QLabel(T("Renk")), 1, 0)
     fgl.addWidget(cb_fl, 1, 1)
-    fgl.addWidget(QtGui.QLabel("Opaklık"), 1, 2)
+    fgl.addWidget(QtGui.QLabel(T("Opaklık")), 1, 2)
     fgl.addWidget(sp_fo, 1, 3)
-    fgl.addWidget(QtGui.QLabel("Yansıma"), 2, 0)
+    fgl.addWidget(QtGui.QLabel(T("Yansıma")), 2, 0)
     fgl.addWidget(sp_fr, 2, 1)
-    fgl.addWidget(QtGui.QLabel("Ofset"), 2, 2)
+    fgl.addWidget(QtGui.QLabel(T("Ofset")), 2, 2)
     fgl.addWidget(sp_fz, 2, 3)
     # doku seçimi: düz renk / hazır dokular / kendi görüntü dosyanız
     cb_ft = QtGui.QComboBox()
-    cb_ft.addItem("Düz renk", "")
+    cb_ft.addItem(T("Düz renk"), "")
     for k, name, _fn, _mode, _rel in _textures.PRESETS:
-        cb_ft.addItem(name, k)
-    cb_ft.addItem("Dosyadan…", "__file__")
-    cb_ft.setToolTip("Zemin dokusu. 'Dosyadan…' ile kendi PNG/JPG görüntünüzü seçebilirsiniz.")
+        cb_ft.addItem(T(name), k)
+    cb_ft.addItem(T("Dosyadan…"), "__file__")
+    cb_ft.setToolTip(T("Zemin dokusu. 'Dosyadan…' ile kendi PNG/JPG görüntünüzü seçebilirsiniz."))
     sp_fs = spin(0, 1000000, S.FLOOR_TEX_SCALE, 100, " mm")
-    sp_fs.setSpecialValueText("Otomatik")
-    sp_fs.setToolTip("Dokunun zemindeki genişliği (mm). Otomatik = doku türüne göre sahne büyüklüğüyle orantılı")
+    sp_fs.setSpecialValueText(T("Otomatik"))
+    sp_fs.setToolTip(T("Dokunun zemindeki genişliği (mm). Otomatik = doku türüne göre sahne büyüklüğüyle orantılı"))
     ft_state = {"key": S.FLOOR_TEXTURE or "", "last": 0}
     for i in range(cb_ft.count()):
         if cb_ft.itemData(i) == ft_state["key"]:
             cb_ft.setCurrentIndex(i)
-    fgl.addWidget(QtGui.QLabel("Doku"), 3, 0)
+    fgl.addWidget(QtGui.QLabel(T("Doku")), 3, 0)
     fgl.addWidget(cb_ft, 3, 1)
-    fgl.addWidget(QtGui.QLabel("Doku boyu"), 3, 2)
+    fgl.addWidget(QtGui.QLabel(T("Doku boyu")), 3, 2)
     fgl.addWidget(sp_fs, 3, 3)
     lv.insertWidget(1, fbox)                                    # Kalite ile Işık arasına
     floor_widgets = [cb_fl, sp_fo, sp_fr, sp_fz, cb_ft, sp_fs]
@@ -230,8 +243,8 @@ def main():
     def on_tex(idx):
         data = cb_ft.itemData(idx)
         if data == "__file__":
-            res = QtGui.QFileDialog.getOpenFileName(dlg, "Zemin dokusu seç", os.path.expanduser("~"),
-                                                    "Görüntü (*.png *.jpg *.jpeg *.bmp)")
+            res = QtGui.QFileDialog.getOpenFileName(dlg, T("Zemin dokusu seç"), os.path.expanduser("~"),
+                                                    T("Görüntü (*.png *.jpg *.jpeg *.bmp)"))
             path = res[0] if isinstance(res, (tuple, list)) else res
             img = QtGui.QImage(path) if path else None
             if not path or img is None or img.isNull():
@@ -247,7 +260,7 @@ def main():
             buf = np.frombuffer(bytes(img.constBits()), dtype=np.uint8)[:bpl * h_].reshape(h_, bpl)[:, :w_ * 3]
             _textures.register_custom(path, buf.reshape(h_, w_, 3), "mirror")
             cb_ft.blockSignals(True)
-            cb_ft.setItemText(cb_ft.count() - 1, "Dosya: " + os.path.basename(path))
+            cb_ft.setItemText(cb_ft.count() - 1, T("Dosya: ") + os.path.basename(path))
             cb_ft.setItemData(cb_ft.count() - 1, path)
             cb_ft.blockSignals(False)
             ft_state["key"] = path
@@ -267,12 +280,12 @@ def main():
     # ---- düğmeler ----
     btn_r = QtGui.QPushButton("Render")
     btn_r.setStyleSheet("font-weight: bold;")
-    btn_s = QtGui.QPushButton("Durdur")
+    btn_s = QtGui.QPushButton(T("Durdur"))
     btn_s.setEnabled(False)
-    btn_k = QtGui.QPushButton("Farklı kaydet...")
+    btn_k = QtGui.QPushButton(T("Farklı kaydet..."))
     btn_k.setEnabled(False)
-    btn_y = QtGui.QPushButton("Sahneyi yenile")
-    btn_y.setToolTip("Model değiştiyse sahneyi bir sonraki Render'da yeniden okur")
+    btn_y = QtGui.QPushButton(T("Sahneyi yenile"))
+    btn_y.setToolTip(T("Model değiştiyse sahneyi bir sonraki Render'da yeniden okur"))
     b1 = QtGui.QHBoxLayout()
     b1.addWidget(btn_r)
     b1.addWidget(btn_s)
@@ -288,7 +301,29 @@ def main():
     lcol = QtGui.QVBoxLayout()                        # üstte sabit: başlık + düğmeler, altta kaydırılabilir ayarlar
     head = QtGui.QLabel("Settings")
     head.setStyleSheet("font-weight: bold; font-size: 14px;")
-    lcol.addWidget(head)
+    cb_lang = QtGui.QComboBox()
+    cb_lang.addItem("Türkçe", "tr")
+    cb_lang.addItem("English", "en")
+    cb_lang.setCurrentIndex(1 if i18n.LANG == "en" else 0)
+    cb_lang.setToolTip("Dil / Language")
+
+    def on_lang(_i):
+        new = cb_lang.itemData(cb_lang.currentIndex())
+        if new == i18n.LANG or state["busy"]:
+            cb_lang.blockSignals(True)
+            cb_lang.setCurrentIndex(1 if i18n.LANG == "en" else 0)
+            cb_lang.blockSignals(False)
+            return
+        apply_all()                                   # ayarlar yeni pencereye taşınsın
+        i18n.set_lang(new)
+        QtCore.QTimer.singleShot(0, lambda: (dlg.close(), main(new)))
+    cb_lang.currentIndexChanged.connect(on_lang)
+    hrow = QtGui.QHBoxLayout()
+    hrow.addWidget(head)
+    hrow.addStretch(1)
+    hrow.addWidget(QtGui.QLabel("Dil / Language:"))
+    hrow.addWidget(cb_lang)
+    lcol.addLayout(hrow)
     lcol.addLayout(b1)
     lcol.addLayout(b2)
     lcol.addWidget(sc_left, 1)
@@ -311,7 +346,7 @@ def main():
         """Görüntüyü kutuya sığdırıp ortalar (en-boy oranı korunur)."""
 
         def __init__(self):
-            QtGui.QLabel.__init__(self, "Ön izleme ekranı")
+            QtGui.QLabel.__init__(self, T("Ön izleme ekranı"))
             self.pm = None
             self.setAlignment(QtCore.Qt.AlignCenter)
             self.setMinimumSize(320, 240)
@@ -379,7 +414,7 @@ def main():
             return self.t
 
     lbl_st = _St()
-    lbl_st.setText("Hazır. Ayarları seç, 3B görünümü çevir ve Render'a bas.")
+    lbl_st.setText(T("Hazır. Ayarları seç, 3B görünümü çevir ve Render'a bas."))
     rw = QtGui.QWidget()
     rw.setLayout(right)
     split.addWidget(rw)
@@ -425,7 +460,7 @@ def main():
         qi = QtGui.QImage(a.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
         lbl.set_pixmap_full(QtGui.QPixmap.fromImage(qi))
 
-    def show(img, rows, frac=None, label="ışınlar izleniyor"):
+    def show(img, rows, frac=None, label=T("ışınlar izleniyor")):
         h, w = img.shape[:2]
         put(np.clip(img * 255.0, 0, 255).astype(np.uint8), w, h)
         lbl_st.set(label, (rows / float(h)) if frac is None else frac)
@@ -443,6 +478,38 @@ def main():
             sync_floor()
             btn_k.setEnabled(state["out"] is not None)
 
+    def apply_basic():
+        g["WIDTH"] = sp_w.value()
+        g["TESS_FACTOR"] = _QUALITY[cb_q.currentIndex()][1]
+        g["SHADOWS"] = ck_sh.isChecked()
+        g["GLASS"] = ck_gl.isChecked()
+        g["SMOOTH"] = ck_sm.isChecked()
+        g["IOR"] = float(sp_ior.value())
+        g["REFLECT_GLASS"] = sp_rg.value() / 100.0
+        g["REFLECT_SURF"] = sp_rs.value() / 100.0
+        g["BOUNCES"] = sp_bn.value()
+        g["THREADS"] = _TH[cb_th.currentIndex()]
+        g["FLOOR"] = ck_fl.isChecked()
+        g["FLOOR_COLOR"] = colors["floor"]
+        g["FLOOR_OPACITY"] = sp_fo.value() / 100.0
+        g["FLOOR_REFLECT"] = sp_fr.value() / 100.0
+        g["FLOOR_OFFSET"] = float(sp_fz.value())
+        g["FLOOR_TEXTURE"] = ft_state["key"]
+        g["FLOOR_TEX_SCALE"] = float(sp_fs.value())
+
+    def apply_manual_lights():
+        g["AMBIENT"] = sp_amb.value() / 100.0
+        g["AMBIENT_COLOR"] = colors["amb"]
+        g["LIGHTS"] = [dict(on=r[0].isChecked(), h=float(r[1].value()), v=float(r[2].value()),
+                            color=colors["l%d" % i], power=r[4].value() / 100.0, shadow=r[5].isChecked())
+                       for i, r in enumerate(lrows)]
+
+    def apply_all():
+        apply_basic()
+        apply_manual_lights()
+        g["AA"] = 0 if cb_aa.currentIndex() == 0 else cb_aa.currentIndex() + 1
+        g["USE_FC_LIGHTS"] = ck_fc.isChecked()
+
     def do_render(*_a):
         if state["busy"]:
             return
@@ -451,51 +518,32 @@ def main():
         t0 = time.time()
         try:
             if Gui.ActiveDocument is None:
-                lbl_st.setText("Açık belge yok.")
+                lbl_st.setText(T("Açık belge yok."))
                 return
             d = Gui.ActiveDocument.Document
             view = Gui.ActiveDocument.ActiveView
             cam, aspect = read_camera(view)
-            g["WIDTH"] = sp_w.value()
-            g["TESS_FACTOR"] = _QUALITY[cb_q.currentIndex()][1]
-            g["SHADOWS"] = ck_sh.isChecked()
-            g["GLASS"] = ck_gl.isChecked()
-            g["SMOOTH"] = ck_sm.isChecked()
-            g["IOR"] = float(sp_ior.value())
-            g["REFLECT_GLASS"] = sp_rg.value() / 100.0
-            g["REFLECT_SURF"] = sp_rs.value() / 100.0
-            g["BOUNCES"] = sp_bn.value()
-            g["THREADS"] = _TH[cb_th.currentIndex()]
-            g["FLOOR"] = ck_fl.isChecked()
-            g["FLOOR_COLOR"] = colors["floor"]
-            g["FLOOR_OPACITY"] = sp_fo.value() / 100.0
-            g["FLOOR_REFLECT"] = sp_fr.value() / 100.0
-            g["FLOOR_OFFSET"] = float(sp_fz.value())
-            g["FLOOR_TEXTURE"] = ft_state["key"]
-            g["FLOOR_TEX_SCALE"] = float(sp_fs.value())
+            apply_basic()
             fc_info = ""
             fc = None
             if ck_fc.isChecked():
                 try:
                     fc = read_freecad_lights(lambda m: FreeCAD.Console.PrintMessage("RayTrace: " + m + "\n"))
                 except Exception as ex:
-                    FreeCAD.Console.PrintWarning("RayTrace: FreeCAD ışık ayarları okunamadı (%s); kendi ayarlar kullanılıyor.\n" % ex)
+                    FreeCAD.Console.PrintWarning(T("RayTrace: FreeCAD ışık ayarları okunamadı (%s); kendi ayarlar kullanılıyor.\n") % ex)
             if fc is not None:
                 g["LIGHTS"], g["AMBIENT"], g["AMBIENT_COLOR"], fc_info = fc
             else:
-                g["AMBIENT"] = sp_amb.value() / 100.0
-                g["AMBIENT_COLOR"] = colors["amb"]
-                g["LIGHTS"] = [dict(on=r[0].isChecked(), h=float(r[1].value()), v=float(r[2].value()),
-                                    color=colors["l%d" % i], power=r[4].value() / 100.0, shadow=r[5].isChecked())
-                               for i, r in enumerate(lrows)]
+                apply_manual_lights()
             g["AA"] = 0 if cb_aa.currentIndex() == 0 else cb_aa.currentIndex() + 1
+            g["USE_FC_LIGHTS"] = ck_fc.isChecked()
             w = int(S.WIDTH)
             h = max(1, int(round(w / aspect)))
             key = (d.Name, len(d.Objects), S.TESS_FACTOR)
             if state["scene"] is None or state["key"] != key:
                 state["scene"], nobj = collect_scene(d, status)
                 state["key"] = key
-                FreeCAD.Console.PrintMessage("RayTrace: %d nesne, %d üçgen (hazırlık %.1f sn)\n"
+                FreeCAD.Console.PrintMessage(T("RayTrace: %d nesne, %d üçgen (hazırlık %.1f sn)\n")
                                              % (nobj, state["scene"].count, time.time() - t0))
             t1 = time.time()
             out = render(state["scene"], cam, w, h, shadows=S.SHADOWS, progress=show, tile=S.TILE,
@@ -510,22 +558,22 @@ def main():
                 try:
                     write_png(path, out)
                     state["path"] = path
-                    msg = " | kaydedildi: %s" % path
+                    msg = T(" | kaydedildi: %s") % path
                 except Exception as ex:
-                    msg = " | KAYDEDİLEMEDİ (%s)" % ex
+                    msg = T(" | KAYDEDİLEMEDİ (%s)") % ex
             dt = time.time() - t0
-            lbl_st.set("bitti: %dx%d | %d üçgen | render %.1f sn | toplam %.1f sn"
+            lbl_st.set(T("bitti: %dx%d | %d üçgen | render %.1f sn | toplam %.1f sn")
                        % (w, h, state["scene"].count, time.time() - t1, dt), 1.0)
-            bar.setToolTip(("kaydedildi: %s" % state["path"]) if ck_sv.isChecked() and state["path"] else msg.strip(" |"))
-            FreeCAD.Console.PrintMessage("RayTrace: render %.1f sn, toplam %.1f sn%s\n"
+            bar.setToolTip((T("kaydedildi: %s") % state["path"]) if ck_sv.isChecked() and state["path"] else msg.strip(" |"))
+            FreeCAD.Console.PrintMessage(T("RayTrace: render %.1f sn, toplam %.1f sn%s\n")
                                          % (time.time() - t1, dt, msg))
         except _Cancelled:
-            lbl_st.setText("iptal edildi.")
-            FreeCAD.Console.PrintMessage("RayTrace: iptal edildi.\n")
+            lbl_st.setText(T("iptal edildi."))
+            FreeCAD.Console.PrintMessage(T("RayTrace: iptal edildi.\n"))
         except Exception:
             import traceback
-            FreeCAD.Console.PrintError("RayTrace hatası:\n" + traceback.format_exc())
-            lbl_st.setText("HATA: Report View'a bak.")
+            FreeCAD.Console.PrintError(T("RayTrace hatası:\n") + traceback.format_exc())
+            lbl_st.setText(T("HATA: Report View'a bak."))
         finally:
             busy(False)
 
@@ -539,7 +587,7 @@ def main():
             start = state["path"] or pick_out_path(FreeCAD.ActiveDocument.FileName if FreeCAD.ActiveDocument else "")
         except Exception:
             start = "render.png"
-        res = QtGui.QFileDialog.getSaveFileName(dlg, "Render'ı kaydet", start, "PNG (*.png)")
+        res = QtGui.QFileDialog.getSaveFileName(dlg, T("Render'ı kaydet"), start, "PNG (*.png)")
         path = res[0] if isinstance(res, (tuple, list)) else res
         if not path:
             return
@@ -548,13 +596,13 @@ def main():
         try:
             write_png(path, state["out"])
             state["path"] = path
-            lbl_st.setText("kaydedildi: %s" % path)
+            lbl_st.setText(T("kaydedildi: %s") % path)
         except Exception as ex:
-            lbl_st.setText("KAYDEDİLEMEDİ (%s)" % ex)
+            lbl_st.setText(T("KAYDEDİLEMEDİ (%s)") % ex)
 
     def do_refresh(*_a):
         state["scene"] = None
-        lbl_st.setText("Sahne bir sonraki Render'da yeniden okunacak.")
+        lbl_st.setText(T("Sahne bir sonraki Render'da yeniden okunacak."))
 
     btn_r.clicked.connect(do_render)
     btn_s.clicked.connect(do_stop)

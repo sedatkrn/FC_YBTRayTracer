@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from . import settings as S
+from .i18n import T
 from .textures import load as load_texture
 from .core import _any, _closest, _norm, camera_basis
 from .parallel import _Ticker, _limit_blas
@@ -111,11 +112,11 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         zc2 = scene.__dict__.setdefault("_cache", {})
         vkey = ("vn", float(S.SMOOTH_ANGLE))
         if vkey not in zc2:
-            say("yüzey normalleri yumuşatılıyor...")
+            say(T("yüzey normalleri yumuşatılıyor..."))
             zc2[vkey] = scene.smooth_normals(S.SMOOTH_ANGLE)
         vn = zc2[vkey]
 
-    say("üçgenler ekran karolarına dağıtılıyor (%d üçgen)..." % scene.count)
+    say(T("üçgenler ekran karolarına dağıtılıyor (%d üçgen)...") % scene.count)
     # Kamera/ışık aynı kaldıysa önceki render'ın ön hesapları (ekran karoları, gölge ızgarası, küme ağacı)
     # sahne nesnesinde saklanır ve yeniden kullanılır; yalnız ışık/kalite ayarı değişince hesap tekrarlanmaz.
     cache = scene.__dict__.setdefault("_cache", {})
@@ -132,7 +133,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     allids = np.arange(scene.count)
     grids = {}
     if shadows and not brute and any(lt[3] for lt in lights):
-        say("gölge ızgaraları hazırlanıyor...")
+        say(T("gölge ızgaraları hazırlanıyor..."))
         op_ids = np.nonzero(alpha_t >= 0.5)[0]
         gl_ids = np.nonzero(alpha_t < 0.5)[0]
         G_sh = int(S.SHADOW_GRID)
@@ -150,11 +151,11 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 grids[li] = gcache[gk]
     clusters = None
     if secondary and not brute:
-        say("yansıma/saydamlık hızlandırıcısı hazırlanıyor...")
+        say(T("yansıma/saydamlık hızlandırıcısı hazırlanıyor..."))
         if "clusters" not in cache:
             cache["clusters"] = _Clusters(scene)
         clusters = cache["clusters"]
-    say("ışınlar izleniyor...")
+    say(T("ışınlar izleniyor..."))
 
     top, bot = np.array(S.BG_TOP), np.array(S.BG_BOTTOM)
     nthr = int(S.THREADS) if int(S.THREADS) > 0 else min(os.cpu_count() or 1, 8)
@@ -465,7 +466,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     except BaseException:
                         try:
                             import traceback
-                            sys.stderr.write("RayTrace işçi süreç hatası:\n" + traceback.format_exc())
+                            sys.stderr.write(T("RayTrace işçi süreç hatası:\n") + traceback.format_exc())
                         except Exception:
                             pass
                         code = 1
@@ -501,9 +502,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     if r:
                         alive.discard(pid)
                         if st != 0:
-                            raise RuntimeError("işçi süreç hata ile bitti (Report View'a / terminale bak)")
+                            raise RuntimeError(T("işçi süreç hata ile bitti (Report View'a / terminale bak)"))
                 if not alive and done_n < len(items) and not all(flags[i] for i in range(done_n, len(items))):
-                    raise RuntimeError("işçi süreçler işi bitirmeden çıktı")
+                    raise RuntimeError(T("işçi süreçler işi bitirmeden çıktı"))
                 time.sleep(0.02)
         finally:
             for pid in list(alive):
@@ -551,7 +552,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     # ---- 2. geçiş: kenar yumuşatma (yalnız kenar piksellerinde k x k örnek) ----
     k = int(S.AA)
     if k >= 2:
-        say("kenarlar aranıyor...")
+        say(T("kenarlar aranıyor..."))
         gx = np.zeros((h, w))
         d = np.abs(img[:, 1:] - img[:, :-1]).max(2)
         gx[:, 1:] = np.maximum(gx[:, 1:], d)
@@ -561,7 +562,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         gx[:-1, :] = np.maximum(gx[:-1, :], d)
         ey, ex_ = np.nonzero(gx > S.AA_THRESH)
         ne = len(ey)
-        say("kenar yumuşatma: %d piksel x %d örnek..." % (ne, k * k))
+        say(T("kenar yumuşatma: %d piksel x %d örnek...") % (ne, k * k))
         offs_s = (np.arange(k) + 0.5) / k
         chunk = 3000 if nthr > 1 else 6000
         starts = list(range(0, ne, chunk))
@@ -578,7 +579,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
 
         def aa_done(n):
             if progress is not None:
-                return progress(img, h, min(1.0, n * chunk / float(max(ne, 1))), "kenar yumuşatma")
+                return progress(img, h, min(1.0, n * chunk / float(max(ne, 1))), T("kenar yumuşatma"))
             return True
 
         if run_parallel(starts, aa_job, aa_done) is False:
