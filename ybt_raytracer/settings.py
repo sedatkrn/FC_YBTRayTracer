@@ -20,6 +20,9 @@ SPEC = 0.30
 SHININESS = 48.0
 TILE = 8               # ekran karosu (px); aynı zamanda önizleme bant yüksekliği (ölçüm: 8, 16'dan %12-20 hızlı)
 SHADOW_GRID = 0        # ışık-uzayı ızgarası (G x G hücre); 0 = otomatik (üçgen sayısına göre 64..256)
+SMOOTH = True          # eğri yüzeylerde yumuşak (köşe normali) gölgeleme: facet/kırık görünüm yok
+SMOOTH_ANGLE = 45.0    # derece; komşu yüzler arası açı bundan küçükse yumuşatılır, büyükse keskin kenar kalır
+SMOOTH_MAX_TRIS = 1500000   # bu sayıdan çok üçgenli sahnede (hazırlık süresi) yumuşatma atlanır
 GLASS = True           # saydam nesneler (Transparency) gerçekten saydam çizilsin
 REFLECT_GLASS = 1.0    # cam yansıması çarpanı (0 = yok, 1 = normal, 2 = güçlü)
 REFLECT_SURF = 0.0     # opak yüzeylerin sabit yansıması (0..0.6); 0 = kapalı

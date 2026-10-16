@@ -74,6 +74,9 @@ def main():
     ck_sh.setChecked(bool(S.SHADOWS))
     ck_gl = QtGui.QCheckBox("Saydamlık (cam)")
     ck_gl.setChecked(bool(S.GLASS))
+    ck_sm = QtGui.QCheckBox("Yumuşak yüzeyler")
+    ck_sm.setChecked(bool(S.SMOOTH))
+    ck_sm.setToolTip("Eğri yüzeyleri (küre, simit, silindir) pürüzsüz gölgeler; keskin kenarlar (küp, plaka) korunur. Kapalıysa üçgenler görünür.")
     ck_sv = QtGui.QCheckBox("Bitince otomatik kaydet")
     ck_sv.setChecked(True)
     sp_w.setToolTip("Çıktı genişliği; yükseklik 3B görünümün oranından gelir")
@@ -95,7 +98,8 @@ def main():
             qg.addWidget(w2, r * 2 + 1, 1)
     qg.addWidget(ck_sh, 8, 0)
     qg.addWidget(ck_gl, 8, 1)
-    qg.addWidget(ck_sv, 9, 0, 1, 2)
+    qg.addWidget(ck_sm, 9, 0, 1, 2)
+    qg.addWidget(ck_sv, 10, 0, 1, 2)
     lv.addWidget(qbox)
 
     # ---- Işık Ayarları: ortam + en çok 3 ışık ----
@@ -421,7 +425,7 @@ def main():
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, sp_rg, sp_rs, sp_bn, cb_th, ck_sv]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, sp_rg, sp_rs, sp_bn, cb_th, ck_sv]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -447,6 +451,7 @@ def main():
             g["TESS_FACTOR"] = _QUALITY[cb_q.currentIndex()][1]
             g["SHADOWS"] = ck_sh.isChecked()
             g["GLASS"] = ck_gl.isChecked()
+            g["SMOOTH"] = ck_sm.isChecked()
             g["REFLECT_GLASS"] = sp_rg.value() / 100.0
             g["REFLECT_SURF"] = sp_rs.value() / 100.0
             g["BOUNCES"] = sp_bn.value()
@@ -550,6 +555,6 @@ def main():
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
-    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl,
+    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl, smooth=ck_sm,
                                                             rglass=sp_rg, rsurf=sp_rs, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)

@@ -1,6 +1,8 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v0.9:   * Yumuşak yüzeyler: köşe normalleriyle pürüzsüz gölgeleme (küre/simit/silindir artık kırık/facet görünmez),
+          gölge terminatörü düzeltmesi; keskin kenarlar (45°'den büyük açılar) korunur. Panelde 'Yumuşak yüzeyler' kutusu.
 v0.8.1: * Ayar paneli artık içeriğine göre geniş açılır, ara çubuğu sürüklenerek ayarlanır; değerler kırpılmaz.
         * Ortografik kamerada zemin sisi kaldırıldı (sahne sisli görünüyordu); perspektifte sis azaltıldı; zemin yansıması taban değeri düşürüldü.
 v0.8:   * Zemin dokuları: 7 hazır doku (travertin, çakıl, mermer, taş kaplama, terrakota, sıva, ahşap) + kendi görüntü dosyanız;

@@ -104,6 +104,15 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         if need > 0.0:
             o_ortho = o_ortho - fwd * (need / -fwd[2])
 
+    vn = None                                                  # köşe normalleri (yumuşak gölgeleme)
+    if S.SMOOTH and 0 < scene.count <= S.SMOOTH_MAX_TRIS:
+        zc2 = scene.__dict__.setdefault("_cache", {})
+        vkey = ("vn", float(S.SMOOTH_ANGLE))
+        if vkey not in zc2:
+            say("yüzey normalleri yumuşatılıyor...")
+            zc2[vkey] = scene.smooth_normals(S.SMOOTH_ANGLE)
+        vn = zc2[vkey]
+
     say("üçgenler ekran karolarına dağıtılıyor (%d üçgen)..." % scene.count)
     # Kamera/ışık aynı kaldıysa önceki render'ın ön hesapları (ekran karoları, gölge ızgarası, küme ağacı)
     # sahne nesnesinde saklanır ve yeniden kullanılır; yalnız ışık/kalite ayarı değişince hesap tekrarlanmaz.
@@ -271,8 +280,32 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             tid = ti[hi]
             Dh = RD[hi]
             P = RO[hi] + Dh * tb[hi][:, None]
-            nrm = n_ext[tid].copy()
-            nrm[(nrm * Dh).sum(1) > 0] *= -1.0
+            ngeo = n_ext[tid].copy()                             # düzlemsel (yüz) normali, bakana dönük
+            sgn = np.where((ngeo * Dh).sum(1) > 0, -1.0, 1.0)
+            ngeo *= sgn[:, None]
+            nrm = ngeo                                           # gölgeleme normali
+            Psh = P                                              # gölge ışını çıkış noktası
+            if vn is not None:
+                sm = np.nonzero(tid < scene.count)[0]
+                if len(sm):
+                    ts = tid[sm]
+                    Ps = P[sm]
+                    bu = np.clip((Ps * scene.A[ts]).sum(1) - scene.v0A[ts], 0.0, 1.0)
+                    bv = np.clip((Ps * scene.B[ts]).sum(1) - scene.v0B[ts], 0.0, 1.0)
+                    bw = np.clip(1.0 - bu - bv, 0.0, 1.0)
+                    vns = vn[ts] * sgn[sm][:, None, None]            # bakan tarafa dönük köşe normalleri
+                    nsm = bw[:, None] * vns[:, 0] + bu[:, None] * vns[:, 1] + bv[:, None] * vns[:, 2]
+                    ln = np.sqrt((nsm * nsm).sum(1))[:, None]
+                    nrm = nrm.copy()
+                    nrm[sm] = np.where(ln > 1e-12, nsm / np.maximum(ln, 1e-12), ngeo[sm])
+                    # gölge terminatörü düzeltmesi (Estevez & Kulla): noktayı köşe teğet düzlemlerinin üstüne taşı
+                    Vt = scene.tri[ts]
+                    sh = np.zeros_like(Ps)
+                    for k_, bk in ((0, bw), (1, bu), (2, bv)):
+                        dk = np.minimum(0.0, ((Ps - Vt[:, k_]) * vns[:, k_]).sum(1))
+                        sh -= (bk * dk)[:, None] * vns[:, k_]
+                    Psh = P.copy()
+                    Psh[sm] = Ps + sh
             albedo = col_ext[tid] ** 2.2                        # sRGB -> doğrusal
             if f_on and ftex is not None:
                 isf0 = tid == fid
@@ -295,7 +328,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if cast:
                     lit_idx = np.nonzero(ndl > 0)[0]
                     if len(lit_idx):
-                        blk = lights_blocked(P[lit_idx] + nrm[lit_idx] * eps, li)
+                        blk = lights_blocked(Psh[lit_idx] + ngeo[lit_idx] * eps, li)
                         ndl[lit_idx[blk == 1]] = 0.0
                         ndl[lit_idx[blk == 2]] *= 0.55            # camdan geçen ışık: yarı gölge
                 lit += (power * ndl)[:, None] * lcol
@@ -332,7 +365,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             sel = np.nonzero((wr * W > S.REFL_MIN_W) & (RN[hi] < bounces))[0]
             if len(sel):                                         # yansıyan ışınlar
                 Dr = Dh[sel] - 2.0 * (Dh[sel] * nrm[sel]).sum(1)[:, None] * nrm[sel]
-                nxt.append((pix[hi][sel], P[sel] + nrm[sel] * eps, _norm(Dr), (W * wr)[sel],
+                nxt.append((pix[hi][sel], P[sel] + ngeo[sel] * eps, _norm(Dr), (W * wr)[sel],
                             RN[hi][sel] + 1, np.zeros(len(sel), dtype=bool),
                             (tid[sel] == fid) if f_on else np.zeros(len(sel), dtype=bool)))
             sel = np.nonzero(wt * W > 0.02)[0]

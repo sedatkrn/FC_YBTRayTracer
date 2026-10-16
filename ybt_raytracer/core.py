@@ -34,6 +34,41 @@ class Scene(object):
         self.v0B = (v0 * b).sum(1)
         self.count = len(v0)
 
+    def smooth_normals(self, angle_deg=45.0):
+        """Köşe normalleri (count,3,3): aynı noktada buluşan, aralarındaki açı eşikten küçük yüzlerin alan ağırlıklı
+        ortalaması. Eğri yüzeyler (küre, simit, silindir yanı) pürüzsüz görünür; keskin kenarlar (küp, plaka) korunur."""
+        n = self.count
+        cos_t = float(np.cos(np.radians(angle_deg)))
+        fn = self.n_unit
+        wt = np.sqrt((self.N * self.N).sum(1))                    # 2 x alan
+        q = np.round(self.tri.reshape(-1, 3) / (self.diag * 1e-6)).astype(np.int64)
+        h = q[:, 0] * 73856093 ^ q[:, 1] * 19349663 ^ q[:, 2] * 83492791
+        _u, vid = np.unique(h, return_inverse=True)
+        vid = vid.reshape(-1)
+        cface = np.repeat(np.arange(n), 3)                         # köşe -> yüz
+        order = np.argsort(vid, kind="stable")
+        counts = np.bincount(vid)
+        starts = np.concatenate(([0], np.cumsum(counts)[:-1]))
+        gsize = counts[vid]
+        gstart = starts[vid]
+        acc = fn[cface] * wt[cface][:, None]                       # kendi yüzü
+        kmax = int(min(counts.max(), 48))
+        corners = np.arange(3 * n)
+        for r in range(kmax):
+            sel = corners[gsize > r]
+            if len(sel) == 0:
+                break
+            pc = order[gstart[sel] + r]                            # komşu köşe
+            pf = cface[pc]
+            ok = (pf != cface[sel]) & ((fn[cface[sel]] * fn[pf]).sum(1) > cos_t)
+            sel, pf = sel[ok], pf[ok]
+            np.add.at(acc, sel, fn[pf] * wt[pf][:, None])
+        ln = np.sqrt((acc * acc).sum(1))
+        bad = ln < 1e-30
+        acc[bad] = fn[cface[bad]]
+        ln[bad] = 1.0
+        return (acc / ln[:, None]).reshape(n, 3, 3)
+
 
 def _tri_hits(sc, O, D, ids):
     """O,D: (R,3). ids: üçgen indeksleri (K,). Döner t (R,K); isabet yoksa inf."""
