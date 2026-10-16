@@ -1,0 +1,49 @@
+# -*- coding: utf-8 -*-
+
+
+# ------------------------------- AYARLAR -------------------------------
+WIDTH = 480            # çıktı genişliği (px); yükseklik 3B görünümün en-boy oranından gelir
+SHADOWS = True         # gölge ışınları
+TESS_FACTOR = 0.004    # tessellate toleransı = sahne köşegeni * bu değer (küçük = daha pürüzsüz, daha yavaş); 0.004 = 'Hızlı'
+BG_TOP = (0.62, 0.72, 0.86)
+BG_BOTTOM = (0.93, 0.94, 0.96)
+AMBIENT = 0.28          # ortam ışığı şiddeti (0..1)
+AMBIENT_COLOR = (1.0, 1.0, 1.0)
+# En çok 3 ışık. h = yatay açı (derece, 0 = kameradan; eksi = sol, artı = sağ),
+# v = dikey açı (0 = göz hizası, artı = yukarıdan). Açılar KAMERAYA göredir.
+LIGHTS = [
+    dict(on=True,  h=-39.0, v=44.0, color=(1.0, 1.0, 1.0), power=0.70, shadow=True),    # ana ışık
+    dict(on=True,  h=45.0,  v=-6.0, color=(1.0, 1.0, 1.0), power=0.22, shadow=False),   # dolgu
+    dict(on=False, h=180.0, v=25.0, color=(1.0, 1.0, 1.0), power=0.40, shadow=False),   # arka ışık
+]
+SPEC = 0.30
+SHININESS = 48.0
+TILE = 8               # ekran karosu (px); aynı zamanda önizleme bant yüksekliği (ölçüm: 8, 16'dan %12-20 hızlı)
+SHADOW_GRID = 0        # ışık-uzayı ızgarası (G x G hücre); 0 = otomatik (üçgen sayısına göre 64..256)
+GLASS = True           # saydam nesneler (Transparency) gerçekten saydam çizilsin
+REFLECT_GLASS = 1.0    # cam yansıması çarpanı (0 = yok, 1 = normal, 2 = güçlü)
+REFLECT_SURF = 0.0     # opak yüzeylerin sabit yansıması (0..0.6); 0 = kapalı
+AA = 2                 # kenar yumuşatma: 0/1 = kapalı, 2 = 2x2, 3 = 3x3, 4 = 4x4 örnek (yalnız kenar piksellerinde)
+AA_THRESH = 0.05       # komşu piksellerle renk farkı bu eşiği aşarsa kenar sayılır
+BOUNCES = 2            # en çok yansıma sayısı
+PARALLEL = "auto"        # "auto": Linux'ta ayrı süreçler (fork), diğerlerinde iş parçacığı; "thread": hep iş parçacığı
+FLOOR = False           # sanal zemin: sahnenin en alt noktasına (+ ofset) yatay sonsuz düzlem
+FLOOR_COLOR = (0.82, 0.82, 0.82)
+FLOOR_OPACITY = 1.0    # 1 = opak, 0 = görünmez
+FLOOR_REFLECT = 0.0    # 0..1; Fresnel'li yansıma (eğik bakışta güçlenir)
+FLOOR_OFFSET = 0.0     # mm; sahnenin en alt z değerine eklenir (eksi = aşağı)
+FLOOR_FADE = 0.7      # zeminden yansıyan nesnenin silikleşme uzunluğu (sahne köşegeni x bu sayı)
+FLOOR_SKY_REFL = 0.35  # zeminin gökyüzü yansımasının gücü (1 = tam)
+FLOOR_HAZE = 6.0       # ufka doğru sis uzunluğu (sahne köşegeni x bu sayı)
+FLOOR_RADIUS = 25.0    # zemin yarıçapı = sahne köşegeni x bu sayı (ufuk çizgisine kadar)
+THREADS = 0            # render iş parçacığı sayısı; 0 = otomatik (işlemci çekirdek sayısı, en çok 8)
+DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz
+OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazsa ~/Pictures, sonra ~)
+# -----------------------------------------------------------------------
+
+_EPS = 1e-12
+REFL_MIN_W = 0.02      # bu ağırlığın altındaki yansımalar hiç izlenmez (büyütmek camlı sahneyi hızlandırır)
+INVISIBLE_ALPHA = 0.02  # opaklığı bu değerin altındaki (FreeCAD'de %98-100 saydam) yüzeyler görünmezdir: sahneye alınmaz
+TIE_TOL = 2e-6         # çakışan yüzeylerde 'eşit uzaklık' toleransı (sahne köşegeni oranı)
+TIE_LAST = False       # eşitlikte False: ids içinde ilk (küçük indeks), True: son
+_MAXPAIR = 2_000_000   # bir seferde işlenen (ışın x üçgen) çifti üst sınırı (bellek)

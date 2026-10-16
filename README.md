@@ -27,8 +27,8 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 
 ## Kurulum
 
-1. `FC_ybt_raytracer.FCMacro` dosyasını FreeCAD makro klasörüne kopyalayın
-   (FreeCAD içinde *Macro > Macros...* penceresinde makro klasörü yolu görünür).
+1. `FC_ybt_raytracer.FCMacro` dosyasını **ve** `ybt_raytracer/` klasörünü FreeCAD makro klasörüne birlikte kopyalayın
+   (FreeCAD içinde *Macro > Macros...* penceresinde makro klasörü yolu görünür). Başlatıcı ile klasör yan yana durmalıdır.
 2. Bir belgeyi açın, 3B görünümü istediğiniz açıya getirin.
 3. *Macro > Macros...* ile makroyu çalıştırın, ayarları seçip **Render**'a basın.
 
@@ -75,7 +75,7 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 
 ### Install
 
-1. Copy `FC_ybt_raytracer.FCMacro` into your FreeCAD macro folder (shown in *Macro > Macros...*).
+1. Copy `FC_ybt_raytracer.FCMacro` **and** the `ybt_raytracer/` folder together into your FreeCAD macro folder (shown in *Macro > Macros...*); the launcher and the folder must sit side by side.
 2. Open a document and orient the 3D view.
 3. Run the macro from *Macro > Macros...*, adjust settings, press **Render**.
 
@@ -98,3 +98,20 @@ Material-based shininess/reflection, soft shadows / sky light, remembered settin
 ### License
 
 MIT, see [LICENSE](LICENSE).
+
+
+## Kod yapısı / Code layout
+
+```
+FC_ybt_raytracer.FCMacro     ince başlatıcı / thin launcher
+ybt_raytracer/
+  settings.py        ayarlar / settings
+  core.py            Scene + kesişim / intersection
+  parallel.py        BLAS sınırı, iptal, ilerleme / BLAS limit, cancel, ticker
+  accel.py           karo, ışık ızgarası, küme hızlandırıcılar / accelerators
+  render.py          ışın izleme döngüsü / ray-tracing loop
+  output.py          PNG yazıcı / PNG writer
+  freecad_scene.py   FreeCAD -> üçgen, kamera, ışıklar / FreeCAD scene import
+  ui.py              ayar paneli / settings panel
+CHANGELOG.md
+```
