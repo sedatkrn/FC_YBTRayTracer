@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from . import settings as S
+from .materials import shininess as _shin
 from .i18n import T
 from .textures import load as load_texture
 from .core import _any, _closest, _norm, camera_basis
@@ -64,13 +65,23 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     bounces = int(S.BOUNCES)
     has_glass = bool((alpha_t < 0.999).any())
     ior = float(min(max(S.IOR, 1.0), 4.0))
-    refr = bool(S.GLASS and has_glass and ior > 1.0005)        # kırılma: Snell yasası, çıkışta tam iç yansıma
+    # malzeme tabloları (indeks 0 = malzemesiz üçgen/zemin -> genel ayarlar)
+    mt_ = scene.mtable
+    dif_tab = np.array([1.0] + [m["diffuse"] for m in mt_])
+    spec_tab = np.array([float(S.SPEC)] + [m["spec"] for m in mt_])
+    shin_tab = np.array([float(S.SHININESS)] + [_shin(m["gloss"]) for m in mt_])
+    metal_tab = np.array([0.0] + [m["metal"] for m in mt_])
+    refl_tab = np.array([r_surf] + [m["refl"] for m in mt_])
+    ior_tab = np.array([ior] + [m["ior"] for m in mt_])
+    lum_tab = np.array([0.0] + [m["lum"] for m in mt_])
+    has_mat = len(mt_) > 0
+    refr = bool(S.GLASS and has_glass and float(ior_tab.max()) > 1.0005)   # kırılma: Snell yasası, çıkışta tam iç yansıma
     f_on = bool(S.FLOOR)
     f_alpha = float(min(max(S.FLOOR_OPACITY, 0.0), 1.0))
     f_refl = float(min(max(S.FLOOR_REFLECT, 0.0), 1.0))
     if f_on and f_alpha <= S.INVISIBLE_ALPHA:
         f_on = False                                           # görünmez zemin
-    secondary = has_glass or r_surf > 0.0 or (f_on and (f_refl > 0.0 or f_alpha < 0.999))
+    secondary = has_glass or r_surf > 0.0 or float(refl_tab.max()) > 0.0 or (f_on and (f_refl > 0.0 or f_alpha < 0.999))
     if f_on and f_refl > 0.0:
         bounces = max(bounces, 1)                              # zemin yansıması en az 1 sekme ister
     fid = scene.count                                          # zeminin 'üçgen' numarası (hızlandırıcılara girmez)
@@ -82,6 +93,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         z_floor = zmin_c + float(S.FLOOR_OFFSET)
         f_col = np.array(S.FLOOR_COLOR, dtype=np.float64)
         n_ext = np.concatenate([scene.n_unit, [[0.0, 0.0, 1.0]]])
+        mid_ext = np.concatenate([scene.mid, [0]])
         col_ext = np.concatenate([scene.colors, [f_col]])
         alpha_ext = np.concatenate([alpha_t, [f_alpha]])
         f_rad2 = (float(S.FLOOR_RADIUS) * scene.diag) ** 2
@@ -94,6 +106,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             pix_ang = 2.0 * half_y / h                        # bir pikselin kapladığı açı (ortografikte uzunluk)
     else:
         n_ext, col_ext, alpha_ext = scene.n_unit, scene.colors, alpha_t
+        mid_ext = scene.mid
 
     # Ortografik kamerada FreeCAD, kamera konumunun "arkasındaki" nesneleri de gösterir.
     # Bu yüzden ışın başlangıcını tüm sahnenin gerisine çekiyoruz (izdüşüm değişmez).
@@ -323,6 +336,13 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     v = Pf[:, 1] / (per * ftex.aspect)
                     albedo[isf0] = ftex.sample(u, v, lod)
             a = alpha_ext[tid]
+            mt = mid_ext[tid]                                   # nokta başına malzeme indeksi
+            albedo_raw = albedo
+            if has_mat:
+                albedo = albedo * dif_tab[mt][:, None]
+                spec_k, shin_k, metal_k = spec_tab[mt], shin_tab[mt], metal_tab[mt]
+            else:
+                spec_k, shin_k, metal_k = float(spec_tab[0]), float(shin_tab[0]), 0.0
 
             lit = np.tile(amb, (len(hi), 1))
             spec_sum = np.zeros((len(hi), 3))
@@ -336,9 +356,15 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                         ndl[lit_idx[blk == 2]] *= 0.55            # camdan geçen ışık: yarı gölge
                 lit += (power * ndl)[:, None] * lcol
                 Hh = _norm(Ld - Dh)
-                sp = np.clip((nrm * Hh).sum(1), 0, None) ** S.SHININESS * (ndl > 0)
-                spec_sum += (S.SPEC * min(power / 0.7, 1.5) * sp)[:, None] * lcol
+                sp = np.clip((nrm * Hh).sum(1), 0, None) ** shin_k * (ndl > 0)
+                spec_sum += (spec_k * min(power / 0.7, 1.5) * sp)[:, None] * lcol
+            if has_mat:                                         # metal: vurgu yüzey renginde
+                spec_sum = spec_sum * (1.0 - metal_k[:, None] + metal_k[:, None] * np.minimum(albedo_raw * 1.4, 1.0))
             surf = albedo * lit + spec_sum
+            if has_mat:
+                lm = lum_tab[mt]
+                if lm.any():                                    # kendi ışığı: ışıktan bağımsız
+                    surf = surf + lm[:, None] * albedo_raw * 1.5
             if f_on:
                 isf = tid == fid
                 if isf.any() and persp:                         # ufka doğru hafif sis (yalnız perspektif; ortografikte atmosfer derinliği yok) (kameraya göre sahne merkezinin gerisinde başlar)
@@ -348,16 +374,18 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
 
             glass = a < 0.999
             cosv = np.clip(-(nrm * Dh).sum(1), 0, 1)
-            R = np.where(glass, np.clip(r_glass * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), r_surf)
+            rg_k = np.where(mt > 0, refl_tab[mt], r_glass) if has_mat else r_glass
+            R = np.where(glass, np.clip(rg_k * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), refl_tab[mt] if has_mat else r_surf)
             if f_on:
                 f0 = 0.03 + 0.35 * f_refl                         # cilalı zemin: dik bakışta %4, kaydırıcı arttıkça aynaya yaklaşır
                 R = np.where(tid == fid, np.clip(f0 + (1.0 - f0) * (1 - cosv) ** 5, 0, 0.95) if f_refl > 0 else 0.0, R)
             rm = None                                           # kırılan (cam) isabetler
             if refr:
-                rm = glass & (tid < scene.count)
+                ior_k = ior_tab[mt]
+                rm = glass & (tid < scene.count) & (ior_k > 1.0005)
                 if rm.any():
                     entering = sgn > 0                           # yüz normalleri dışa bakar: dışarıdan giren ışın
-                    eta = np.where(entering, 1.0 / ior, ior)
+                    eta = np.where(entering, 1.0 / ior_k, ior_k)
                     ci = np.clip(-(nrm * Dh).sum(1), 0.0, 1.0)
                     kk = 1.0 - eta * eta * (1.0 - ci * ci)
                     # tam iç yansıma; yansıma bütçesi (BOUNCES) bittiyse ışın enerji kaybetmesin, düz geçsin

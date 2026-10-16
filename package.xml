@@ -23,6 +23,7 @@
       <file>ybt_raytracer/freecad_scene.py</file>
       <file>ybt_raytracer/ui.py</file>
       <file>ybt_raytracer/i18n.py</file>
+      <file>ybt_raytracer/materials.py</file>
       <file>ybt_raytracer/icon.png</file>
       <file>FC_ybt_raytracer.png</file>
       <file>ybt_raytracer/textures.py</file>

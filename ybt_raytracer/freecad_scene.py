@@ -4,6 +4,7 @@ import time
 from . import settings as S
 from .i18n import T
 from .core import Scene
+from . import materials as _mats
 
 
 # ============================ FREECAD KISMI ============================
@@ -323,7 +324,9 @@ def collect_scene(doc, status=_nostatus):
         FreeCAD.Console.PrintMessage(
             T("RayTrace: %d nesne bulundu (%.1f sn), sahne köşegeni %.1f mm, tessellate toleransı %.3f mm\n")
             % (len(items), t1 - t0, bb.DiagonalLength, tol))
-    tris, cols, alps = [], [], []
+    tris, cols, alps, mids = [], [], [], []
+    mtable, mindex = [], {}
+    mlib = _mats.library()
     invisible = []
     ntri = 0
     diag_left = [2]
@@ -332,6 +335,17 @@ def collect_scene(doc, status=_nostatus):
         n_before = ntri
         base, dc, how = _display_colors(o, tgt, len(shp.Faces))
         abase, ad = _display_opacity(o, tgt, len(shp.Faces))
+        mname = _mats.assigned(o) or _mats.assigned(tgt)
+        mat = _mats.get(mname, mlib)
+        mi = 0
+        if mat is not None:                             # atanmış malzeme: renk/saydamlık malzemeden gelir
+            if mname not in mindex:
+                mtable.append(mat)
+                mindex[mname] = len(mtable)
+            mi = mindex[mname]
+            if mat["color"] is not None:
+                base, dc = mat["color"], None
+            abase, ad = 1.0 - mat["transp"], None
         if (ad is None and abase <= S.INVISIBLE_ALPHA) or (ad is not None and max(ad) <= S.INVISIBLE_ALPHA):
             invisible.append(name)                      # %100 saydam = FreeCAD'de görünmez; cam gibi yansıtmasın
             continue
@@ -353,6 +367,7 @@ def collect_scene(doc, status=_nostatus):
                     c = dc[0] if dc is not None else base
                     cols.append(np.tile(np.array(c, dtype=np.float64), (len(F), 1)))
                     alps.append(np.full(len(F), ad[0] if ad is not None else abase))
+                    mids.append(np.full(len(F), mi, dtype=np.int32))
                     status(T("üçgenleniyor %d/%d: %s (%d üçgen)") % (k + 1, len(items), name[:24], ntri),
                            frac=(k + 1) / float(len(items)))
                     continue
@@ -377,6 +392,7 @@ def collect_scene(doc, status=_nostatus):
             c = dc[i] if dc is not None else base
             cols.append(np.tile(np.array(c, dtype=np.float64), (len(F), 1)))
             alps.append(np.full(len(F), ad[i] if ad is not None else abase))
+            mids.append(np.full(len(F), mi, dtype=np.int32))
         if S.DEBUG:
             b = shp.BoundBox
             FreeCAD.Console.PrintMessage(
@@ -391,7 +407,7 @@ def collect_scene(doc, status=_nostatus):
         raise RuntimeError(T("Tessellation üçgen üretmedi."))
     t2 = time.time()
     status(T("ışın izleme ön hesapları (%d üçgen)...") % ntri, True)
-    sc = Scene(np.concatenate(tris), np.concatenate(cols), np.concatenate(alps))
+    sc = Scene(np.concatenate(tris), np.concatenate(cols), np.concatenate(alps), np.concatenate(mids), mtable)
     FreeCAD.Console.PrintMessage(T("RayTrace: hazırlık: tarama %.1f sn, üçgenleme %.1f sn, ön hesap %.1f sn\n")
                                  % (t1 - t0, t2 - t1, time.time() - t2))
     return sc, len(items)
