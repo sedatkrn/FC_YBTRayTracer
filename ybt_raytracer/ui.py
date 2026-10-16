@@ -80,20 +80,17 @@ def main(lang=None):
         cb_th.addItem(name)
     cb_th.setCurrentIndex(_TH.index(int(S.THREADS)) if int(S.THREADS) in _TH else 0)
     cb_th.setToolTip(T("Render için kullanılacak çekirdek (iş parçacığı) sayısı; Otomatik = işlemci çekirdek sayısı"))
-    sp_rg = spin(0, 200, S.REFLECT_GLASS * 100, 10, " %")
-    sp_rs = spin(0, 60, S.REFLECT_SURF * 100, 5, " %")
     ck_sh = QtGui.QCheckBox(T("Gölgeler"))
     ck_sh.setChecked(bool(S.SHADOWS))
     ck_gl = QtGui.QCheckBox(T("Saydamlık (cam)"))
     ck_gl.setChecked(bool(S.GLASS))
-    sp_ior = QtGui.QDoubleSpinBox()
-    sp_ior.setRange(1.0, 3.0)
-    sp_ior.setSingleStep(0.05)
-    sp_ior.setDecimals(2)
-    sp_ior.setValue(float(S.IOR))
-    sp_ior.setSpecialValueText(T("Kapalı"))
-    sp_ior.setToolTip(T("Cam kırılma indisi (Snell yasası): cam 1.5, su 1.33, elmas 2.4. Kapalı = ışık düz geçer (en hızlı). "
-                      "Kırılma için nesne saydam olmalı; küre/silindir gibi kapalı gövdelerde en iyi sonuç."))
+    ck_rf = QtGui.QCheckBox(T("Yansımalar"))
+    ck_rf.setChecked(bool(S.REFLECTIONS))
+    ck_rf.setToolTip(T("Malzemelerin yansıma değerlerini uygular (krom, cam, boya...). Kapalıysa yansıma yoktur (en hızlı)."))
+    ck_rr = QtGui.QCheckBox(T("Kırılma"))
+    ck_rr.setChecked(bool(S.REFRACTION))
+    ck_rr.setToolTip(T("Saydam malzemelerde ışığı kırar (Snell yasası, malzemenin IOR değeriyle). Kapalıysa ışık düz geçer (daha hızlı). "
+                       "Malzemesi olmayan saydam nesneler cam (IOR 1.5) sayılır."))
     ck_sm = QtGui.QCheckBox(T("Yumuşak yüzeyler"))
     ck_sm.setChecked(bool(S.SMOOTH))
     ck_sm.setToolTip(T("Eğri yüzeyleri (küre, simit, silindir) pürüzsüz gölgeler; keskin kenarlar (küp, plaka) korunur. Kapalıysa üçgenler görünür."))
@@ -103,23 +100,23 @@ def main(lang=None):
     cb_q.setToolTip(T("Yüzey pürüzsüzlüğü (üçgenleme inceliği). Değişince sahne yeniden okunur"))
     cb_aa.setToolTip(T("Kenar yumuşatma: yalnız kenar piksellerinde çoklu örnekleme yapar"))
     ck_gl.setToolTip(T("Nesnenin Transparency (saydamlık) özelliğine göre arkası görünür"))
-    sp_rg.setToolTip(T("Cam yüzeylerin yansıması (Fresnel: eğik bakışta daha çok)"))
-    sp_rs.setToolTip(T("Opak yüzeylerin sabit yansıması; 0 = kapalı (en hızlı)"))
     sp_bn.setToolTip(T("Bir ışının en çok kaç kez yansıyacağı"))
     qrows = [(T("Genişlik"), sp_w, T("Kalite"), cb_q),
              (T("Kenar yumuşatma"), cb_aa, T("Yansıma sayısı"), sp_bn),
-             (T("Cam yansıması"), sp_rg, T("Yüzey yansıması"), sp_rs),
-             (T("Çekirdek"), cb_th, T("Kırılma (IOR)"), sp_ior)]
+             (T("Çekirdek"), cb_th, None, None)]
     for r, (l1, w1, l2, w2) in enumerate(qrows):
         qg.addWidget(QtGui.QLabel(l1), r * 2, 0)
-        qg.addWidget(QtGui.QLabel(l2), r * 2, 1)
+        if l2 is not None:
+            qg.addWidget(QtGui.QLabel(l2), r * 2, 1)
         qg.addWidget(w1, r * 2 + 1, 0)
         if w2 is not None:
             qg.addWidget(w2, r * 2 + 1, 1)
     qg.addWidget(ck_sh, 8, 0)
     qg.addWidget(ck_gl, 8, 1)
-    qg.addWidget(ck_sm, 9, 0, 1, 2)
-    qg.addWidget(ck_sv, 10, 0, 1, 2)
+    qg.addWidget(ck_rf, 9, 0)
+    qg.addWidget(ck_rr, 9, 1)
+    qg.addWidget(ck_sm, 10, 0, 1, 2)
+    qg.addWidget(ck_sv, 11, 0, 1, 2)
     lv.addWidget(qbox)
 
     # ---- Işık Ayarları: ortam + en çok 3 ışık ----
@@ -434,11 +431,10 @@ def main(lang=None):
 
     def sync_enabled(*_a):
         gl = ck_gl.isChecked()
-        sp_rg.setEnabled(gl)
-        sp_ior.setEnabled(gl)
-        sp_bn.setEnabled(gl or sp_rs.value() > 0)
+        ck_rr.setEnabled(gl)
+        sp_bn.setEnabled(gl or ck_rf.isChecked())
     ck_gl.toggled.connect(sync_enabled)
-    sp_rs.valueChanged.connect(sync_enabled)
+    ck_rf.toggled.connect(sync_enabled)
     sync_enabled()
 
     state = {"scene": None, "key": None, "busy": False, "cancel": False, "last": 0.0,
@@ -474,7 +470,7 @@ def main(lang=None):
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, sp_ior, sp_rg, sp_rs, sp_bn, cb_th, ck_sv]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, sp_bn, cb_th, ck_sv]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -489,9 +485,8 @@ def main(lang=None):
         g["SHADOWS"] = ck_sh.isChecked()
         g["GLASS"] = ck_gl.isChecked()
         g["SMOOTH"] = ck_sm.isChecked()
-        g["IOR"] = float(sp_ior.value())
-        g["REFLECT_GLASS"] = sp_rg.value() / 100.0
-        g["REFLECT_SURF"] = sp_rs.value() / 100.0
+        g["REFLECTIONS"] = ck_rf.isChecked()
+        g["REFRACTION"] = ck_rr.isChecked()
         g["BOUNCES"] = sp_bn.value()
         g["THREADS"] = _TH[cb_th.currentIndex()]
         g["FLOOR"] = ck_fl.isChecked()
@@ -623,6 +618,6 @@ def main(lang=None):
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
-    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, ior=sp_ior,
-                                                            rglass=sp_rg, rsurf=sp_rs, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
+    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, reflections=ck_rf,
+                                                            refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)

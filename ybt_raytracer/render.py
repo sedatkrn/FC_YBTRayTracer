@@ -60,19 +60,20 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     eps = scene.diag * 1e-5
 
     alpha_t = scene.alpha if S.GLASS else np.ones(scene.count)   # 1 = opak
-    r_glass = float(S.REFLECT_GLASS) if S.GLASS else 0.0
-    r_surf = float(S.REFLECT_SURF)
+    refl_on = bool(S.REFLECTIONS)
+    r_glass = float(S.REFLECT_GLASS) if (S.GLASS and refl_on) else 0.0
+    r_surf = float(S.REFLECT_SURF) if refl_on else 0.0
     bounces = int(S.BOUNCES)
     has_glass = bool((alpha_t < 0.999).any())
-    ior = float(min(max(S.IOR, 1.0), 4.0))
+    ior = float(min(max(S.IOR, 1.0), 4.0)) if S.REFRACTION else 1.0
     # malzeme tabloları (indeks 0 = malzemesiz üçgen/zemin -> genel ayarlar)
     mt_ = scene.mtable
     dif_tab = np.array([1.0] + [m["diffuse"] for m in mt_])
     spec_tab = np.array([float(S.SPEC)] + [m["spec"] for m in mt_])
     shin_tab = np.array([float(S.SHININESS)] + [_shin(m["gloss"]) for m in mt_])
     metal_tab = np.array([0.0] + [m["metal"] for m in mt_])
-    refl_tab = np.array([r_surf] + [m["refl"] for m in mt_])
-    ior_tab = np.array([ior] + [m["ior"] for m in mt_])
+    refl_tab = np.array([r_surf] + [m["refl"] if refl_on else 0.0 for m in mt_])
+    ior_tab = np.array([ior] + [m["ior"] if S.REFRACTION else 1.0 for m in mt_])
     lum_tab = np.array([0.0] + [m["lum"] for m in mt_])
     has_mat = len(mt_) > 0
     refr = bool(S.GLASS and has_glass and float(ior_tab.max()) > 1.0005)   # kırılma: Snell yasası, çıkışta tam iç yansıma

@@ -185,6 +185,10 @@ EN = {
     "açık": "on",
     "kapalı": "off",
     ", ortam %d%%": ", ambient %d%%",
+    "Yansımalar": "Reflections",
+    "Kırılma": "Refraction",
+    "Malzemelerin yansıma değerlerini uygular (krom, cam, boya...). Kapalıysa yansıma yoktur (en hızlı).": "Applies the materials' reflection values (chrome, glass, paint...). When off there are no reflections (fastest).",
+    "Saydam malzemelerde ışığı kırar (Snell yasası, malzemenin IOR değeriyle). Kapalıysa ışık düz geçer (daha hızlı). Malzemesi olmayan saydam nesneler cam (IOR 1.5) sayılır.": "Bends light in transparent materials (Snell's law, using the material's IOR). When off, light passes straight through (faster). Transparent objects without a material are treated as glass (IOR 1.5).",
     # --- malzeme penceresi ---
     "Malzemeler (Surface)...": "Materials (Surface)...",
     "Nesnelere malzeme ata, malzeme kütüphanesini düzenle": "Assign materials to objects, edit the material library",

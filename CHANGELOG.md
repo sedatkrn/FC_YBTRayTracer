@@ -1,6 +1,8 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.2.1: * Kalite ayarlarında "Cam yansıması / Yüzey yansıması / Kırılma (IOR)" alanları kaldırıldı; yerine "Yansımalar" ve "Kırılma" açma-kapama kutuları
+          (değerler artık malzemeden gelir). Malzemesiz saydam nesneler cam (IOR 1.5) sayılır.
 v1.2:   * Malzeme sistemi: nesne bazında malzeme (renk, diffuse, specular, parlaklık, metal, yansıma, saydamlık, IOR, kendi ışığı).
           15 hazır malzeme + kullanıcı kütüphanesi (JSON); "Malzemeler (Surface)..." penceresi, canlı önizleme küresi. Atama belgeyle kaydolur.
 v1.1:   * Arayüz dili: Türkçe / English (panelin üstünde "Dil / Language"); seçim kaydedilir, ilk açılışta FreeCAD diline göre belirlenir.
