@@ -13,6 +13,7 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - En çok 3 ışık: yatay/dikey açı, renk, güç, ışık başına gölge; ortam rengi/şiddeti
 - **"FreeCAD ışık ayarlarını kullan"** seçeneği (seçiliyken kendi ışık ayarları devre dışı)
 - Saydamlık (cam) ve Fresnel yansıması, isteğe bağlı yüzey yansıması
+- **Sanal zemin**: sahnenin en altına otomatik yerleşir; renk, opaklık, yansıma ve yükseklik ofseti ayarlanır
 - Kenar yumuşatma (yalnızca kenar piksellerinde 2x2 / 3x3 / 4x4)
 - 4 kalite kademesi (Low, **Hızlı** varsayılan, ...); büyük montajlar için hızlı mod
 - Büyük sahnelerde hızlandırma: ekran karoları, otomatik boyutlu ışık ızgarası, küme hiyerarşisi, sahne önbelleği
@@ -20,6 +21,7 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - **Çok çekirdekli render** (Çekirdek: Otomatik/1/2/4; Linux'ta ayrı süreçler, sonuç tek çekirdekle birebir aynı)
 - Ayar paneli ile açılan pencere, alt kısımda ilerleme çubuğu, durdurma, farklı kaydet
 
+![Sanal zemin ve ayar paneli](docs/sanal_zemin.png)
 ![Cam ve yansıma](docs/cam_yansima.png)
 ![Işıklar](docs/bim_isiklar.png)
 
@@ -63,6 +65,7 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - Up to 3 lights: horizontal/vertical angle, colour, power, per-light shadows; ambient colour/intensity
 - **"Use FreeCAD light settings"** option (disables the macro's own lights when checked)
 - Transparency (glass) with Fresnel reflection, optional surface reflection
+- **Virtual floor**: placed at the scene's lowest point automatically; colour, opacity, reflection and height offset adjustable
 - Edge-only anti-aliasing (2x2 / 3x3 / 4x4)
 - 4 quality levels (Low, **Fast** default, ...), suited to large assemblies
 - Large-scene acceleration: screen tiles, auto-sized light-space grid, cluster hierarchy, scene cache
