@@ -9,7 +9,9 @@ Ne yapar:
   * Doğrudan ışık + gölge + parlama (Whitted tarzı, gürültüsüz)
   * Görüntü satır satır önizleme penceresinde belirir, sonunda PNG kaydedilir
 
-v0.5:   * Linux'ta paralel render ayrı süreçlerle (fork + ortak bellek): iş parçacıkları Python'un GIL kilidi
+v0.5:   * %98-100 saydam nesneler (FreeCAD'de görünmez; ör. Grid) artık sahneye alınmaz; önceden camlaşıp zeminde
+          ayna gibi yansıma yapıyordu. Atlananlar Report View'a yazılır.
+        * Linux'ta paralel render ayrı süreçlerle (fork + ortak bellek): iş parçacıkları Python'un GIL kilidi
           yüzünden çekirdekleri doyurmuyordu. Diğer sistemlerde iş parçacığı kullanılır (PARALLEL = "thread" ile zorlanabilir).
         * Çakışan yüzeylerde benek (z-fighting) giderildi: eşit uzaklıkta en küçük üçgen indeksi seçilir.
         * Assembly gibi kapsayıcıların kendi birleşik şekli (çocukların kopyası) artık sahneye eklenmiyor;
@@ -89,6 +91,8 @@ OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazs
 # -----------------------------------------------------------------------
 
 _EPS = 1e-12
+REFL_MIN_W = 0.02      # bu ağırlığın altındaki yansımalar hiç izlenmez (büyütmek camlı sahneyi hızlandırır)
+INVISIBLE_ALPHA = 0.02  # opaklığı bu değerin altındaki (FreeCAD'de %98-100 saydam) yüzeyler görünmezdir: sahneye alınmaz
 TIE_TOL = 2e-6         # çakışan yüzeylerde 'eşit uzaklık' toleransı (sahne köşegeni oranı)
 TIE_LAST = False       # eşitlikte False: ids içinde ilk (küçük indeks), True: son
 _MAXPAIR = 2_000_000   # bir seferde işlenen (ışın x üçgen) çifti üst sınırı (bellek)
@@ -794,7 +798,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             if depth + 1 >= maxdepth:
                 break
             nxt = []
-            sel = np.nonzero((wr * W > 0.02) & (RN[hi] < bounces))[0]
+            sel = np.nonzero((wr * W > REFL_MIN_W) & (RN[hi] < bounces))[0]
             if len(sel):                                         # yansıyan ışınlar
                 Dr = Dh[sel] - 2.0 * (Dh[sel] * nrm[sel]).sum(1)[:, None] * nrm[sel]
                 nxt.append((pix[hi][sel], P[sel] + nrm[sel] * eps, _norm(Dr), (W * wr)[sel],
@@ -1340,6 +1344,7 @@ def collect_scene(doc, status=_nostatus):
             "RayTrace: %d nesne bulundu (%.1f sn), sahne köşegeni %.1f mm, tessellate toleransı %.3f mm\n"
             % (len(items), t1 - t0, bb.DiagonalLength, tol))
     tris, cols, alps = [], [], []
+    invisible = []
     ntri = 0
     diag_left = [2]
     for k, (o, tgt, shp, sub) in enumerate(items):
@@ -1347,6 +1352,9 @@ def collect_scene(doc, status=_nostatus):
         n_before = ntri
         base, dc, how = _display_colors(o, tgt, len(shp.Faces))
         abase, ad = _display_opacity(o, tgt, len(shp.Faces))
+        if (ad is None and abase <= INVISIBLE_ALPHA) or (ad is not None and max(ad) <= INVISIBLE_ALPHA):
+            invisible.append(name)                      # %100 saydam = FreeCAD'de görünmez; cam gibi yansıtmasın
+            continue
         if DEBUG and diag_left[0] > 0:
             diag_left[0] -= 1
             for line in _color_props(o, tgt):
@@ -1371,6 +1379,8 @@ def collect_scene(doc, status=_nostatus):
             except Exception:
                 pass                                    # olmadı: yüz yüz yönteme düş
         for i, face in enumerate(shp.Faces):
+            if ad is not None and ad[i] <= INVISIBLE_ALPHA:
+                continue                                # tek yüzü %100 saydam: atla
             if i % 100 == 0:
                 status("üçgenleniyor %d/%d: %s (%d üçgen)" % (k + 1, len(items), name[:24], ntri),
                        frac=(k + i / float(max(len(shp.Faces), 1))) / float(len(items)))
@@ -1394,6 +1404,9 @@ def collect_scene(doc, status=_nostatus):
                 % (name[:30], len(shp.Faces), ntri - n_before,
                    base[0], base[1], base[2], (min(ad) if ad is not None else abase), how,
                    b.XMin, b.XMax, b.YMin, b.YMax, b.ZMin, b.ZMax))
+    if invisible:
+        FreeCAD.Console.PrintMessage("RayTrace: %d tamamen saydam (görünmez) nesne atlandı: %s\n"
+                                     % (len(invisible), ", ".join(invisible[:8]) + (" ..." if len(invisible) > 8 else "")))
     if not tris:
         raise RuntimeError("Tessellation üçgen üretmedi.")
     t2 = time.time()
