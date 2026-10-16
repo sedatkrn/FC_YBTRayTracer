@@ -1,6 +1,7 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.2.2: * Malzeme penceresinde nesne listesi artık yalnızca render edilen gerçek katı/yüzeyleri gösterir (düzlem, eksen, joint, kapsayıcı yok); arama kutusu ve Yenile düğmesi eklendi.
 v1.2.1: * Kalite ayarlarında "Cam yansıması / Yüzey yansıması / Kırılma (IOR)" alanları kaldırıldı; yerine "Yansımalar" ve "Kırılma" açma-kapama kutuları
           (değerler artık malzemeden gelir). Malzemesiz saydam nesneler cam (IOR 1.5) sayılır.
 v1.2:   * Malzeme sistemi: nesne bazında malzeme (renk, diffuse, specular, parlaklık, metal, yansıma, saydamlık, IOR, kendi ışığı).

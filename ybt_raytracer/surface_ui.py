@@ -79,18 +79,16 @@ def render_preview(mat, w=280, h=210):
 
 # ---------------------------------------------------------------- pencere
 def _renderable(doc):
-    """Listede gösterilecek görünür, yüzeyli nesneler."""
-    out = []
-    for o in doc.Objects:
-        try:
-            if not hasattr(o, "Shape") or o.Shape.isNull() or not o.Shape.Faces:
-                continue
-            vo = getattr(o, "ViewObject", None)
-            if vo is not None and not vo.Visibility:
-                continue
-            out.append(o)
-        except Exception:
+    """Render motorunun gerçekten çizeceği nesneler (aynı tarama): görünür, yüzeyli gerçek şekiller.
+    Origin/düzlem/eksen, Joint, boş kapsayıcılar ve gizli nesneler listede yer almaz.
+    Döner: [(nesne, hedef)] (kopyalar elenmiş)."""
+    from .freecad_scene import _gather
+    out, seen = [], set()
+    for o, tgt, _shp, _sub in _gather(doc, lambda *_a: None):
+        if o.Name in seen:
             continue
+        seen.add(o.Name)
+        out.append((o, tgt))
     return out
 
 
@@ -113,13 +111,22 @@ def open_surface(on_change=None, is_busy=None):
     dlg = QtGui.QDialog(Gui.getMainWindow())
     dlg.setWindowTitle(T("Yüzey / Malzeme Düzenleyici"))
     dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
-    st = {"mat": M.normalize({}), "name": "", "lock": False}
+    st = {"mat": M.normalize({}), "name": "", "lock": False, "items": []}
     widgets = {}
 
     root = QtGui.QHBoxLayout(dlg)
     # ---------- sol: nesneler + kütüphane
     left = QtGui.QVBoxLayout()
     left.addWidget(QtGui.QLabel("<b>%s</b>" % T("Nesneler")))
+    frow = QtGui.QHBoxLayout()
+    ed_filter = QtGui.QLineEdit()
+    ed_filter.setPlaceholderText(T("Ara..."))
+    ed_filter.setClearButtonEnabled(True)
+    btn_scan = QtGui.QPushButton(T("Yenile"))
+    btn_scan.setToolTip(T("Nesne listesini belgeden yeniden oku"))
+    frow.addWidget(ed_filter, 1)
+    frow.addWidget(btn_scan)
+    left.addLayout(frow)
     tree = QtGui.QTreeWidget()
     tree.setColumnCount(2)
     tree.setHeaderLabels([T("Nesne"), T("Malzeme")])
@@ -275,14 +282,26 @@ def open_surface(on_change=None, is_busy=None):
     def display_name(n):
         return T(n) if n in M.BUILTIN else n
 
+    def rescan():
+        try:
+            st["items"] = _renderable(doc)
+        except Exception as ex:
+            st["items"] = []
+            msg("tarama: %s" % ex)
+
     def refresh_tree():
-        sel_names = {it.data(0, QtCore.Qt.UserRole) for it in tree.selectedItems()}
+        sel = {it.data(0, QtCore.Qt.UserRole) for it in tree.selectedItems()}
+        flt = ed_filter.text().strip().lower()
         tree.clear()
-        for o in _renderable(doc):
-            it = QtGui.QTreeWidgetItem([o.Label, display_name(M.assigned(o)) if M.assigned(o) else "—"])
+        for o, tgt in st["items"]:
+            label = o.Label
+            if flt and flt not in label.lower() and flt not in M.assigned(o).lower():
+                continue
+            mn = M.assigned(o)
+            it = QtGui.QTreeWidgetItem([label, display_name(mn) if mn else "—"])
             it.setData(0, QtCore.Qt.UserRole, o.Name)
             tree.addTopLevelItem(it)
-            if o.Name in sel_names:
+            if o.Name in sel:
                 it.setSelected(True)
         tree.resizeColumnToContents(0)
 
@@ -299,7 +318,7 @@ def open_surface(on_change=None, is_busy=None):
                 lst.setCurrentItem(it)
 
     def sel_objects():
-        return [doc.getObject(it.data(0, QtCore.Qt.UserRole)) for it in tree.selectedItems()]
+        return [o for o in (doc.getObject(it.data(0, QtCore.Qt.UserRole)) for it in tree.selectedItems()) if o is not None]
 
     def changed():
         refresh_tree()
@@ -335,7 +354,6 @@ def open_surface(on_change=None, is_busy=None):
             return
         for o in objs:
             M.assign(o, name)
-        doc.recompute()
         changed()
         msg(T("%d nesneye atandı: %s") % (len(objs), display_name(name)))
 
@@ -388,7 +406,10 @@ def open_surface(on_change=None, is_busy=None):
     lst.itemDoubleClicked.connect(lambda it: (on_lib_click(it), do_assign()))
     tree.itemSelectionChanged.connect(on_tree_sel)
     ed_name.textEdited.connect(lambda _t: None)
+    ed_filter.textChanged.connect(lambda _t: refresh_tree())
+    btn_scan.clicked.connect(lambda *_a: (rescan(), refresh_tree()))
 
+    rescan()
     refresh_tree()
     refresh_lib()
     fill_editor("", M.normalize(dict(color=(0.7, 0.7, 0.72))))
