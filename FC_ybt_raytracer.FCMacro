@@ -9,7 +9,12 @@ Ne yapar:
   * Doğrudan ışık + gölge + parlama (Whitted tarzı, gürültüsüz)
   * Görüntü satır satır önizleme penceresinde belirir, sonunda PNG kaydedilir
 
-v0.5:   * Gölge ızgarası artık sahne büyüklüğüne göre otomatik (64..256): 2,5 milyon üçgenli sahnede gölge
+v0.5:   * Çakışan yüzeylerde benek (z-fighting) giderildi: eşit uzaklıkta en küçük üçgen indeksi seçilir.
+        * Assembly gibi kapsayıcıların kendi birleşik şekli (çocukların kopyası) artık sahneye eklenmiyor;
+          önceden her parça iki kez (opak kopya + gerçek) çiziliyor, saydam parçalar opak görünüyordu.
+        * İkincil ışınlarda kutular yakından uzağa gezilir, daha yakın isabet varsa uzaktakiler atlanır.
+        * Ekran karosu 16 -> 8 px.
+        * Gölge ızgarası artık sahne büyüklüğüne göre otomatik (64..256): 2,5 milyon üçgenli sahnede gölge
           hesabı ~7 kat hızlandı (149 sn -> 20 sn, görüntü birebir aynı).
         * Tek renkli nesneler tüm şekil tek çağrıyla üçgenlenir (yüz yüz çağırmaya göre ~%40 daha hızlı);
           Report View'a 'hazırlık: tarama / üçgenleme / ön hesap' süreleri yazılır.
@@ -67,7 +72,7 @@ LIGHTS = [
 ]
 SPEC = 0.30
 SHININESS = 48.0
-TILE = 16              # ekran karosu (px); aynı zamanda önizleme bant yüksekliği
+TILE = 8               # ekran karosu (px); aynı zamanda önizleme bant yüksekliği (ölçüm: 8, 16'dan %12-20 hızlı)
 SHADOW_GRID = 0        # ışık-uzayı ızgarası (G x G hücre); 0 = otomatik (üçgen sayısına göre 64..256)
 GLASS = True           # saydam nesneler (Transparency) gerçekten saydam çizilsin
 REFLECT_GLASS = 1.0    # cam yansıması çarpanı (0 = yok, 1 = normal, 2 = güçlü)
@@ -81,6 +86,8 @@ OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazs
 # -----------------------------------------------------------------------
 
 _EPS = 1e-12
+TIE_TOL = 2e-6         # çakışan yüzeylerde 'eşit uzaklık' toleransı (sahne köşegeni oranı)
+TIE_LAST = False       # eşitlikte False: ids içinde ilk (küçük indeks), True: son
 _MAXPAIR = 2_000_000   # bir seferde işlenen (ışın x üçgen) çifti üst sınırı (bellek)
 
 
@@ -135,9 +142,15 @@ def _closest(sc, O, D, ids):
     step = max(1, _MAXPAIR // max(K, 1))
     tb = np.empty(R)
     ib = np.empty(R, dtype=np.int64)
+    tol = sc.diag * TIE_TOL
+    ids = np.asarray(ids, dtype=np.int64)
     for s in range(0, R, step):
         t = _tri_hits(sc, O[s:s + step], D[s:s + step], ids)
-        j = t.argmin(1)
+        # Çakışan (aynı düzlemdeki) yüzeylerde sayısal gürültü benek yaratmasın: mesafesi en yakından
+        # tol kadar uzak olanlar eşit sayılır ve sabit bir kural (en küçük üçgen indeksi) seçilir.
+        near = t <= (t.min(1) + tol)[:, None]
+        rank = ids if not TIE_LAST else -ids                    # tile sırasından bağımsız, üçgen indeksine göre
+        j = np.where(near, rank[None, :], np.iinfo(np.int64).max).argmin(1)
         tb[s:s + step] = t[np.arange(len(j)), j]
         ib[s:s + step] = ids[j]
     ib[~np.isfinite(tb)] = -1
@@ -461,14 +474,13 @@ def _closest_general(sc, cl, O, D, tk=None):
             inv = 1.0 / np.where(np.abs(d) < 1e-12, 1e-12, d)
             t1 = (cl.slo[None] - o[:, None]) * inv[:, None]
             t2 = (cl.shi[None] - o[:, None]) * inv[:, None]
-        hit1 = np.minimum(t1, t2).max(2) <= np.maximum(t1, t2).min(2)
-        hit1 &= np.maximum(t1, t2).min(2) >= 0.0
+        tnear = np.minimum(t1, t2).max(2)
+        tfar = np.maximum(t1, t2).min(2)
+        hit1 = (tnear <= tfar) & (tfar >= 0.0)
         r1, s1 = np.nonzero(hit1)
         P2 = 20000
-        for p2 in range(0, len(r1), P2):
-            if tk is not None:
-                tk()
-            rr, ss = r1[p2:p2 + P2], s1[p2:p2 + P2]
+
+        def process(rr, ss, o=o, d=d, inv=inv, s=s):
             cid = (ss[:, None] * G + gar[None, :]).ravel()
             ray = np.repeat(rr, G)
             ok = cid < K
@@ -513,6 +525,28 @@ def _closest_general(sc, cl, O, D, tk=None):
                 better = tt < tb[g]
                 tb[g[better]] = tt[better]
                 ib[g[better]] = ii2[better]
+
+        # Büyük kutuları ışına yakından uzağa doğru işle; ışının o ana kadar bulduğu en yakın isabet
+        # bir kutunun giriş mesafesinden küçükse o kutu (ve ardındakiler) atlanır.
+        if len(r1) == 0:
+            continue
+        tn1 = np.maximum(tnear[r1, s1], 0.0)
+        o_ = np.lexsort((tn1, r1))
+        r1, s1, tn1 = r1[o_], s1[o_], tn1[o_]
+        rank = np.arange(len(r1)) - np.searchsorted(r1, r1, side="left")
+        o_ = np.argsort(rank, kind="stable")
+        r1, s1, tn1, rank = r1[o_], s1[o_], tn1[o_], rank[o_]
+        bnd = np.searchsorted(rank, np.arange(int(rank[-1]) + 2))
+        for kk in range(len(bnd) - 1):
+            ra, sa, ta = r1[bnd[kk]:bnd[kk + 1]], s1[bnd[kk]:bnd[kk + 1]], tn1[bnd[kk]:bnd[kk + 1]]
+            live = ta < tb[ra + s]
+            if not live.any():
+                break                      # bu sıradaki kutular hiçbir ışına yetmiyor; sonrakiler daha uzak
+            ra, sa = ra[live], sa[live]
+            for p2 in range(0, len(ra), P2):
+                if tk is not None:
+                    tk()
+                process(ra[p2:p2 + P2], sa[p2:p2 + P2])
     return tb, ib
 
 
@@ -1165,6 +1199,9 @@ def _gather(doc, log, status=_nostatus):
                 continue                                  # Body kendi şeklini zaten çiziyor
             if _is_origin_feature(o):
                 continue
+            grp = getattr(o, "Group", None)
+            if not _is_body(o) and isinstance(grp, (list, tuple)) and any(hasattr(g, "Shape") for g in grp):
+                continue                                  # Assembly/Arch kapsayıcısı: kendi birleşik şekli çocuklarının kopyası
             shp = o.Shape
             if shp.isNull() or not shp.Faces or not _sane_bbox(shp):
                 continue
