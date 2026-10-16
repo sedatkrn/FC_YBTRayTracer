@@ -1,6 +1,9 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v0.10:  * Cam kırılması (ışık kırınımı): Snell yasası, girişte/çıkışta bükülme, tam iç yansıma. Panelde 'Kırılma (IOR)' (Kapalı = düz geçiş).
+        * Kırılan/yansıyan ışınlarda çakışan yüzeylerde (cam kutu masaya değiyor vb.) benek giderildi: ikincil ışın hızlandırıcısı
+          da eşit uzaklıkta en küçük indeksi seçer (birincil ışınlarla aynı kural).
 v0.9:   * Yumuşak yüzeyler: köşe normalleriyle pürüzsüz gölgeleme (küre/simit/silindir artık kırık/facet görünmez),
           gölge terminatörü düzeltmesi; keskin kenarlar (45°'den büyük açılar) korunur. Panelde 'Yumuşak yüzeyler' kutusu.
 v0.8.1: * Ayar paneli artık içeriğine göre geniş açılır, ara çubuğu sürüklenerek ayarlanır; değerler kırpılmaz.

@@ -62,6 +62,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     r_surf = float(S.REFLECT_SURF)
     bounces = int(S.BOUNCES)
     has_glass = bool((alpha_t < 0.999).any())
+    ior = float(min(max(S.IOR, 1.0), 4.0))
+    refr = bool(S.GLASS and has_glass and ior > 1.0005)        # kırılma: Snell yasası, çıkışta tam iç yansıma
     f_on = bool(S.FLOOR)
     f_alpha = float(min(max(S.FLOOR_OPACITY, 0.0), 1.0))
     f_refl = float(min(max(S.FLOOR_REFLECT, 0.0), 1.0))
@@ -219,7 +221,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         RN = np.zeros(n, dtype=np.int64)
         RP = np.ones(n, dtype=bool)
         RF = np.zeros(n, dtype=bool)                           # zeminden yansımış ışın mı
-        maxdepth = 1 if not secondary else 6
+        maxdepth = 1 if not secondary else (9 if refr else 6)
         for depth in range(maxdepth):
             m = len(pix)
             if m == 0:
@@ -349,6 +351,20 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             if f_on:
                 f0 = 0.03 + 0.35 * f_refl                         # cilalı zemin: dik bakışta %4, kaydırıcı arttıkça aynaya yaklaşır
                 R = np.where(tid == fid, np.clip(f0 + (1.0 - f0) * (1 - cosv) ** 5, 0, 0.95) if f_refl > 0 else 0.0, R)
+            rm = None                                           # kırılan (cam) isabetler
+            if refr:
+                rm = glass & (tid < scene.count)
+                if rm.any():
+                    entering = sgn > 0                           # yüz normalleri dışa bakar: dışarıdan giren ışın
+                    eta = np.where(entering, 1.0 / ior, ior)
+                    ci = np.clip(-(nrm * Dh).sum(1), 0.0, 1.0)
+                    kk = 1.0 - eta * eta * (1.0 - ci * ci)
+                    # tam iç yansıma; yansıma bütçesi (BOUNCES) bittiyse ışın enerji kaybetmesin, düz geçsin
+                    tir = rm & (kk < 0.0) & (RN[hi] < bounces)
+                    eta = np.where(rm & (kk < 0.0) & ~tir, 1.0, eta)   # bütçesi biten TIR: kırılmadan düz geçer
+                    R = np.where(tir, 1.0, R)
+                else:
+                    rm = None
             wl = a * (1 - R)
             wr = R
             wt = (1 - a) * (1 - R)
@@ -370,8 +386,22 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                             (tid[sel] == fid) if f_on else np.zeros(len(sel), dtype=bool)))
             sel = np.nonzero(wt * W > 0.02)[0]
             if len(sel):                                         # camdan geçen ışınlar
-                nxt.append((pix[hi][sel], P[sel] + Dh[sel] * eps, Dh[sel], (W * wt)[sel],
-                            RN[hi][sel], RP[hi][sel], RF[hi][sel]))
+                Dt = Dh[sel]
+                RPt = RP[hi][sel]
+                if rm is not None:
+                    rs = rm[sel]
+                    if rs.any():                                 # kırılan ışın: yön değişir -> ekran karosu hızlandırıcısı geçersiz
+                        ns_ = nrm[sel][rs]
+                        Di = Dh[sel][rs]
+                        et = eta[sel][rs]
+                        cs = np.clip(-(ns_ * Di).sum(1), 0.0, 1.0)
+                        kq = np.maximum(1.0 - et * et * (1.0 - cs * cs), 0.0)
+                        Dn = et[:, None] * Di + (et * cs - np.sqrt(kq))[:, None] * ns_
+                        Dt = Dt.copy()
+                        Dt[rs] = _norm(Dn)
+                        RPt = RPt & ~rs
+                nxt.append((pix[hi][sel], P[sel] + Dt * eps, Dt, (W * wt)[sel],
+                            RN[hi][sel], RPt, RF[hi][sel]))
             if not nxt:
                 break
             pix = np.concatenate([q[0] for q in nxt])

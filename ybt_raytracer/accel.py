@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+from . import settings as S
 from .core import _any, _norm
 
 
@@ -198,6 +199,9 @@ class _Clusters(object):
         self.shi = hi2.reshape(K2, self.G, 3).max(1)
 
 
+_BIG = np.iinfo(np.int64).max // 4
+
+
 def _closest_general(sc, cl, O, D, tk=None):
     """
     Rastgele yönlü ışınlar için en yakın isabet. Üç kademe: büyük kutular (64 küme) -> küme kutuları
@@ -207,6 +211,7 @@ def _closest_general(sc, cl, O, D, tk=None):
     tb = np.full(R, np.inf)
     ib = np.full(R, -1, dtype=np.int64)
     K, G, SZ = cl.K, cl.G, cl.SZ
+    tol = float(S.TIE_TOL) * sc.diag
     K2 = len(cl.slo)
     step = max(1, 3000000 // max(K2, 1))
     gar = np.arange(G)
@@ -258,13 +263,19 @@ def _closest_general(sc, cl, O, D, tk=None):
                 cnt = np.diff(np.append(start, len(t)))
                 mins = np.minimum.reduceat(t, start)
                 seg = np.repeat(np.arange(len(uniq)), cnt)
-                mi = np.nonzero(np.isfinite(t) & (t == mins[seg]))[0]
-                if len(mi) == 0:
+                near = np.isfinite(t) & (t <= mins[seg] + tol)        # eşit uzaklıktaki (çakışan) yüzeyler
+                if not near.any():
                     continue
+                cand = np.where(near, tid if not S.TIE_LAST else -tid, _BIG)
+                mr = np.minimum.reduceat(cand, start)                 # eşitlikte _closest ile aynı kural: en küçük indeks
+                mi = np.nonzero(near & (cand == mr[seg]))[0]
                 us, fi = np.unique(seg[mi], return_index=True)
                 g = uniq[us] + s
                 tt, ii2 = t[mi[fi]], tid[mi[fi]]
-                better = tt < tb[g]
+                old_t, old_i = tb[g], ib[g]
+                r_new = ii2 if not S.TIE_LAST else -ii2
+                r_old = np.where(old_i >= 0, old_i if not S.TIE_LAST else -old_i, _BIG)
+                better = (tt < old_t - tol) | ((np.abs(tt - old_t) <= tol) & (r_new < r_old))
                 tb[g[better]] = tt[better]
                 ib[g[better]] = ii2[better]
 
