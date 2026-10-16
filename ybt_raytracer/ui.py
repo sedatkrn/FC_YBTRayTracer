@@ -292,6 +292,10 @@ def main(lang=None):
     b2 = QtGui.QHBoxLayout()
     b2.addWidget(btn_k)
     b2.addWidget(btn_y)
+    btn_m = QtGui.QPushButton(T("Malzemeler (Surface)..."))
+    btn_m.setToolTip(T("Nesnelere malzeme ata, malzeme kütüphanesini düzenle"))
+    b3 = QtGui.QHBoxLayout()
+    b3.addWidget(btn_m)
     lv.addStretch(1)
 
     sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
@@ -326,6 +330,7 @@ def main(lang=None):
     lcol.addLayout(hrow)
     lcol.addLayout(b1)
     lcol.addLayout(b2)
+    lcol.addLayout(b3)
     lcol.addWidget(sc_left, 1)
     lw = QtGui.QWidget()
     lw.setLayout(lcol)
@@ -608,6 +613,11 @@ def main(lang=None):
     btn_s.clicked.connect(do_stop)
     btn_k.clicked.connect(do_save)
     btn_y.clicked.connect(do_refresh)
+
+    def open_mats(*_a):
+        from .surface_ui import open_surface
+        open_surface(on_change=lambda: state.__setitem__("scene", None), is_busy=lambda: state["busy"])
+    btn_m.clicked.connect(open_mats)
 
     FreeCAD._raytrace_dlg = dlg
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut

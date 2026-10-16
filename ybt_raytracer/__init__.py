@@ -11,4 +11,4 @@ Modüller:
   freecad_scene  FreeCAD nesnelerini üçgenlere çevirme, kamera, ışık tercihleri
   ui             ayar paneli ve önizleme penceresi
 """
-__version__ = "1.1.0"
+__version__ = "1.2.0"

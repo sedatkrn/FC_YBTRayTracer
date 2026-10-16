@@ -1,6 +1,8 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.2:   * Malzeme sistemi: nesne bazında malzeme (renk, diffuse, specular, parlaklık, metal, yansıma, saydamlık, IOR, kendi ışığı).
+          15 hazır malzeme + kullanıcı kütüphanesi (JSON); "Malzemeler (Surface)..." penceresi, canlı önizleme küresi. Atama belgeyle kaydolur.
 v1.1:   * Arayüz dili: Türkçe / English (panelin üstünde "Dil / Language"); seçim kaydedilir, ilk açılışta FreeCAD diline göre belirlenir.
         * Makro ikonu ve pencere ikonu eklendi.
 v1.0:   ilk yayın / first release (v0.10 ile aynı kod).
