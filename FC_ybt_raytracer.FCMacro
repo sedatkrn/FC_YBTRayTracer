@@ -11,6 +11,8 @@ Ne yapar:
 
 v0.5:   * Gölge ızgarası artık sahne büyüklüğüne göre otomatik (64..256): 2,5 milyon üçgenli sahnede gölge
           hesabı ~7 kat hızlandı (149 sn -> 20 sn, görüntü birebir aynı).
+        * BLAS'ın kendi iş parçacığı havuzu render sırasında 1'e indirilir (12 çekirdekli makinede
+          iş parçacıkları birbirini yavaşlatıyordu).
         * Çok çekirdekli render: bantlar ve kenar yumuşatma parçaları iş parçacığı havuzunda paralel çizilir
           (ayar panelinde Çekirdek: Otomatik/1/2/4). Sonuç tek çekirdekle birebir aynıdır.
 v0.4:   * Işıklar: ortam (renk/şiddet) + en çok 3 ışık (yatay/dikey açı, renk, güç, ışık başına gölge).
@@ -147,6 +149,62 @@ def _any(sc, O, D, ids):
     for s in range(0, R, step):
         occ[s:s + step] = np.isfinite(_tri_hits(sc, O[s:s + step], D[s:s + step], ids)).any(1)
     return occ
+
+
+def _limit_blas(n):
+    """
+    BLAS'ın (OpenBLAS/MKL) kendi iş parçacığı havuzunu n'e düşürür; kendi iş parçacıklarımızla çakışıp
+    işlemciyi gereksiz yere meşgul etmesin (aşırı abonelik). Döner: eski ayarı geri yükleyen fonksiyon.
+    threadpoolctl varsa onu, yoksa yüklü OpenBLAS/MKL kütüphanesini ctypes ile doğrudan kullanır.
+    """
+    try:
+        from threadpoolctl import threadpool_limits
+        lim = threadpool_limits(limits=n)
+        return lim.restore_original_limits
+    except Exception:
+        pass
+    restores = []
+    try:
+        import ctypes
+        paths = set()
+        with open("/proc/self/maps") as f:
+            for line in f:
+                low = line.lower()
+                if ("blas" in low or "mkl_rt" in low) and ".so" in low:
+                    paths.add(line.split()[-1])
+        for pth in paths:
+            try:
+                lib = ctypes.CDLL(pth)
+            except OSError:
+                continue
+            done = False
+            for pre in ("openblas", "scipy_openblas", "MKL"):
+                for suf in ("", "64_", "_64_", "_"):
+                    sname = "%s_set_num_threads%s" % (pre, suf)
+                    gname = "%s_get_num_threads%s" % (pre, suf)
+                    if pre == "MKL":
+                        sname, gname = "MKL_Set_Num_Threads", "MKL_Get_Max_Threads"
+                    st, gt = getattr(lib, sname, None), getattr(lib, gname, None)
+                    if st is None:
+                        continue
+                    old = int(gt()) if gt is not None else 0
+                    st(int(n))
+                    if old > 0:
+                        restores.append(lambda st=st, old=old: st(old))
+                    done = True
+                    break
+                if done:
+                    break
+    except Exception:
+        pass
+
+    def restore():
+        for r in restores:
+            try:
+                r()
+            except Exception:
+                pass
+    return restore
 
 
 def _norm(v):
@@ -717,11 +775,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if on_done(i + 1) is False:
                     return False
             return True
-        try:
-            from threadpoolctl import threadpool_limits as _tpl      # varsa BLAS'ı 1 iş parçacığına sabitle
-            lim = _tpl(limits=1)
-        except Exception:
-            lim = None
+        restore_blas = _limit_blas(1)                                 # BLAS kendi iş parçacıklarını açmasın
         ex = ThreadPoolExecutor(max_workers=nthr)
         futs = [ex.submit(fn, it) for it in items]
         n = 0
@@ -743,8 +797,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 f.cancel()
             ex.shutdown(wait=True)
             tk.cancel.clear()
-            if lim is not None:
-                lim.restore_original_limits()
+            restore_blas()
         return ok
 
     # ---- 1. geçiş: piksel başına 1 örnek (piksel merkezi), bant bant ----
