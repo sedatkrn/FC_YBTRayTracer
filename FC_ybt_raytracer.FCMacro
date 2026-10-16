@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-FC_ybt_raytracer.FCMacro -- başlatıcı (v0.7)
+FC_ybt_raytracer.FCMacro -- başlatıcı (v1.0)
 FreeCAD içinde yerleşik numpy ışın izleyici. Asıl kod yanındaki `ybt_raytracer/` klasöründedir;
 bu dosya ve klasör AYNI yerde (Macro klasörü) durmalıdır.
 Kullanım: Macro > Macros... > bu dosyayı çalıştır.

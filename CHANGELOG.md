@@ -1,6 +1,7 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.0:   ilk yayın / first release (v0.10 ile aynı kod).
 v0.10:  * Cam kırılması (ışık kırınımı): Snell yasası, girişte/çıkışta bükülme, tam iç yansıma. Panelde 'Kırılma (IOR)' (Kapalı = düz geçiş).
         * Kırılan/yansıyan ışınlarda çakışan yüzeylerde (cam kutu masaya değiyor vb.) benek giderildi: ikincil ışın hızlandırıcısı
           da eşit uzaklıkta en küçük indeksi seçer (birincil ışınlarla aynı kural).

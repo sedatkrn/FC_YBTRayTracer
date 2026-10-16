@@ -12,8 +12,9 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - Doğrudan ışık, gölge, ortam ışığı ve parlama (Whitted tarzı: gürültüsüz, hızlı)
 - En çok 3 ışık: yatay/dikey açı, renk, güç, ışık başına gölge; ortam rengi/şiddeti
 - **"FreeCAD ışık ayarlarını kullan"** seçeneği (seçiliyken kendi ışık ayarları devre dışı)
-- Saydamlık (cam) ve Fresnel yansıması, isteğe bağlı yüzey yansıması
-- **Sanal zemin**: sahnenin en altına otomatik yerleşir; renk, opaklık, yansıma ve yükseklik ofseti ayarlanır
+- Saydamlık (cam), Fresnel yansıması ve **cam kırılması** (Snell yasası, kırılma indisi ayarlanır), isteğe bağlı yüzey yansıması
+- **Yumuşak yüzeyler**: küre/simit/silindir pürüzsüz gölgelenir, keskin kenarlar korunur
+- **Sanal zemin**: sahnenin en altına otomatik yerleşir; renk, opaklık, yansıma ve yükseklik ofseti ayarlanır; **7 hazır doku** (travertin, çakıl, mermer, taş, terrakota, sıva, ahşap) ya da kendi görüntünüz
 - Kenar yumuşatma (yalnızca kenar piksellerinde 2x2 / 3x3 / 4x4)
 - 4 kalite kademesi (Low, **Hızlı** varsayılan, ...); büyük montajlar için hızlı mod
 - Büyük sahnelerde hızlandırma: ekran karoları, otomatik boyutlu ışık ızgarası, küme hiyerarşisi, sahne önbelleği
@@ -23,6 +24,9 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 
 ![Sanal zemin ve ayar paneli](docs/sanal_zemin.png)
 ![Cam ve yansıma](docs/cam_yansima.png)
+![Zemin dokuları](docs/floor_textures.png)
+![Yumuşak yüzeyler: önce / sonra](docs/smooth_shading.png)
+![Cam kırılması: IOR kapalı / 1.5](docs/refraction.png)
 ![Işıklar](docs/bim_isiklar.png)
 
 ## Kurulum
@@ -41,13 +45,14 @@ FreeCAD 1.0 veya üstü (1.1 / 26.x ile denendi), numpy (FreeCAD ile birlikte ge
 
 ## Sınırlar
 
-- Kırılma (Snell) yok; cam yalnızca saydam + Fresnel yansıması verir.
+- Kırılma yalnızca saydam yüzeylerde ve kapalı gövdelerde (küre, silindir, kutu) doğru çalışır; cam altında ışık odaklanması (kostik) yok, gölge camdan yarı saydam geçer.
+- Zemin dokularının bir kısmı (çakıl, mermer, taş, ahşap) kenarlardan aynalanarak tekrarlanır; geniş zeminde simetri fark edilebilir.
 - Sahne hazırlığı (üçgenleme, karo/ızgara/küme ağacı) tek çekirdekte; çok büyük sahnelerde cam/yansıma yavaştır (düşük kalite kademesi önerilir).
 - Malzeme parlaklığı/yansıtıcılığı henüz nesneden okunmuyor.
 
 ## Yol haritası
 
-Malzemeden parlaklık/yansıma, yumuşak gölge / gökyüzü ışığı, ayarların hatırlanması, ışık ön ayarları, turntable animasyonu.
+Malzemeden parlaklık/yansıma, yumuşak gölge / gökyüzü ışığı, ayarların hatırlanması, ışık ön ayarları, turntable animasyonu, daha hızlı sahne hazırlığı.
 
 ## Lisans
 
@@ -64,8 +69,9 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - Direct light, shadows, ambient light and specular highlights (Whitted style: noise-free and fast)
 - Up to 3 lights: horizontal/vertical angle, colour, power, per-light shadows; ambient colour/intensity
 - **"Use FreeCAD light settings"** option (disables the macro's own lights when checked)
-- Transparency (glass) with Fresnel reflection, optional surface reflection
-- **Virtual floor**: placed at the scene's lowest point automatically; colour, opacity, reflection and height offset adjustable
+- Transparency (glass) with Fresnel reflection and **refraction** (Snell's law, adjustable IOR), optional surface reflection
+- **Smooth surfaces**: spheres/tori/cylinders shaded smoothly, sharp edges preserved
+- **Virtual floor**: placed at the scene's lowest point automatically; colour, opacity, reflection and height offset adjustable; **7 built-in textures** (travertine, gravel, marble, stone, terracotta, plaster, wood) or your own image
 - Edge-only anti-aliasing (2x2 / 3x3 / 4x4)
 - 4 quality levels (Low, **Fast** default, ...), suited to large assemblies
 - Large-scene acceleration: screen tiles, auto-sized light-space grid, cluster hierarchy, scene cache
@@ -87,13 +93,14 @@ FreeCAD 1.0+ (tested with 1.1 / 26.x) and numpy (bundled with FreeCAD).
 
 ### Limitations
 
-- No refraction (Snell); glass is transparent with Fresnel reflection only.
+- Refraction works best on transparent closed bodies (sphere, cylinder, box); no caustics, shadows pass through glass as partial shade.
+- Some floor textures (gravel, marble, stone, wood) tile by mirroring, so symmetry may show on a large floor.
 - Scene preparation (tessellation, tile/grid/cluster build) is single-threaded; glass/reflections on very large scenes are slow (use a lower quality level).
 - Material shininess/reflectivity is not yet read from objects.
 
 ### Roadmap
 
-Material-based shininess/reflection, soft shadows / sky light, remembered settings, light presets, turntable animation.
+Material-based shininess/reflection, soft shadows / sky light, remembered settings, light presets, turntable animation, faster scene preparation.
 
 ### License
 
