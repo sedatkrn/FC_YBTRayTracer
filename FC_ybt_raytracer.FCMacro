@@ -92,6 +92,9 @@ FLOOR_COLOR = (0.82, 0.82, 0.82)
 FLOOR_OPACITY = 1.0    # 1 = opak, 0 = görünmez
 FLOOR_REFLECT = 0.0    # 0..1; Fresnel'li yansıma (eğik bakışta güçlenir)
 FLOOR_OFFSET = 0.0     # mm; sahnenin en alt z değerine eklenir (eksi = aşağı)
+FLOOR_FADE = 0.7      # zeminden yansıyan nesnenin silikleşme uzunluğu (sahne köşegeni x bu sayı)
+FLOOR_SKY_REFL = 0.35  # zeminin gökyüzü yansımasının gücü (1 = tam)
+FLOOR_HAZE = 6.0       # ufka doğru sis uzunluğu (sahne köşegeni x bu sayı)
 FLOOR_RADIUS = 25.0    # zemin yarıçapı = sahne köşegeni x bu sayı (ufuk çizgisine kadar)
 THREADS = 0            # render iş parçacığı sayısı; 0 = otomatik (işlemci çekirdek sayısı, en çok 8)
 DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz
@@ -635,6 +638,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         col_ext = np.concatenate([scene.colors, [f_col]])
         alpha_ext = np.concatenate([alpha_t, [f_alpha]])
         f_rad2 = (float(FLOOR_RADIUS) * scene.diag) ** 2
+        cam_dist = float(max((-pos) @ fwd, 0.0))             # kameradan sahne merkezine derinlik
     else:
         n_ext, col_ext, alpha_ext = scene.n_unit, scene.colors, alpha_t
 
@@ -748,6 +752,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         RW = np.ones(n)
         RN = np.zeros(n, dtype=np.int64)
         RP = np.ones(n, dtype=bool)
+        RF = np.zeros(n, dtype=bool)                           # zeminden yansımış ışın mı
         maxdepth = 1 if not secondary else 6
         for depth in range(maxdepth):
             m = len(pix)
@@ -799,6 +804,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             if len(miss):
                 sky = np.clip(RD[miss][:, 2:3] * 0.5 + 0.5, 0, 1)
                 env = np.where(RP[miss][:, None], bg_lin[pix[miss]], top_l * sky + bot_l * (1 - sky))
+                if f_on:
+                    env = np.where(RF[miss][:, None], env * FLOOR_SKY_REFL, env)   # gökyüzü zeminde düz mavi ayna gibi durmasın
                 _acc(acc, pix[miss], RW[miss][:, None] * env)
 
             hi = np.nonzero(ti >= 0)[0]
@@ -827,16 +834,27 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 sp = np.clip((nrm * Hh).sum(1), 0, None) ** SHININESS * (ndl > 0)
                 spec_sum += (SPEC * min(power / 0.7, 1.5) * sp)[:, None] * lcol
             surf = albedo * lit + spec_sum
+            if f_on:
+                isf = tid == fid
+                if isf.any():                                   # ufka doğru hafif sis (kameraya göre sahne merkezinin gerisinde başlar)
+                    depth_c = np.clip(((P[isf] - pos) * fwd).sum(1) - cam_dist, 0.0, None)
+                    haze = (1.0 - np.exp(-depth_c / (FLOOR_HAZE * scene.diag)))[:, None]
+                    surf[isf] = surf[isf] * (1.0 - haze) + bot_l * haze
 
             glass = a < 0.999
             cosv = np.clip(-(nrm * Dh).sum(1), 0, 1)
             R = np.where(glass, np.clip(r_glass * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), r_surf)
             if f_on:
-                R = np.where(tid == fid, np.clip(f_refl * (0.1 + 0.9 * (1 - cosv) ** 5), 0, 0.95), R)
+                f0 = 0.04 + 0.5 * f_refl                         # cilalı zemin: dik bakışta %4, kaydırıcı arttıkça aynaya yaklaşır
+                R = np.where(tid == fid, np.clip(f0 + (1.0 - f0) * (1 - cosv) ** 5, 0, 0.95) if f_refl > 0 else 0.0, R)
             wl = a * (1 - R)
             wr = R
             wt = (1 - a) * (1 - R)
             W = RW[hi]
+            if f_on:                                            # zeminden yansıyan ışın: uzaktaki nesne silikleşsin (parlak zemin gibi)
+                rfh = RF[hi]
+                if rfh.any():
+                    W = np.where(rfh, W * np.exp(-tb[hi] / (FLOOR_FADE * scene.diag)), W)
             _acc(acc, pix[hi], (W * wl)[:, None] * surf)
 
             if depth + 1 >= maxdepth:
@@ -846,11 +864,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             if len(sel):                                         # yansıyan ışınlar
                 Dr = Dh[sel] - 2.0 * (Dh[sel] * nrm[sel]).sum(1)[:, None] * nrm[sel]
                 nxt.append((pix[hi][sel], P[sel] + nrm[sel] * eps, _norm(Dr), (W * wr)[sel],
-                            RN[hi][sel] + 1, np.zeros(len(sel), dtype=bool)))
+                            RN[hi][sel] + 1, np.zeros(len(sel), dtype=bool),
+                            (tid[sel] == fid) if f_on else np.zeros(len(sel), dtype=bool)))
             sel = np.nonzero(wt * W > 0.02)[0]
             if len(sel):                                         # camdan geçen ışınlar
                 nxt.append((pix[hi][sel], P[sel] + Dh[sel] * eps, Dh[sel], (W * wt)[sel],
-                            RN[hi][sel], RP[hi][sel]))
+                            RN[hi][sel], RP[hi][sel], RF[hi][sel]))
             if not nxt:
                 break
             pix = np.concatenate([q[0] for q in nxt])
@@ -859,6 +878,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             RW = np.concatenate([q[3] for q in nxt])
             RN = np.concatenate([q[4] for q in nxt])
             RP = np.concatenate([q[5] for q in nxt])
+            RF = np.concatenate([q[6] for q in nxt])
         return acc
 
     def to_srgb(lin):
