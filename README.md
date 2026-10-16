@@ -17,7 +17,7 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - 4 kalite kademesi (Low, **Hızlı** varsayılan, ...); büyük montajlar için hızlı mod
 - Büyük sahnelerde hızlandırma: ekran karoları, otomatik boyutlu ışık ızgarası, küme hiyerarşisi, sahne önbelleği
 - Part, Body, App::Part, App::Link, Assembly, BIM (Arch) kapsayıcıları; renkler `ShapeAppearance`'tan
-- **Çok çekirdekli render** (Çekirdek: Otomatik/1/2/4; sonuç tek çekirdekle birebir aynı)
+- **Çok çekirdekli render** (Çekirdek: Otomatik/1/2/4; Linux'ta ayrı süreçler, sonuç tek çekirdekle birebir aynı)
 - Ayar paneli ile açılan pencere, alt kısımda ilerleme çubuğu, durdurma, farklı kaydet
 
 ![Cam ve yansıma](docs/cam_yansima.png)

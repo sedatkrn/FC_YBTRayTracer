@@ -9,7 +9,9 @@ Ne yapar:
   * Doğrudan ışık + gölge + parlama (Whitted tarzı, gürültüsüz)
   * Görüntü satır satır önizleme penceresinde belirir, sonunda PNG kaydedilir
 
-v0.5:   * Çakışan yüzeylerde benek (z-fighting) giderildi: eşit uzaklıkta en küçük üçgen indeksi seçilir.
+v0.5:   * Linux'ta paralel render ayrı süreçlerle (fork + ortak bellek): iş parçacıkları Python'un GIL kilidi
+          yüzünden çekirdekleri doyurmuyordu. Diğer sistemlerde iş parçacığı kullanılır (PARALLEL = "thread" ile zorlanabilir).
+        * Çakışan yüzeylerde benek (z-fighting) giderildi: eşit uzaklıkta en küçük üçgen indeksi seçilir.
         * Assembly gibi kapsayıcıların kendi birleşik şekli (çocukların kopyası) artık sahneye eklenmiyor;
           önceden her parça iki kez (opak kopya + gerçek) çiziliyor, saydam parçalar opak görünüyordu.
         * İkincil ışınlarda kutular yakından uzağa gezilir, daha yakın isabet varsa uzaktakiler atlanır.
@@ -80,6 +82,7 @@ REFLECT_SURF = 0.0     # opak yüzeylerin sabit yansıması (0..0.6); 0 = kapal�
 AA = 2                 # kenar yumuşatma: 0/1 = kapalı, 2 = 2x2, 3 = 3x3, 4 = 4x4 örnek (yalnız kenar piksellerinde)
 AA_THRESH = 0.05       # komşu piksellerle renk farkı bu eşiği aşarsa kenar sayılır
 BOUNCES = 2            # en çok yansıma sayısı
+PARALLEL = "auto"        # "auto": Linux'ta ayrı süreçler (fork), diğerlerinde iş parçacığı; "thread": hep iş parçacığı
 THREADS = 0            # render iş parçacığı sayısı; 0 = otomatik (işlemci çekirdek sayısı, en çok 8)
 DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz
 OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazsa ~/Pictures, sonra ~)
@@ -649,7 +652,21 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     say("ışınlar izleniyor...")
 
     top, bot = np.array(BG_TOP), np.array(BG_BOTTOM)
-    img = np.zeros((h, w, 3), dtype=np.float64)
+    nthr = int(THREADS) if int(THREADS) > 0 else min(os.cpu_count() or 1, 8)
+    nthr = max(1, nthr)
+    # Linux'ta ayrı süreçler (fork): Python'un GIL kilidi iş parçacıklarını çekirdekleri doyurmaktan alıkoyuyor.
+    # Çıktı görüntüsü ortak bellekte durur, çocuk süreçler doğrudan içine yazar.
+    use_proc = (nthr > 1 and str(PARALLEL) != "thread" and hasattr(os, "fork")
+                and sys.platform.startswith("linux"))
+    if use_proc:
+        try:
+            import mmap
+            img_buf = mmap.mmap(-1, h * w * 3 * 8)
+            img = np.frombuffer(img_buf, dtype=np.float64).reshape(h, w, 3)
+        except Exception:
+            use_proc = False
+    if not use_proc:
+        img = np.zeros((h, w, 3), dtype=np.float64)
     xs = ((np.arange(w) + 0.5) / w * 2.0 - 1.0) * half_x
     top_l, bot_l = top ** 2.2, bot ** 2.2
 
@@ -799,18 +816,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     def to_srgb(lin):
         return np.clip(lin, 0, 1) ** (1 / 2.2)
 
-    nthr = int(THREADS) if int(THREADS) > 0 else min(os.cpu_count() or 1, 8)
-    nthr = max(1, nthr)
 
-    def run_parallel(items, fn, on_done):
-        """items için fn(item) çalıştırır (nthr iş parçacığı); sırayla biten iş sayısı için on_done(n) çağrılır.
-        on_done False dönerse False döner (iptal). Arayüz çağrıları yalnız ana iş parçacığında yapılır."""
-        if nthr <= 1 or len(items) < 2:
-            for i, it in enumerate(items):
-                fn(it)
-                if on_done(i + 1) is False:
-                    return False
-            return True
+    def run_threads(items, fn, on_done):
+        """İş parçacığı havuzu (yedek yol)."""
         restore_blas = _limit_blas(1)                                 # BLAS kendi iş parçacıklarını açmasın
         ex = ThreadPoolExecutor(max_workers=nthr)
         futs = [ex.submit(fn, it) for it in items]
@@ -835,6 +843,94 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             tk.cancel.clear()
             restore_blas()
         return ok
+
+    def run_procs(items, fn, on_done):
+        """Çocuk süreçlerle (fork): süreç j, j, j+n, j+2n... numaralı işleri yapar; bitenler ortak bellekteki
+        bayraklarla bildirilir. Ana süreç arayüzü canlı tutar. Döner: True / False (iptal)."""
+        import signal
+        n = min(nthr, len(items))
+        flags = mmap.mmap(-1, len(items))
+        pids = []
+        try:
+            for j in range(n):
+                pid = os.fork()
+                if pid == 0:                                  # ---- çocuk: yalnız numpy hesabı, Qt'ye dokunma
+                    code = 0
+                    try:
+                        tk.fn = None
+                        _limit_blas(1)
+                        for i in range(j, len(items), n):
+                            fn(items[i])
+                            flags[i] = 1
+                    except BaseException:
+                        try:
+                            import traceback
+                            sys.stderr.write("RayTrace işçi süreç hatası:\n" + traceback.format_exc())
+                        except Exception:
+                            pass
+                        code = 1
+                    os._exit(code)
+                pids.append(pid)
+        except OSError:
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                    os.waitpid(pid, 0)
+                except Exception:
+                    pass
+            return None                                       # fork olmadı: çağıran iş parçacığına düşer
+        alive = set(pids)
+        done_n = 0
+        ok = True
+        try:
+            while done_n < len(items):
+                tk()
+                adv = False
+                while done_n < len(items) and flags[done_n]:
+                    done_n += 1
+                    adv = True
+                if adv and on_done(done_n) is False:
+                    ok = False
+                    break
+                for pid in list(alive):
+                    try:
+                        r, st = os.waitpid(pid, os.WNOHANG)
+                    except ChildProcessError:
+                        alive.discard(pid)
+                        continue
+                    if r:
+                        alive.discard(pid)
+                        if st != 0:
+                            raise RuntimeError("işçi süreç hata ile bitti (Report View'a / terminale bak)")
+                if not alive and done_n < len(items) and not all(flags[i] for i in range(done_n, len(items))):
+                    raise RuntimeError("işçi süreçler işi bitirmeden çıktı")
+                time.sleep(0.02)
+        finally:
+            for pid in list(alive):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+                try:
+                    os.waitpid(pid, 0)
+                except Exception:
+                    pass
+        return ok
+
+    def run_parallel(items, fn, on_done):
+        """items için fn(item) çalıştırır; sırayla biten iş sayısı için on_done(n) çağrılır.
+        on_done False dönerse False döner (iptal). Arayüz çağrıları yalnız ana süreçte yapılır."""
+        if nthr <= 1 or len(items) < 2:
+            for i, it in enumerate(items):
+                fn(it)
+                if on_done(i + 1) is False:
+                    return False
+            return True
+        if use_proc:
+            r = run_procs(items, fn, on_done)
+            if r is not None:
+                return r
+        return run_threads(items, fn, on_done)
 
     # ---- 1. geçiş: piksel başına 1 örnek (piksel merkezi), bant bant ----
     def band(ty):
