@@ -1,0 +1,1656 @@
+# -*- coding: utf-8 -*-
+"""
+FC_ybt_raytracer.FCMacro  --  v0.4
+FreeCAD içinde yerleşik, basit numpy ışın izleyici (harici program gerekmez).
+
+Ne yapar:
+  * Görünür tüm nesneleri üçgenlere çevirir (tessellate)
+  * Aktif 3D görünümün kamerasından render alır
+  * Doğrudan ışık + gölge + parlama (Whitted tarzı, gürültüsüz)
+  * Görüntü satır satır önizleme penceresinde belirir, sonunda PNG kaydedilir
+
+v0.4:   * Işıklar: ortam (renk/şiddet) + en çok 3 ışık (yatay/dikey açı, renk, güç, ışık başına gölge).
+        * Kenar yumuşatma (AA): yalnız kenar piksellerinde 2x2/3x3/4x4 örnekleme (ayar panelinde).
+        * Render penceresi ayar paneliyle açılır; render 'Render' düğmesiyle başlar. Pencere açıkken 3B
+          görünümü çevirip tekrar Render alınabilir (sahne önbelleğe alınır).
+        * Saydamlık: nesnenin Transparency değeri (ViewObject ve ShapeAppearance) okunur, cam gerçekten
+          saydam çizilir; camdan geçen ışık yarı gölge verir.
+        * Yansıma: camda Fresnel yansıması, opak yüzeyler için isteğe bağlı sabit yansıma (en çok 3 sekme).
+        * BIM (Arch BuildingPart/Site/Floor) kapsayıcılarında tarama takılması giderildi.
+v0.3:   büyük sahnelerde donma giderildi: perspektif kamerada kameranın arkasındaki üçgenler elenir,
+        yakın düzlemi kesenler kırpılır, hücre-üçgen çifti sayısı sınırlı (bellek); hazırlık
+        aşamaları pencerede görünür ve işlem pencere kapatılarak iptal edilebilir.
+v0.2.3: renkler FreeCAD 1.x'in ShapeAppearance özelliğinden okunur (DiffuseColor/ShapeColor yedek).
+v0.2.2: ortografik kamerada kameranın "arkasında" kalan nesneler artık çizilir; origin düzlemleri
+        (sonsuz boyutlu şekil) atlanır -> tessellate toleransı normale döndü; Link renkleri hedef
+        nesneden okunur ve Report View'a yazılır.
+v0.2.1: App::Link / Assembly / App::Part / Body desteği.
+
+v0.2 değişiklikleri:
+  * float64 + sahne merkeze taşınarak hesap (ince üçgenlerde delik/pürüz sorunu giderildi)
+  * Ekran karoları (birincil ışınlar) ve ışık-uzayı ızgarası (gölgeler) ile üçgen eleme: çok daha hızlı
+  * PNG yazılamazsa (salt-okunur klasör) ~/Pictures veya ev dizinine kaydeder
+
+Kullanım: Macro > Macros... > bu dosyayı çalıştır.
+"""
+import os
+import sys
+import time
+import zlib
+import struct
+import numpy as np
+
+# ------------------------------- AYARLAR -------------------------------
+WIDTH = 480            # çıktı genişliği (px); yükseklik 3B görünümün en-boy oranından gelir
+SHADOWS = True         # gölge ışınları
+TESS_FACTOR = 0.004    # tessellate toleransı = sahne köşegeni * bu değer (küçük = daha pürüzsüz, daha yavaş); 0.004 = 'Hızlı'
+BG_TOP = (0.62, 0.72, 0.86)
+BG_BOTTOM = (0.93, 0.94, 0.96)
+AMBIENT = 0.28          # ortam ışığı şiddeti (0..1)
+AMBIENT_COLOR = (1.0, 1.0, 1.0)
+# En çok 3 ışık. h = yatay açı (derece, 0 = kameradan; eksi = sol, artı = sağ),
+# v = dikey açı (0 = göz hizası, artı = yukarıdan). Açılar KAMERAYA göredir.
+LIGHTS = [
+    dict(on=True,  h=-39.0, v=44.0, color=(1.0, 1.0, 1.0), power=0.70, shadow=True),    # ana ışık
+    dict(on=True,  h=45.0,  v=-6.0, color=(1.0, 1.0, 1.0), power=0.22, shadow=False),   # dolgu
+    dict(on=False, h=180.0, v=25.0, color=(1.0, 1.0, 1.0), power=0.40, shadow=False),   # arka ışık
+]
+SPEC = 0.30
+SHININESS = 48.0
+TILE = 16              # ekran karosu (px); aynı zamanda önizleme bant yüksekliği
+SHADOW_GRID = 64       # ışık-uzayı ızgarası (SHADOW_GRID x SHADOW_GRID hücre)
+GLASS = True           # saydam nesneler (Transparency) gerçekten saydam çizilsin
+REFLECT_GLASS = 1.0    # cam yansıması çarpanı (0 = yok, 1 = normal, 2 = güçlü)
+REFLECT_SURF = 0.0     # opak yüzeylerin sabit yansıması (0..0.6); 0 = kapalı
+AA = 2                 # kenar yumuşatma: 0/1 = kapalı, 2 = 2x2, 3 = 3x3, 4 = 4x4 örnek (yalnız kenar piksellerinde)
+AA_THRESH = 0.05       # komşu piksellerle renk farkı bu eşiği aşarsa kenar sayılır
+BOUNCES = 2            # en çok yansıma sayısı
+DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz
+OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazsa ~/Pictures, sonra ~)
+# -----------------------------------------------------------------------
+
+_EPS = 1e-12
+_MAXPAIR = 2_000_000   # bir seferde işlenen (ışın x üçgen) çifti üst sınırı (bellek)
+
+
+# ============================ SAF NUMPY ÇEKİRDEK ============================
+class Scene(object):
+    """Üçgen listesi + ışın izleme için ön hesaplar. Her şey sahne merkezine göredir (float64)."""
+
+    def __init__(self, tris, colors, alpha=None):
+        tris = np.asarray(tris, dtype=np.float64).reshape(-1, 3, 3)
+        colors = np.asarray(colors, dtype=np.float64).reshape(-1, 3)
+        flat = tris.reshape(-1, 3)
+        self.center = (flat.min(0) + flat.max(0)) / 2.0
+        tris = tris - self.center
+        diag = float(np.linalg.norm(flat.max(0) - flat.min(0)))
+        self.diag = max(diag, 1e-9)
+        v0, v1, v2 = tris[:, 0], tris[:, 1], tris[:, 2]
+        e1, e2 = v1 - v0, v2 - v0
+        n = np.cross(e1, e2)
+        nn = (n * n).sum(1)
+        ok = nn > (1e-9 * self.diag ** 2) ** 2          # dejenere üçgenleri at
+        self.tri = tris[ok]
+        v0, e1, e2, n, nn = v0[ok], e1[ok], e2[ok], n[ok], nn[ok]
+        self.colors = colors[ok]
+        al = np.ones(len(ok)) if alpha is None else np.asarray(alpha, dtype=np.float64).reshape(-1)
+        self.alpha = al[ok]                              # opaklık: 1 = opak, 0 = tam saydam
+        self.n_unit = n / np.sqrt(nn)[:, None]
+        a = np.cross(e2, n) / nn[:, None]               # u = (p-v0)·a
+        b = np.cross(n, e1) / nn[:, None]               # v = (p-v0)·b
+        self.N, self.A, self.B = n, a, b
+        self.v0N = (v0 * n).sum(1)
+        self.v0A = (v0 * a).sum(1)
+        self.v0B = (v0 * b).sum(1)
+        self.count = len(v0)
+
+
+def _tri_hits(sc, O, D, ids):
+    """O,D: (R,3). ids: üçgen indeksleri (K,). Döner t (R,K); isabet yoksa inf."""
+    N, A, B = sc.N[ids], sc.A[ids], sc.B[ids]
+    Dn = D @ N.T
+    On = O @ N.T
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = (sc.v0N[ids] - On) / Dn
+        u = O @ A.T - sc.v0A[ids] + t * (D @ A.T)
+        v = O @ B.T - sc.v0B[ids] + t * (D @ B.T)
+        ok = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
+    return np.where(ok, t, np.inf)
+
+
+def _closest(sc, O, D, ids):
+    """Her ışın için en yakın isabet. Döner (t, üçgen_id); isabet yoksa t=inf, id=-1."""
+    R, K = len(D), len(ids)
+    step = max(1, _MAXPAIR // max(K, 1))
+    tb = np.empty(R)
+    ib = np.empty(R, dtype=np.int64)
+    for s in range(0, R, step):
+        t = _tri_hits(sc, O[s:s + step], D[s:s + step], ids)
+        j = t.argmin(1)
+        tb[s:s + step] = t[np.arange(len(j)), j]
+        ib[s:s + step] = ids[j]
+    ib[~np.isfinite(tb)] = -1
+    return tb, ib
+
+
+def _any(sc, O, D, ids):
+    R, K = len(D), len(ids)
+    step = max(1, _MAXPAIR // max(K, 1))
+    occ = np.empty(R, dtype=bool)
+    for s in range(0, R, step):
+        occ[s:s + step] = np.isfinite(_tri_hits(sc, O[s:s + step], D[s:s + step], ids)).any(1)
+    return occ
+
+
+def _norm(v):
+    return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), _EPS)
+
+
+def camera_basis(fwd, up):
+    fwd = fwd / np.linalg.norm(fwd)
+    right = np.cross(fwd, up)
+    right /= np.linalg.norm(right)
+    up = np.cross(right, fwd)
+    return right, up, fwd
+
+
+class _Cancelled(BaseException):
+    """Kullanıcı önizleme penceresini kapattı. BaseException: 'except Exception' bunu yutmasın."""
+
+
+class _Ticker(object):
+    """Uzun döngülerde en çok 0.15 sn'de bir geri çağrı yapar; geri çağrı False dönerse iptal."""
+
+    def __init__(self, fn, every=0.15):
+        self.fn, self.every, self.last = fn, every, 0.0
+
+    def __call__(self):
+        if self.fn is None:
+            return
+        now = time.time()
+        if now - self.last >= self.every:
+            self.last = now
+            if self.fn() is False:
+                raise _Cancelled()
+
+
+_PAIR_BUDGET = 6000000   # hücre-üçgen çifti üst sınırı (bellek koruması)
+
+
+def _bin(x0, x1, y0, y1, valid, nx, ny):
+    """
+    Üçgenleri 2B hücrelere dağıtır. x0..y1: üçgen başına hücre aralığı (dahil, int).
+    Döner (offs, ids, always):
+      hücre c için üçgenler ids[offs[c]:offs[c+1]]; ayrıca `always` üçgenleri HER hücrede test edilir.
+    `always`: hücrelerin büyük bölümünü kaplayan üçgenler (zemin, duvar...). Hücre çiftlerine
+    açılmazlar; böylece çift sayısı (bellek/süre) _PAIR_BUDGET ile sınırlı kalır.
+    """
+    T = len(x0)
+    wx = np.where(valid, x1 - x0 + 1, 0)
+    wy = np.where(valid, y1 - y0 + 1, 0)
+    cnt = np.maximum(wx, 0) * np.maximum(wy, 0)
+    thr = 0.35 * nx * ny
+    while thr >= 1.0 and cnt[cnt <= thr].sum() > _PAIR_BUDGET:
+        thr /= 2.0
+    big = cnt > thr
+    always = np.nonzero(big)[0].astype(np.int64)
+    cnt = np.where(big, 0, cnt)
+    total = int(cnt.sum())
+    if total == 0:
+        return np.zeros(nx * ny + 1, dtype=np.int64), np.zeros(0, dtype=np.int64), always
+    tri = np.repeat(np.arange(T), cnt)
+    start = np.cumsum(cnt) - cnt
+    loc = np.arange(total) - np.repeat(start, cnt)
+    wxr = np.repeat(np.maximum(wx, 1), cnt)
+    cx = np.repeat(x0, cnt) + loc % wxr
+    cy = np.repeat(y0, cnt) + loc // wxr
+    cell = cy * nx + cx
+    order = np.argsort(cell, kind="stable")
+    ids = tri[order]
+    counts = np.bincount(cell, minlength=nx * ny)
+    offs = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+    return offs, ids, always
+
+
+def _screen_bins(sc, pos, right, up, fwd, persp, half_x, half_y, w, h, tile):
+    """
+    Her üçgenin ekranda kapladığı karoları bulur.
+    Perspektifte: tamamen kameranın arkasındaki üçgenler elenir; yakın düzlemi (z=eps) kesenler
+    kırpılmış çokgenin sınır kutusuyla karolara yazılır (eskisi hepsini tüm ekrana yazıyordu).
+    """
+    nx = (w + tile - 1) // tile
+    ny = (h + tile - 1) // tile
+    d = sc.tri - pos
+    xc, yc, zc = d @ right, d @ up, d @ fwd                 # (T,3)
+    if persp:
+        eps = 1e-6 * sc.diag
+        front = zc > eps
+        keep = front.any(1)
+        zs = np.where(front, zc, 1.0)
+        pxv = (xc / (zs * half_x) + 1.0) / 2.0 * w
+        pyv = (1.0 - yc / (zs * half_y)) / 2.0 * h
+        lox = np.where(front, pxv, np.inf).min(1)
+        hix = np.where(front, pxv, -np.inf).max(1)
+        loy = np.where(front, pyv, np.inf).min(1)
+        hiy = np.where(front, pyv, -np.inf).max(1)
+        for a, b in ((0, 1), (1, 2), (2, 0)):               # yakın düzlemi kesen kenarlar
+            cross = front[:, a] != front[:, b]
+            if not cross.any():
+                continue
+            ia = np.nonzero(cross)[0]
+            za, zb = zc[ia, a], zc[ia, b]
+            t = (eps - za) / (zb - za)
+            xi = xc[ia, a] + t * (xc[ia, b] - xc[ia, a])
+            yi = yc[ia, a] + t * (yc[ia, b] - yc[ia, a])
+            pxi = (xi / (eps * half_x) + 1.0) / 2.0 * w
+            pyi = (1.0 - yi / (eps * half_y)) / 2.0 * h
+            lox[ia] = np.minimum(lox[ia], pxi)
+            hix[ia] = np.maximum(hix[ia], pxi)
+            loy[ia] = np.minimum(loy[ia], pyi)
+            hiy[ia] = np.maximum(hiy[ia], pyi)
+    else:
+        keep = np.ones(len(d), dtype=bool)
+        pxv = (xc / half_x + 1.0) / 2.0 * w
+        pyv = (1.0 - yc / half_y) / 2.0 * h
+        lox, hix, loy, hiy = pxv.min(1), pxv.max(1), pyv.min(1), pyv.max(1)
+    m = 1.5
+    bx0, bx1, by0, by1 = lox - m, hix + m, loy - m, hiy + m
+    valid = keep & (bx1 >= 0) & (bx0 <= w) & (by1 >= 0) & (by0 <= h)
+    lim_x, lim_y = w - 1e-6, h - 1e-6
+
+    def tcell(v, lim):
+        return np.floor(np.clip(np.where(valid, v, 0.0), 0, lim) / tile).astype(np.int64)
+
+    offs, ids, always = _bin(tcell(bx0, lim_x), tcell(bx1, lim_x), tcell(by0, lim_y), tcell(by1, lim_y),
+                             valid, nx, ny)
+    return nx, ny, offs, ids, always
+
+
+class _LightGrid(object):
+    """Yönlü ışık için: ışık yönüne dik düzleme izdüşüm ızgarası. Gölge ışını = tek nokta."""
+
+    def __init__(self, sc, L, G, subset=None):
+        helper = np.array([1.0, 0, 0]) if abs(L[0]) < 0.9 else np.array([0, 1.0, 0])
+        a = _norm(np.cross(L, helper))
+        b = np.cross(L, a)
+        tri = sc.tri if subset is None else sc.tri[subset]
+        sa, sb = tri @ a, tri @ b
+        self.a, self.b, self.G = a, b, G
+        self.amin, self.bmin = sa.min(), sb.min()
+        ext = max(sa.max() - self.amin, sb.max() - self.bmin, 1e-9)
+        self.scale = G / ext
+        mg = 1e-6 * ext
+        lim = G - 1e-9
+
+        def cell(v, vmin):
+            return np.floor(np.clip((v - vmin) * self.scale, 0, lim)).astype(np.int64)
+
+        x0 = cell(sa.min(1) - mg, self.amin)
+        x1 = cell(sa.max(1) + mg, self.amin)
+        y0 = cell(sb.min(1) - mg, self.bmin)
+        y1 = cell(sb.max(1) + mg, self.bmin)
+        self._cell = cell
+        self.offs, self.ids, self.always = _bin(x0, x1, y0, y1, np.ones(len(x0), dtype=bool), G, G)
+        if subset is not None:                               # yerel indeksleri küresel üçgen indekslerine çevir
+            self.ids = subset[self.ids]
+            self.always = subset[self.always]
+
+    def shadowed(self, sc, P, L, tk=None):
+        """P: (n,3) yüzeyden hafif ofsetli noktalar. Döner bool (n,) — ışığa giden yol kapalı mı."""
+        n = len(P)
+        occ = np.zeros(n, dtype=bool)
+        if n == 0:
+            return occ
+        cx = self._cell(P @ self.a, self.amin)
+        cy = self._cell(P @ self.b, self.bmin)
+        cell = cy * self.G + cx
+        if len(self.always):
+            cand = np.arange(n)                              # her noktayı büyük üçgenlerle de sına
+        else:
+            cand = np.nonzero(self.offs[cell + 1] - self.offs[cell] > 0)[0]
+        if len(cand) == 0:
+            return occ
+        order = cand[np.argsort(cell[cand], kind="stable")]
+        cuts = np.nonzero(np.diff(cell[order]))[0] + 1
+        for grp in np.split(order, cuts):
+            if tk is not None:
+                tk()
+            c = cell[grp[0]]
+            ids = self.ids[self.offs[c]:self.offs[c + 1]]
+            if len(self.always):
+                ids = np.concatenate((self.always, ids))
+            if len(ids) == 0:
+                continue
+            Dg = np.broadcast_to(L, (len(grp), 3))
+            occ[grp] = _any(sc, P[grp], Dg, ids)
+        return occ
+
+
+class _Clusters(object):
+    """
+    Yansıma/saydamlık ikincil ışınları için kaba hızlandırıcı: üçgenler Morton sırasıyla 32'şerli
+    kümelere bölünür, her kümenin sınır kutusu vardır. Işın önce kutularla, sonra yalnız isabet
+    ettiği kümelerin üçgenleriyle sınanır.
+    """
+    SZ = 32      # küme başına üçgen
+    G = 64       # büyük kutu başına küme
+
+    def __init__(self, sc):
+        c = sc.tri.mean(1)
+        lo, hi = c.min(0), c.max(0)
+        q = np.clip(((c - lo) / np.maximum(hi - lo, 1e-12) * 1023.0), 0, 1023).astype(np.int64)
+
+        def spread(x):
+            x = (x | (x << 16)) & 0x030000FF
+            x = (x | (x << 8)) & 0x0300F00F
+            x = (x | (x << 4)) & 0x030C30C3
+            x = (x | (x << 2)) & 0x09249249
+            return x
+
+        code = spread(q[:, 0]) | (spread(q[:, 1]) << 1) | (spread(q[:, 2]) << 2)
+        order = np.argsort(code, kind="stable")
+        n = len(order)
+        K = -(-n // self.SZ)
+        pad = K * self.SZ - n
+        self.order = np.concatenate([order, np.full(pad, -1, dtype=order.dtype)]).reshape(K, self.SZ)
+        tri = sc.tri[order]
+        mn = np.full((K * self.SZ, 3), np.inf)
+        mx = np.full((K * self.SZ, 3), -np.inf)
+        mn[:n] = tri.min(1)
+        mx[:n] = tri.max(1)
+        self.lo = mn.reshape(K, self.SZ, 3).min(1)
+        self.hi = mx.reshape(K, self.SZ, 3).max(1)
+        self.K = K
+        K2 = -(-K // self.G)
+        padk = K2 * self.G - K
+        lo2 = np.concatenate([self.lo, np.full((padk, 3), np.inf)])
+        hi2 = np.concatenate([self.hi, np.full((padk, 3), -np.inf)])
+        self.slo = lo2.reshape(K2, self.G, 3).min(1)               # büyük kutular: 64 kümelik gruplar
+        self.shi = hi2.reshape(K2, self.G, 3).max(1)
+
+
+def _closest_general(sc, cl, O, D, tk=None):
+    """
+    Rastgele yönlü ışınlar için en yakın isabet. Üç kademe: büyük kutular (64 küme) -> küme kutuları
+    (32 üçgen) -> üçgenler. Işın yalnız çarptığı kutuların içine girer.
+    """
+    R = len(O)
+    tb = np.full(R, np.inf)
+    ib = np.full(R, -1, dtype=np.int64)
+    K, G, SZ = cl.K, cl.G, cl.SZ
+    K2 = len(cl.slo)
+    step = max(1, 3000000 // max(K2, 1))
+    gar = np.arange(G)
+    for s in range(0, R, step):
+        o, d = O[s:s + step], D[s:s + step]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            inv = 1.0 / np.where(np.abs(d) < 1e-12, 1e-12, d)
+            t1 = (cl.slo[None] - o[:, None]) * inv[:, None]
+            t2 = (cl.shi[None] - o[:, None]) * inv[:, None]
+        hit1 = np.minimum(t1, t2).max(2) <= np.maximum(t1, t2).min(2)
+        hit1 &= np.maximum(t1, t2).min(2) >= 0.0
+        r1, s1 = np.nonzero(hit1)
+        P2 = 20000
+        for p2 in range(0, len(r1), P2):
+            if tk is not None:
+                tk()
+            rr, ss = r1[p2:p2 + P2], s1[p2:p2 + P2]
+            cid = (ss[:, None] * G + gar[None, :]).ravel()
+            ray = np.repeat(rr, G)
+            ok = cid < K
+            cid, ray = cid[ok], ray[ok]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                oo, ii = o[ray], inv[ray]
+                u1 = (cl.lo[cid] - oo) * ii
+                u2 = (cl.hi[cid] - oo) * ii
+            tn = np.minimum(u1, u2).max(1)
+            tf = np.maximum(u1, u2).min(1)
+            h2 = (tf >= np.maximum(tn, 0.0))
+            cid, ray = cid[h2], ray[h2]
+            pstep = 50000
+            for p in range(0, len(ray), pstep):
+                rc, kc = ray[p:p + pstep], cid[p:p + pstep]
+                tid = cl.order[kc].ravel()
+                rry = np.repeat(rc, SZ)
+                m = tid >= 0
+                tid, rry = tid[m], rry[m]
+                if len(tid) == 0:
+                    continue
+                Dd, Oo = d[rry], o[rry]
+                Nn, An, Bn = sc.N[tid], sc.A[tid], sc.B[tid]
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    t = (sc.v0N[tid] - (Oo * Nn).sum(1)) / (Dd * Nn).sum(1)
+                    u = (Oo * An).sum(1) - sc.v0A[tid] + t * (Dd * An).sum(1)
+                    v = (Oo * Bn).sum(1) - sc.v0B[tid] + t * (Dd * Bn).sum(1)
+                    okt = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
+                t = np.where(okt, t, np.inf)
+                order = np.argsort(rry, kind="stable")             # aynı ışının çiftleri bitişik olsun
+                rry, t, tid = rry[order], t[order], tid[order]
+                uniq, start = np.unique(rry, return_index=True)
+                cnt = np.diff(np.append(start, len(t)))
+                mins = np.minimum.reduceat(t, start)
+                seg = np.repeat(np.arange(len(uniq)), cnt)
+                mi = np.nonzero(np.isfinite(t) & (t == mins[seg]))[0]
+                if len(mi) == 0:
+                    continue
+                us, fi = np.unique(seg[mi], return_index=True)
+                g = uniq[us] + s
+                tt, ii2 = t[mi[fi]], tid[mi[fi]]
+                better = tt < tb[g]
+                tb[g[better]] = tt[better]
+                ib[g[better]] = ii2[better]
+    return tb, ib
+
+
+def _acc(acc, idx, vals):
+    np.add.at(acc, idx, vals)
+
+
+def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, tick=None, stage=None):
+    """
+    cam: dict(pos, fwd, up, persp=bool, size=float)
+         persp ise size = dikey bakış açısı (radyan), değilse ortografik görünüm yüksekliği.
+    progress(img, rows_done): her bantta çağrılır; False dönerse iptal.
+    tick(): uzun döngülerde ~0.15 sn'de bir çağrılır (arayüzü canlı tutmak için); False dönerse
+            _Cancelled fırlatılır. stage(mesaj): aşama bildirimi.
+    brute=True: eleme yok, her ışın tüm üçgenlerle test edilir (yalnız doğrulama için).
+    Ayarlar (modül düzeyi): GLASS (saydamlık), REFLECT_GLASS (cam yansıması), REFLECT_SURF (opak yüzey
+    yansıması), BOUNCES (en çok yansıma sayısı).
+    Döner: (h, w, 3) uint8 ya da iptal edilirse None.
+    """
+    tk = _Ticker(tick)
+    say = stage if stage is not None else (lambda s: None)
+    pos = np.asarray(cam["pos"], dtype=np.float64) - scene.center
+    right, up, fwd = camera_basis(np.asarray(cam["fwd"], float), np.asarray(cam["up"], float))
+    persp = bool(cam["persp"])
+    aspect = float(w) / float(h)
+    # Coin'de heightAngle/height küçük kenara uygulanır
+    base = (np.tan(cam["size"] / 2.0) if persp else cam["size"] / 2.0)
+    if aspect >= 1.0:
+        half_y, half_x = base, base * aspect
+    else:
+        half_x, half_y = base, base / aspect
+
+    lights = []                                              # (yön, doğrusal renk, güç, gölge?)
+    for lt in list(LIGHTS)[:3]:
+        if not lt.get("on", True) or float(lt["power"]) <= 0.0:
+            continue
+        if "dir" in lt:
+            # FreeCAD'in ışık yönü: kamera uzayında, ışığın GİTTİĞİ yön (x sağ, y yukarı, z gözlemciye doğru)
+            dx, dy, dz = lt["dir"]
+            Ld = _norm(-dx * right - dy * up + dz * fwd)
+        else:
+            hh, vv = np.radians(float(lt["h"])), np.radians(float(lt["v"]))
+            Ld = _norm(-fwd * (np.cos(vv) * np.cos(hh)) + right * (np.cos(vv) * np.sin(hh)) + up * np.sin(vv))
+        lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
+                       bool(lt.get("shadow", False)) and shadows))
+    amb = float(AMBIENT) * np.array(AMBIENT_COLOR, dtype=np.float64) ** 2.2
+    eps = scene.diag * 1e-5
+
+    alpha_t = scene.alpha if GLASS else np.ones(scene.count)   # 1 = opak
+    r_glass = float(REFLECT_GLASS) if GLASS else 0.0
+    r_surf = float(REFLECT_SURF)
+    bounces = int(BOUNCES)
+    has_glass = bool((alpha_t < 0.999).any())
+    secondary = has_glass or r_surf > 0.0                     # ikincil ışın gerekebilir
+
+    # Ortografik kamerada FreeCAD, kamera konumunun "arkasındaki" nesneleri de gösterir.
+    # Bu yüzden ışın başlangıcını tüm sahnenin gerisine çekiyoruz (izdüşüm değişmez).
+    zmin = float((scene.tri @ fwd).min() - pos @ fwd)
+    o_ortho = pos - fwd * (max(0.0, -zmin) + 0.05 * scene.diag)
+
+    say("üçgenler ekran karolarına dağıtılıyor (%d üçgen)..." % scene.count)
+    # Kamera/ışık aynı kaldıysa önceki render'ın ön hesapları (ekran karoları, gölge ızgarası, küme ağacı)
+    # sahne nesnesinde saklanır ve yeniden kullanılır; yalnız ışık/kalite ayarı değişince hesap tekrarlanmaz.
+    cache = scene.__dict__.setdefault("_cache", {})
+    bkey = ("bins", pos.tobytes(), right.tobytes(), up.tobytes(), fwd.tobytes(), persp,
+            float(half_x), float(half_y), int(w), int(h), int(tile))
+    if cache.get("bins_key") == bkey:
+        nx, ny, offs, sids, always = cache["bins"]
+    else:
+        cache.pop("bins", None)
+        nx, ny, offs, sids, always = _screen_bins(scene, pos, right, up, fwd, persp,
+                                                  half_x, half_y, w, h, tile)
+        cache["bins_key"], cache["bins"] = bkey, (nx, ny, offs, sids, always)
+    tk()
+    allids = np.arange(scene.count)
+    grids = {}
+    if shadows and not brute and any(lt[3] for lt in lights):
+        say("gölge ızgaraları hazırlanıyor...")
+        op_ids = np.nonzero(alpha_t >= 0.5)[0]
+        gl_ids = np.nonzero(alpha_t < 0.5)[0]
+        gcache = cache.setdefault("grids", {})
+        if len(gcache) > 6:
+            gcache.clear()
+        for li, lt in enumerate(lights):
+            if lt[3]:
+                gk = (lt[0].tobytes(), bool(GLASS), int(SHADOW_GRID))
+                if gk not in gcache:
+                    gcache[gk] = (_LightGrid(scene, lt[0], SHADOW_GRID, op_ids) if len(op_ids) else None,
+                                  _LightGrid(scene, lt[0], SHADOW_GRID, gl_ids) if len(gl_ids) else None)
+                grids[li] = gcache[gk]
+    clusters = None
+    if secondary and not brute:
+        say("yansıma/saydamlık hızlandırıcısı hazırlanıyor...")
+        if "clusters" not in cache:
+            cache["clusters"] = _Clusters(scene)
+        clusters = cache["clusters"]
+    say("ışınlar izleniyor...")
+
+    top, bot = np.array(BG_TOP), np.array(BG_BOTTOM)
+    img = np.zeros((h, w, 3), dtype=np.float64)
+    xs = ((np.arange(w) + 0.5) / w * 2.0 - 1.0) * half_x
+    top_l, bot_l = top ** 2.2, bot ** 2.2
+
+    def lights_blocked(Pl, li):
+        """Yüzey noktalarından li. ışığa giden yol: 0 = açık, 1 = opak engel, 2 = cam engel."""
+        Ld = lights[li][0]
+        out = np.zeros(len(Pl), dtype=np.int8)
+        Dg = np.broadcast_to(Ld, (len(Pl), 3))
+        if brute:
+            if GLASS and has_glass:
+                oi = np.nonzero(alpha_t >= 0.5)[0]
+                gi = np.nonzero(alpha_t < 0.5)[0]
+            else:
+                oi, gi = allids, np.zeros(0, dtype=np.int64)
+            if len(gi):
+                out[_any(scene, Pl, Dg, gi)] = 2
+            if len(oi):
+                out[_any(scene, Pl, Dg, oi)] = 1
+            return out
+        gop, ggl = grids.get(li, (None, None))
+        if ggl is not None:
+            out[ggl.shadowed(scene, Pl, Ld, tk)] = 2
+        if gop is not None:
+            out[gop.shadowed(scene, Pl, Ld, tk)] = 1
+        return out
+
+    def trace(px, py, sx, sy):
+        """px,py: piksel koordinatları (n,), sx,sy: piksel içi konum (0..1). Döner doğrusal renk (n,3)."""
+        n = len(px)
+        X = (((px + sx) / w) * 2.0 - 1.0)[:, None] * half_x
+        Y = (1.0 - ((py + sy) / h) * 2.0)[:, None] * half_y
+        if persp:
+            D0 = _norm(fwd + right * X + up * Y)
+            O0 = np.tile(pos, (n, 1))
+        else:
+            D0 = np.tile(fwd, (n, 1))
+            O0 = o_ortho + right * X + up * Y
+        tv = (((py + sy) / h))[:, None]
+        bg_lin = (top * (1 - tv) + bot * tv) ** 2.2
+        cid = (py // tile) * nx + (px // tile)                 # her ışının ekran karosu
+        acc = np.zeros((n, 3))
+
+        # ışın listesi: piksel, başlangıç, yön, ağırlık, yansıma sayısı, birincil-doğrultu bayrağı
+        pix = np.arange(n)
+        RO, RD = O0, D0
+        RW = np.ones(n)
+        RN = np.zeros(n, dtype=np.int64)
+        RP = np.ones(n, dtype=bool)
+        maxdepth = 1 if not secondary else 6
+        for depth in range(maxdepth):
+            m = len(pix)
+            if m == 0:
+                break
+            tb = np.full(m, np.inf)
+            ti = np.full(m, -1, dtype=np.int64)
+            pm = np.nonzero(RP)[0]
+            if len(pm):
+                cs = cid[pix[pm]]
+                order = np.argsort(cs, kind="stable")
+                pm, cs = pm[order], cs[order]
+                cuts = np.nonzero(np.diff(cs))[0] + 1
+                for sel in np.split(pm, cuts):
+                    tk()
+                    if brute:
+                        ids = allids
+                    else:
+                        c = int(cid[pix[sel[0]]])
+                        ids = sids[offs[c]:offs[c + 1]]
+                        if len(always):
+                            ids = np.concatenate((always, ids))
+                        if len(ids) == 0:
+                            continue
+                    t_, i_ = _closest(scene, RO[sel], RD[sel], ids)
+                    tb[sel], ti[sel] = t_, i_
+            gm = np.nonzero(~RP)[0]
+            if len(gm):
+                if brute:
+                    t_, i_ = _closest(scene, RO[gm], RD[gm], allids)
+                else:
+                    t_, i_ = _closest_general(scene, clusters, RO[gm], RD[gm], tk)
+                tb[gm], ti[gm] = t_, i_
+
+            miss = np.nonzero(ti < 0)[0]
+            if len(miss):
+                sky = np.clip(RD[miss][:, 2:3] * 0.5 + 0.5, 0, 1)
+                env = np.where(RP[miss][:, None], bg_lin[pix[miss]], top_l * sky + bot_l * (1 - sky))
+                _acc(acc, pix[miss], RW[miss][:, None] * env)
+
+            hi = np.nonzero(ti >= 0)[0]
+            if len(hi) == 0:
+                break
+            tid = ti[hi]
+            Dh = RD[hi]
+            P = RO[hi] + Dh * tb[hi][:, None]
+            nrm = scene.n_unit[tid].copy()
+            nrm[(nrm * Dh).sum(1) > 0] *= -1.0
+            albedo = scene.colors[tid] ** 2.2                   # sRGB -> doğrusal
+            a = alpha_t[tid]
+
+            lit = np.tile(amb, (len(hi), 1))
+            spec_sum = np.zeros((len(hi), 3))
+            for li, (Ld, lcol, power, cast) in enumerate(lights):
+                ndl = np.clip((nrm * Ld).sum(1), 0, None)
+                if cast:
+                    lit_idx = np.nonzero(ndl > 0)[0]
+                    if len(lit_idx):
+                        blk = lights_blocked(P[lit_idx] + nrm[lit_idx] * eps, li)
+                        ndl[lit_idx[blk == 1]] = 0.0
+                        ndl[lit_idx[blk == 2]] *= 0.55            # camdan geçen ışık: yarı gölge
+                lit += (power * ndl)[:, None] * lcol
+                Hh = _norm(Ld - Dh)
+                sp = np.clip((nrm * Hh).sum(1), 0, None) ** SHININESS * (ndl > 0)
+                spec_sum += (SPEC * min(power / 0.7, 1.5) * sp)[:, None] * lcol
+            surf = albedo * lit + spec_sum
+
+            glass = a < 0.999
+            cosv = np.clip(-(nrm * Dh).sum(1), 0, 1)
+            R = np.where(glass, np.clip(r_glass * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), r_surf)
+            wl = a * (1 - R)
+            wr = R
+            wt = (1 - a) * (1 - R)
+            W = RW[hi]
+            _acc(acc, pix[hi], (W * wl)[:, None] * surf)
+
+            if depth + 1 >= maxdepth:
+                break
+            nxt = []
+            sel = np.nonzero((wr * W > 0.02) & (RN[hi] < bounces))[0]
+            if len(sel):                                         # yansıyan ışınlar
+                Dr = Dh[sel] - 2.0 * (Dh[sel] * nrm[sel]).sum(1)[:, None] * nrm[sel]
+                nxt.append((pix[hi][sel], P[sel] + nrm[sel] * eps, _norm(Dr), (W * wr)[sel],
+                            RN[hi][sel] + 1, np.zeros(len(sel), dtype=bool)))
+            sel = np.nonzero(wt * W > 0.02)[0]
+            if len(sel):                                         # camdan geçen ışınlar
+                nxt.append((pix[hi][sel], P[sel] + Dh[sel] * eps, Dh[sel], (W * wt)[sel],
+                            RN[hi][sel], RP[hi][sel]))
+            if not nxt:
+                break
+            pix = np.concatenate([q[0] for q in nxt])
+            RO = np.concatenate([q[1] for q in nxt])
+            RD = np.concatenate([q[2] for q in nxt])
+            RW = np.concatenate([q[3] for q in nxt])
+            RN = np.concatenate([q[4] for q in nxt])
+            RP = np.concatenate([q[5] for q in nxt])
+        return acc
+
+    def to_srgb(lin):
+        return np.clip(lin, 0, 1) ** (1 / 2.2)
+
+    # ---- 1. geçiş: piksel başına 1 örnek (piksel merkezi), bant bant ----
+    px_all = np.tile(np.arange(w), tile)
+    for ty in range(ny):
+        r0, r1 = ty * tile, min(ty * tile + tile, h)
+        nrow = r1 - r0
+        px = px_all[:nrow * w] if nrow == tile else np.tile(np.arange(w), nrow)
+        py = np.repeat(np.arange(r0, r1), w)
+        acc = trace(px, py, 0.5, 0.5)
+        img[r0:r1] = to_srgb(acc).reshape(nrow, w, 3)
+        if progress is not None and progress(img, r1) is False:
+            return None
+
+    # ---- 2. geçiş: kenar yumuşatma (yalnız kenar piksellerinde k x k örnek) ----
+    k = int(AA)
+    if k >= 2:
+        say("kenarlar aranıyor...")
+        gx = np.zeros((h, w))
+        d = np.abs(img[:, 1:] - img[:, :-1]).max(2)
+        gx[:, 1:] = np.maximum(gx[:, 1:], d)
+        gx[:, :-1] = np.maximum(gx[:, :-1], d)
+        d = np.abs(img[1:, :] - img[:-1, :]).max(2)
+        gx[1:, :] = np.maximum(gx[1:, :], d)
+        gx[:-1, :] = np.maximum(gx[:-1, :], d)
+        ey, ex = np.nonzero(gx > AA_THRESH)
+        ne = len(ey)
+        say("kenar yumuşatma: %d piksel x %d örnek..." % (ne, k * k))
+        offs_s = (np.arange(k) + 0.5) / k
+        chunk = 6000
+        for s0 in range(0, ne, chunk):
+            tk()
+            cy, cx = ey[s0:s0 + chunk], ex[s0:s0 + chunk]
+            tot = np.zeros((len(cy), 3))
+            for oy in offs_s:
+                for ox in offs_s:
+                    tot += trace(cx, cy, ox, oy)
+            img[cy, cx] = to_srgb(tot / (k * k))
+            if progress is not None and progress(img, h, min(1.0, (s0 + chunk) / float(max(ne, 1))),
+                                                 "kenar yumuşatma") is False:
+                return None
+    return (np.clip(img, 0, 1) * 255.0 + 0.5).astype(np.uint8)
+
+
+def write_png(path, arr):
+    """Bağımlılıksız PNG yazıcı. arr: (h, w, 3) uint8."""
+    h, w, _ = arr.shape
+    raw = b"".join(b"\x00" + arr[y].tobytes() for y in range(h))
+
+    def chunk(tag, data):
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(raw, 6))
+    png += chunk(b"IEND", b"")
+    with open(path, "wb") as f:
+        f.write(png)
+
+
+def pick_out_path(doc_filename):
+    """Yazılabilir bir klasör seç: belge klasörü -> ~/Pictures -> ev dizini -> geçici klasör."""
+    if OUT_NAME:
+        return OUT_NAME
+    name = (os.path.splitext(os.path.basename(doc_filename))[0] + "_render.png"
+            if doc_filename else "FreeCAD_render.png")
+    dirs = []
+    if doc_filename:
+        dirs.append(os.path.dirname(doc_filename))
+    home = os.path.expanduser("~")
+    dirs += [os.path.join(home, "Pictures"), os.path.join(home, "Resimler"), home]
+    import tempfile
+    dirs.append(tempfile.gettempdir())
+    for d in dirs:
+        if d and os.path.isdir(d) and os.access(d, os.W_OK):
+            return os.path.join(d, name)
+    return os.path.join(home, name)
+
+
+# ============================ FREECAD KISMI ============================
+def _visible_chain(chain):
+    """Yoldaki (kök .. yaprak) tüm nesneler görünür olmalı."""
+    for x in chain:
+        try:
+            if not x.Visibility:
+                return False
+        except Exception:
+            pass
+    return True
+
+
+def _is_body(x):
+    try:
+        return x.TypeId == "PartDesign::Body"
+    except Exception:
+        return False
+
+
+_MAX_EXTENT = 1e8      # mm; bundan büyük sınır kutusu = sonsuz düzlem gibi geçersiz şekil
+
+
+def _is_origin_feature(x):
+    try:
+        if x.TypeId in ("App::Origin", "App::Plane", "App::Line", "App::Point"):
+            return True
+        return bool(x.isDerivedFrom("App::OriginFeature"))
+    except Exception:
+        return False
+
+
+def _sane_bbox(shp):
+    """Sonlu ve makul boyutlu mu? (NaN/inf karşılaştırması False döner)"""
+    try:
+        return shp.BoundBox.DiagonalLength < _MAX_EXTENT
+    except Exception:
+        return False
+
+
+def _rgb(c):
+    """FreeCAD renk değerini (tuple, Base.Color, ...) (r, g, b) float üçlüsüne çevir."""
+    try:
+        return (float(c[0]), float(c[1]), float(c[2]))
+    except Exception:
+        return (float(c.r), float(c.g), float(c.b))
+
+
+def _vo_colors(vo, nfaces):
+    """
+    Bir ViewObject'in renklerini oku. Döner (taban_renk, yüz_başına_liste | None, kaynak).
+    Sıra: ShapeAppearance (FreeCAD >= 1.0) -> DiffuseColor -> ShapeColor.
+    """
+    try:                                                  # FreeCAD 1.x: gerçek kaynak ShapeAppearance
+        cols = [_rgb(m.DiffuseColor) for m in vo.ShapeAppearance]
+        if cols:
+            if nfaces > 1 and len(cols) == nfaces:
+                return cols[0], cols, "ShapeAppearance+yüz"
+            return cols[0], None, "ShapeAppearance"
+    except Exception:
+        pass
+    base = None
+    try:
+        base = _rgb(vo.ShapeColor)
+    except Exception:
+        pass
+    try:                                                  # eski sürümler / eski dosyalar
+        d = [_rgb(c) for c in vo.DiffuseColor]
+        if nfaces > 1 and len(d) == nfaces:
+            return (base or d[0]), d, "DiffuseColor+yüz"
+        if base is None and d:
+            base = d[0]
+    except Exception:
+        pass
+    if base is not None:
+        return base, None, "ShapeColor"
+    return (0.8, 0.8, 0.8), None, "varsayılan"
+
+
+def _display_colors(o, tgt, nfaces):
+    """
+    Ekranda görünen rengi bul. Döner (taban_renk, yüz_başına_renk_listesi | None, kaynak_etiketi).
+    Link'in kendi ViewObject'inde yüz rengi yoktur: OverrideMaterial kapalıyken renk bağlı olduğu
+    (hedef) nesneden gelir; açıksa Link'in ShapeMaterial rengi geçerlidir.
+    """
+    try:
+        if o is not tgt:
+            lvo = o.ViewObject
+            if lvo is not None and getattr(lvo, "OverrideMaterial", False):
+                return _rgb(lvo.ShapeMaterial.DiffuseColor), None, "link-override"
+        src = tgt
+        if _is_body(src) and getattr(src, "Tip", None) is not None:
+            src = src.Tip                                 # Body rengi Tip özelliğinden gelir
+        vo = src.ViewObject
+        if vo is not None:
+            base, dc, how = _vo_colors(vo, nfaces)
+            return base, dc, ("hedef:" if o is not tgt else "") + how
+    except Exception:
+        pass
+    return (0.8, 0.8, 0.8), None, "varsayılan"
+
+
+def _display_opacity(o, tgt, nfaces):
+    """
+    Opaklık (1 = opak). Döner (taban, yüz_başına_liste | None).
+    Kaynaklar: ViewObject.Transparency (0..100) ve ShapeAppearance[i].Transparency (0..1).
+    """
+    try:
+        src = tgt
+        if _is_body(src) and getattr(src, "Tip", None) is not None:
+            src = src.Tip
+        vo = src.ViewObject
+        if vo is None:
+            return 1.0, None
+        vt = 0.0
+        try:
+            vt = float(vo.Transparency) / 100.0
+        except Exception:
+            pass
+        mats = []
+        try:
+            mats = [float(m.Transparency) for m in vo.ShapeAppearance]
+        except Exception:
+            mats = []
+        if nfaces > 1 and len(mats) == nfaces:
+            per = [max(0.0, min(1.0, 1.0 - max(vt, t))) for t in mats]
+            return per[0], per
+        t0 = mats[0] if mats else 0.0
+        return max(0.0, min(1.0, 1.0 - max(vt, t0))), None
+    except Exception:
+        return 1.0, None
+
+
+def _color_props(o, tgt):
+    """Tanılama: renkle ilgili özellik adları ve değerleri (Report View'a yazılır)."""
+    out = []
+    try:
+        for label, obj in (("link", o if o is not tgt else None), ("hedef", tgt)):
+            vo = getattr(obj, "ViewObject", None) if obj is not None else None
+            if vo is None:
+                continue
+            names = [p for p in vo.PropertiesList
+                     if any(k in p for k in ("Color", "Material", "Appearance", "Override"))]
+            parts = []
+            for p in names:
+                try:
+                    v = getattr(vo, p)
+                    s = repr(v)
+                    parts.append("%s=%s" % (p, s if len(s) < 60 else s[:57] + "..."))
+                except Exception:
+                    parts.append(p)
+            out.append("%s.ViewObject: %s" % (label, "; ".join(parts)))
+    except Exception:
+        pass
+    return out
+
+
+def _nostatus(msg, force=False, frac=None):
+    pass
+
+
+def _gather(doc, log, status=_nostatus):
+    """
+    Görünür, yüzeyli tüm nesneleri dünya koordinatında toplar (Link, Assembly, App::Part, Body dahil).
+    Döner: [(nesne, hedef_nesne, shape, subname)]
+    """
+    import Part
+    items, seen, keys = [], set(), set()
+    ntot = max(1, len(doc.Objects))
+
+    def dup(tgt, shp):
+        """Aynı nesne aynı yerde ikinci kez (örn. iki farklı grup yolu) gelirse atla."""
+        try:
+            b = shp.BoundBox
+            k = (tgt.Name, len(shp.Faces), round(b.XMin, 2), round(b.XMax, 2), round(b.YMin, 2),
+                 round(b.YMax, 2), round(b.ZMin, 2), round(b.ZMax, 2))
+        except Exception:
+            return False
+        if k in keys:
+            return True
+        keys.add(k)
+        return False
+
+    def rec(root, subname, depth, known=None):
+        """known: nesne doğrudan belge ağacından biliniyorsa (Group listesi) yol çözümlemesi atlanır.
+        (Arch BuildingPart içinde getSubObjectList yanlış nesne döndürüp üstel döngüye yol açıyordu.)"""
+        status("sahne taranıyor... %d nesne" % len(items), frac=min(1.0, len(seen) / float(ntot)))
+        if known is not None:
+            seen.add(known.Name)
+            if not _visible_chain([known]):
+                return
+            obj = known
+        else:
+            try:
+                chain = root.getSubObjectList(subname) if subname else [root]
+            except Exception as ex:
+                log("! %s / %s: yol çözülemedi (%s)" % (root.Name, subname, ex))
+                return
+            for x in chain:
+                seen.add(x.Name)
+            if not _visible_chain(chain):
+                return
+            obj = chain[-1]
+        if DEBUG:
+            import FreeCAD as _FC
+            _FC.Console.PrintMessage("  [tara] %s%s (%s)\n" % ("  " * depth, obj.Name, getattr(obj, "TypeId", "?")))
+            status("taranıyor: " + str(getattr(obj, "Label", obj.Name))[:30], True)
+        try:
+            tgt = obj.getLinkedObject(True) or obj
+        except Exception:
+            tgt = obj
+        if _is_origin_feature(tgt):
+            return                                        # Origin / eksen / düzlem: sonsuz "şekil", çizme
+        if depth < 8 and not _is_body(tgt):
+            subs = []
+            grp = getattr(tgt, "Group", None)
+            if obj is tgt and isinstance(grp, (list, tuple)) and grp and \
+                    all(hasattr(g, "Name") for g in grp):
+                # Arch/Draft kapsayıcıları (Site, Building, Floor, klasör): çocuklara doğrudan in,
+                # kapsayıcının kendi (tüm çocukları birleştiren, çok yavaş) şeklini ASLA isteme.
+                for g in grp:
+                    rec(root, subname + g.Name + ".", depth + 1, known=g)
+                return
+            elif not (obj is tgt and hasattr(tgt, "Shape")):
+                try:
+                    subs = tgt.getSubObjects()
+                except Exception:
+                    subs = []
+            if subs:                                      # kapsayıcı (grup / App::Part / Assembly / Link->Part)
+                for s in subs:
+                    rec(root, subname + s, depth + 1)
+                return
+        if not (hasattr(tgt, "Shape") or obj is not tgt):
+            return                                        # şekli olmayan nesne (Origin, Joint, ...)
+        try:
+            if known is not None and obj is tgt and hasattr(obj, "Shape") and hasattr(obj, "getGlobalPlacement"):
+                shp = obj.Shape
+                if shp.isNull() or not shp.Faces:
+                    return
+                shp = shp.copy()
+                shp.Placement = obj.getGlobalPlacement()
+            else:
+                shp = Part.getShape(root, subname=subname, needSubElement=False, transform=True)
+            if shp.isNull() or not shp.Faces:
+                return
+            if not _sane_bbox(shp):
+                log("! %s / %s: sınır kutusu geçersiz/devasa, atlandı" % (root.Name, subname))
+                return
+        except Exception as ex:
+            log("! %s / %s: şekil alınamadı (%s)" % (root.Name, subname, ex))
+            return
+        if dup(tgt, shp):
+            return
+        items.append((obj, tgt, shp, subname))
+
+    for r in doc.RootObjects:
+        rec(r, "", 0)
+
+    # Yedek: yukarıdaki gezintide hiç uğranmayan görünür nesneler (gruba bağlı olmayanlar)
+    for o in doc.Objects:
+        if o.Name in seen or not hasattr(o, "Shape"):
+            continue
+        status("yedek tarama... %d nesne" % len(items))
+        try:
+            if not o.Visibility:
+                continue
+            vo = o.ViewObject
+            if vo is not None and hasattr(vo, "Visibility") and not vo.Visibility:
+                continue
+            par = o.getParentGeoFeatureGroup()
+            if par is not None and _is_body(par):
+                continue                                  # Body kendi şeklini zaten çiziyor
+            if _is_origin_feature(o):
+                continue
+            shp = o.Shape
+            if shp.isNull() or not shp.Faces or not _sane_bbox(shp):
+                continue
+            shp = shp.copy()
+            if hasattr(o, "getGlobalPlacement"):
+                shp.Placement = o.getGlobalPlacement()
+        except Exception as ex:
+            log("! %s: yedek tarama hatası (%s)" % (o.Name, ex))
+            continue
+        if dup(o, shp):
+            continue
+        items.append((o, o, shp, ""))
+    return items
+
+
+def collect_scene(doc, status=_nostatus):
+    """Görünür nesneleri üçgenlere çevirir. Döner: Scene, nesne sayısı."""
+    import FreeCAD
+
+    if DEBUG:
+        def log(s):
+            FreeCAD.Console.PrintMessage("  " + s + "\n")
+    else:
+        def log(s):
+            pass
+
+    t0 = time.time()
+    status("sahne taranıyor...", True)
+    items = _gather(doc, log, status)
+    if not items:
+        raise RuntimeError("Görünür, yüzeyi olan nesne bulunamadı.")
+    bb = FreeCAD.BoundBox()
+    for it in items:
+        bb.add(it[2].BoundBox)
+    t1 = time.time()
+
+    tol = max(bb.DiagonalLength * TESS_FACTOR, 1e-6)
+    if DEBUG:
+        FreeCAD.Console.PrintMessage(
+            "RayTrace: %d nesne bulundu (%.1f sn), sahne köşegeni %.1f mm, tessellate toleransı %.3f mm\n"
+            % (len(items), t1 - t0, bb.DiagonalLength, tol))
+    tris, cols, alps = [], [], []
+    ntri = 0
+    diag_left = [2]
+    for k, (o, tgt, shp, sub) in enumerate(items):
+        name = (sub.rstrip(".") or o.Name)
+        n_before = ntri
+        base, dc, how = _display_colors(o, tgt, len(shp.Faces))
+        abase, ad = _display_opacity(o, tgt, len(shp.Faces))
+        if DEBUG and diag_left[0] > 0:
+            diag_left[0] -= 1
+            for line in _color_props(o, tgt):
+                log("[renk özellikleri] " + name + " -> " + line)
+        for i, face in enumerate(shp.Faces):
+            if i % 100 == 0:
+                status("üçgenleniyor %d/%d: %s (%d üçgen)" % (k + 1, len(items), name[:24], ntri),
+                       frac=(k + i / float(max(len(shp.Faces), 1))) / float(len(items)))
+            try:
+                verts, facets = face.tessellate(tol)
+            except Exception:
+                continue
+            if not facets:
+                continue
+            V = np.array([(p.x, p.y, p.z) for p in verts], dtype=np.float64)
+            F = np.array(facets, dtype=np.int64)
+            tris.append(V[F])
+            ntri += len(F)
+            c = dc[i] if dc is not None else base
+            cols.append(np.tile(np.array(c, dtype=np.float64), (len(F), 1)))
+            alps.append(np.full(len(F), ad[i] if ad is not None else abase))
+        if DEBUG:
+            b = shp.BoundBox
+            FreeCAD.Console.PrintMessage(
+                "  %-30s yüz:%4d üçgen:%6d renk:(%.2f %.2f %.2f) opak:%.2f %-12s x[%.0f..%.0f] y[%.0f..%.0f] z[%.0f..%.0f]\n"
+                % (name[:30], len(shp.Faces), ntri - n_before,
+                   base[0], base[1], base[2], (min(ad) if ad is not None else abase), how,
+                   b.XMin, b.XMax, b.YMin, b.YMax, b.ZMin, b.ZMax))
+    if not tris:
+        raise RuntimeError("Tessellation üçgen üretmedi.")
+    t2 = time.time()
+    status("ışın izleme ön hesapları (%d üçgen)..." % ntri, True)
+    sc = Scene(np.concatenate(tris), np.concatenate(cols), np.concatenate(alps))
+    if DEBUG:
+        FreeCAD.Console.PrintMessage("RayTrace: tessellate %.1f sn, ön hesap %.1f sn\n"
+                                     % (t2 - t1, time.time() - t2))
+    return sc, len(items)
+
+
+def read_camera(view):
+    """Aktif 3B görünümün kamerasını okur. Döner: (cam dict, ekran en/boy oranı)."""
+    from pivy import coin
+    cam = view.getCameraNode()
+    pos = np.array(cam.position.getValue().getValue(), dtype=np.float64)
+    rot = cam.orientation.getValue()
+    fwd = np.array(rot.multVec(coin.SbVec3f(0, 0, -1)).getValue(), dtype=np.float64)
+    up = np.array(rot.multVec(coin.SbVec3f(0, 1, 0)).getValue(), dtype=np.float64)
+    persp = cam.isOfType(coin.SoPerspectiveCamera.getClassTypeId())
+    size = cam.heightAngle.getValue() if persp else cam.height.getValue()
+    try:
+        sw, sh = view.getSize()
+        aspect = float(sw) / float(sh)
+    except Exception:
+        aspect = 4.0 / 3.0
+    return dict(pos=pos, fwd=fwd, up=up, persp=persp, size=float(size)), aspect
+
+
+_FC_LIGHT_DEFAULTS = (            # (ad, açı-yatay, açı-dikey, renk RRGGBBAA, güç %)  -- FreeCAD kaynağındaki varsayılanlar
+    ("Headlight", 100.0, -46.0, 0xFFFFFFFF, 90),
+    ("Backlight", -130.0, -10.0, 0xF5F5EEFF, 60),
+    ("FillLight", -40.0, 5.0, 0xE6FAFFFF, 40),
+)
+
+
+def read_freecad_lights(log=None):
+    """
+    FreeCAD'in Tercihler > Display > Light Sources ayarlarını okur (FreeCAD 1.1+: View/LightSources grubu).
+    Döner: (LIGHTS listesi, ortam gücü 0..1, ortam rengi, bilgi metni). Okunamazsa None.
+    Yön: kamera uzayında vektör (FreeCAD açıdan şöyle üretir: (sin az cos el, cos az cos el, sin el)).
+    """
+    import re
+    import FreeCAD
+    pre = "User parameter:BaseApp/Preferences/View"
+    grp, used, keys = None, None, []
+    for path in (pre + "/LightSources", pre):
+        try:
+            g = FreeCAD.ParamGet(path)
+            names = [c[1] for c in (g.GetContents() or [])]
+        except Exception:
+            continue
+        hit = [n for n in names if n.startswith(("Headlight", "Backlight", "FillLight", "AmbientLight"))]
+        if hit:
+            grp, used, keys = g, path, hit
+            break
+    info = "ayarlar: %s (%d anahtar)" % (used.split(":")[-1], len(keys)) if grp is not None \
+        else "FreeCAD ışık parametreleri bulunamadı, varsayılan değerler kullanıldı"
+    if grp is None:
+        try:
+            gv = FreeCAD.ParamGet(pre)
+            info += " | View grubu: alt gruplar=%s" % list(gv.GetGroups())[:12]
+        except Exception:
+            pass
+        grp = FreeCAD.ParamGet(pre + "/LightSources")
+    num = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+    lights = []
+    for i, (nm, az, el, rgba, pw) in enumerate(_FC_LIGHT_DEFAULTS):
+        try:
+            on = bool(grp.GetBool("Enable" + nm, True))
+            col = int(grp.GetUnsigned(nm + "Color", rgba))
+            power = int(grp.GetInt(nm + "Intensity", pw)) / 100.0
+            txt = grp.GetString(nm + "Direction", "")
+        except Exception:
+            on, col, power, txt = True, rgba, pw / 100.0, ""
+        v = [float(x) for x in num.findall(txt)][:3]
+        if len(v) < 3:
+            a, e = np.radians(az), np.radians(el)
+            v = [np.sin(a) * np.cos(e), np.cos(a) * np.cos(e), np.sin(e)]
+        n = float(np.linalg.norm(v)) or 1.0
+        lights.append(dict(on=on, dir=(v[0] / n, v[1] / n, v[2] / n),
+                           color=(((col >> 24) & 255) / 255.0, ((col >> 16) & 255) / 255.0, ((col >> 8) & 255) / 255.0),
+                           power=power, shadow=(i == 0)))
+    try:
+        ac = int(grp.GetUnsigned("AmbientLightColor", 0xFFFFFFFF))
+        ap = int(grp.GetInt("AmbientLightIntensity", 20)) / 100.0
+    except Exception:
+        ac, ap = 0xFFFFFFFF, 0.2
+    amb_col = (((ac >> 24) & 255) / 255.0, ((ac >> 16) & 255) / 255.0, ((ac >> 8) & 255) / 255.0)
+    info += " | ışıklar: " + ", ".join("%s %s %d%%" % (n, "açık" if l["on"] else "kapalı", round(l["power"] * 100))
+                                        for n, l in zip(("ana", "arka", "dolgu"), lights)) + ", ortam %d%%" % round(ap * 100)
+    if log:
+        log(info)
+    return lights, ap, amb_col, info
+
+
+_QUALITY = [("Low", 0.012), ("Hızlı", 0.004), ("Normal", 0.0015), ("İnce", 0.0008)]   # Low: çok büyük montajlar için
+
+
+def main():
+    """Ayar paneli olan, kapanmayan (modeless) bir pencere açar. Render, 'Render' düğmesine basınca başlar."""
+    import FreeCAD
+    import FreeCADGui as Gui
+    from PySide import QtGui, QtCore
+
+    doc = FreeCAD.ActiveDocument
+    if doc is None or Gui.ActiveDocument is None:
+        FreeCAD.Console.PrintError("RayTrace: açık belge yok.\n")
+        return
+    old = getattr(FreeCAD, "_raytrace_dlg", None)          # önceki pencere açıksa kapat
+    if old is not None:
+        try:
+            old.close()
+        except Exception:
+            pass
+    g = globals()
+
+    dlg = QtGui.QDialog(Gui.getMainWindow())
+    dlg.setWindowTitle("FC YBT Raytracer")
+    outer = QtGui.QHBoxLayout(dlg)
+
+    def spin(lo, hi, val, step=1, suffix=""):
+        sp = QtGui.QSpinBox()
+        sp.setRange(lo, hi)
+        sp.setSingleStep(step)
+        sp.setValue(int(round(val)))
+        if suffix:
+            sp.setSuffix(suffix)
+        return sp
+
+    # ================= SOL: Settings =================
+    left = QtGui.QWidget()
+    lv = QtGui.QVBoxLayout(left)
+    lv.setContentsMargins(0, 0, 0, 0)
+
+    # ---- Kalite Ayarları ----
+    qbox = QtGui.QGroupBox("Kalite Ayarları")
+    qg = QtGui.QGridLayout(qbox)
+    sp_w = spin(160, 4000, WIDTH, 80, " px")
+    cb_q = QtGui.QComboBox()
+    for name, _f in _QUALITY:
+        cb_q.addItem(name)
+    cb_q.setCurrentIndex(min(range(len(_QUALITY)), key=lambda i: abs(_QUALITY[i][1] - TESS_FACTOR)))
+    cb_aa = QtGui.QComboBox()
+    for name in ("Kapalı", "2x2", "3x3", "4x4"):
+        cb_aa.addItem(name)
+    cb_aa.setCurrentIndex(0 if int(AA) < 2 else min(3, int(AA) - 1))
+    sp_bn = spin(0, 3, BOUNCES)
+    sp_rg = spin(0, 200, REFLECT_GLASS * 100, 10, " %")
+    sp_rs = spin(0, 60, REFLECT_SURF * 100, 5, " %")
+    ck_sh = QtGui.QCheckBox("Gölgeler")
+    ck_sh.setChecked(bool(SHADOWS))
+    ck_gl = QtGui.QCheckBox("Saydamlık (cam)")
+    ck_gl.setChecked(bool(GLASS))
+    ck_sv = QtGui.QCheckBox("Bitince otomatik kaydet")
+    ck_sv.setChecked(True)
+    sp_w.setToolTip("Çıktı genişliği; yükseklik 3B görünümün oranından gelir")
+    cb_q.setToolTip("Yüzey pürüzsüzlüğü (üçgenleme inceliği). Değişince sahne yeniden okunur")
+    cb_aa.setToolTip("Kenar yumuşatma: yalnız kenar piksellerinde çoklu örnekleme yapar")
+    ck_gl.setToolTip("Nesnenin Transparency (saydamlık) özelliğine göre arkası görünür")
+    sp_rg.setToolTip("Cam yüzeylerin yansıması (Fresnel: eğik bakışta daha çok)")
+    sp_rs.setToolTip("Opak yüzeylerin sabit yansıması; 0 = kapalı (en hızlı)")
+    sp_bn.setToolTip("Bir ışının en çok kaç kez yansıyacağı")
+    qrows = [("Genişlik", sp_w, "Kalite", cb_q),
+             ("Kenar yumuşatma", cb_aa, "Yansıma sayısı", sp_bn),
+             ("Cam yansıması", sp_rg, "Yüzey yansıması", sp_rs)]
+    for r, (l1, w1, l2, w2) in enumerate(qrows):
+        qg.addWidget(QtGui.QLabel(l1), r * 2, 0)
+        qg.addWidget(QtGui.QLabel(l2), r * 2, 1)
+        qg.addWidget(w1, r * 2 + 1, 0)
+        qg.addWidget(w2, r * 2 + 1, 1)
+    qg.addWidget(ck_sh, 6, 0)
+    qg.addWidget(ck_gl, 6, 1)
+    qg.addWidget(ck_sv, 7, 0, 1, 2)
+    lv.addWidget(qbox)
+
+    # ---- Işık Ayarları: ortam + en çok 3 ışık ----
+    lbox = QtGui.QGroupBox("Işık Ayarları")
+    lvb = QtGui.QVBoxLayout(lbox)
+    colors = {}
+
+    def color_button(key, rgb):
+        colors[key] = tuple(rgb)
+        bt = QtGui.QPushButton("")
+        bt.setFixedWidth(54)
+
+        def paint():
+            r, g_, b_ = [int(round(max(0.0, min(1.0, v)) * 255)) for v in colors[key]]
+            bt.setStyleSheet("background-color: rgb(%d,%d,%d);" % (r, g_, b_))
+
+        def pick(*_a):
+            r, g_, b_ = [int(round(max(0.0, min(1.0, v)) * 255)) for v in colors[key]]
+            col = QtGui.QColorDialog.getColor(QtGui.QColor(r, g_, b_), dlg, "Işık rengi")
+            if col.isValid():
+                colors[key] = (col.red() / 255.0, col.green() / 255.0, col.blue() / 255.0)
+                paint()
+        bt.clicked.connect(pick)
+        paint()
+        return bt
+
+    ck_fc = QtGui.QCheckBox("FreeCAD ışık ayarlarını kullan")
+    ck_fc.setToolTip("İşaretliyse Tercihler > Display > Light Sources ayarları kullanılır; aşağıdaki ayarlar devre dışı kalır")
+    lvb.addWidget(ck_fc)
+    lrows = []
+    names = ("Ana ışık", "Dolgu ışığı", "Arka ışık")
+    for i in range(3):
+        lt = LIGHTS[i] if i < len(LIGHTS) else dict(on=False, h=0.0, v=0.0, color=(1, 1, 1), power=0.3, shadow=False)
+        frame = QtGui.QFrame()
+        frame.setFrameShape(QtGui.QFrame.StyledPanel)
+        fg = QtGui.QGridLayout(frame)
+        fg.setContentsMargins(6, 4, 6, 4)
+        ck = QtGui.QCheckBox(names[i])
+        ck.setChecked(bool(lt["on"]))
+        cbn = color_button("l%d" % i, lt["color"])
+        sp_ = spin(0, 200, float(lt["power"]) * 100, 5, " %")
+        sp_.setToolTip("Işık gücü")
+        sh = spin(-180, 180, lt["h"], 5, " °")
+        sh.setToolTip("Yatay açı (kameraya göre; eksi = sol, artı = sağ, 180 = arkadan)")
+        sv = spin(-90, 90, lt["v"], 5, " °")
+        sv.setToolTip("Dikey açı (artı = yukarıdan)")
+        cs = QtGui.QCheckBox("Gölge")
+        cs.setChecked(bool(lt["shadow"]))
+        cs.setToolTip("Bu ışık gölge düşürsün (her gölgeli ışık süreyi artırır)")
+        fg.addWidget(ck, 0, 0, 1, 2)
+        fg.addWidget(cbn, 0, 2)
+        fg.addWidget(sp_, 0, 3)
+        fg.addWidget(QtGui.QLabel("Yatay"), 1, 0)
+        fg.addWidget(sh, 1, 1)
+        fg.addWidget(QtGui.QLabel("Dikey"), 1, 2)
+        fg.addWidget(sv, 1, 3)
+        fg.addWidget(cs, 2, 0, 1, 4)
+        lvb.addWidget(frame)
+        lrows.append((ck, sh, sv, cbn, sp_, cs))
+    arow = QtGui.QHBoxLayout()
+    arow.addWidget(QtGui.QLabel("Ortam ışığı"))
+    cb_amb = color_button("amb", AMBIENT_COLOR)
+    sp_amb = spin(0, 100, AMBIENT * 100, 5, " %")
+    arow.addWidget(cb_amb)
+    arow.addWidget(sp_amb)
+    lvb.addLayout(arow)
+    lv.addWidget(lbox)
+    light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb]
+
+    def sync_lights(*_a):
+        for wd in light_widgets:
+            wd.setEnabled(not ck_fc.isChecked())
+    ck_fc.toggled.connect(sync_lights)
+
+    # ---- düğmeler ----
+    btn_r = QtGui.QPushButton("Render")
+    btn_r.setStyleSheet("font-weight: bold;")
+    btn_s = QtGui.QPushButton("Durdur")
+    btn_s.setEnabled(False)
+    btn_k = QtGui.QPushButton("Farklı kaydet...")
+    btn_k.setEnabled(False)
+    btn_y = QtGui.QPushButton("Sahneyi yenile")
+    btn_y.setToolTip("Model değiştiyse sahneyi bir sonraki Render'da yeniden okur")
+    b1 = QtGui.QHBoxLayout()
+    b1.addWidget(btn_r)
+    b1.addWidget(btn_s)
+    b2 = QtGui.QHBoxLayout()
+    b2.addWidget(btn_k)
+    b2.addWidget(btn_y)
+    lv.addStretch(1)
+
+    sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
+    sc_left.setWidget(left)
+    sc_left.setWidgetResizable(True)
+    sc_left.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    lcol = QtGui.QVBoxLayout()                        # üstte sabit: başlık + düğmeler, altta kaydırılabilir ayarlar
+    head = QtGui.QLabel("Settings")
+    head.setStyleSheet("font-weight: bold; font-size: 14px;")
+    lcol.addWidget(head)
+    lcol.addLayout(b1)
+    lcol.addLayout(b2)
+    lcol.addWidget(sc_left, 1)
+    lw = QtGui.QWidget()
+    lw.setLayout(lcol)
+    lw.setFixedWidth(410)
+    outer.addWidget(lw)
+
+    # ================= SAĞ: Ön izleme ekranı (ortalanmış) =================
+    right = QtGui.QVBoxLayout()
+    title = QtGui.QLabel("FC YBT Raytracer")
+    title.setAlignment(QtCore.Qt.AlignCenter)
+    title.setStyleSheet("font-weight: bold; font-size: 16px;")
+    right.addWidget(title)
+
+    class _Preview(QtGui.QLabel):
+        """Görüntüyü kutuya sığdırıp ortalar (en-boy oranı korunur)."""
+
+        def __init__(self):
+            QtGui.QLabel.__init__(self, "Ön izleme ekranı")
+            self.pm = None
+            self.setAlignment(QtCore.Qt.AlignCenter)
+            self.setMinimumSize(320, 240)
+            self.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
+            self.setFrameShape(QtGui.QFrame.StyledPanel)
+
+        def set_pixmap_full(self, pm):
+            self.pm = pm
+            self.refit()
+
+        def refit(self):
+            if self.pm is not None:
+                sz = self.size()
+                self.setPixmap(self.pm.scaled(max(1, sz.width() - 6), max(1, sz.height() - 6),
+                                              QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+
+        def resizeEvent(self, ev):
+            QtGui.QLabel.resizeEvent(self, ev)
+            self.refit()
+
+    lbl = _Preview()
+    right.addWidget(lbl, 1)
+    # ---- işlem çubuğu: ön izlemeyle aynı genişlikte; içinde yapılan işin adı, sağda yüzde ----
+    pframe = QtGui.QFrame()
+    pframe.setFrameShape(QtGui.QFrame.StyledPanel)
+    ph = QtGui.QHBoxLayout(pframe)
+    ph.setContentsMargins(2, 2, 6, 2)
+    bar = QtGui.QProgressBar()
+    bar.setRange(0, 100)
+    bar.setValue(0)
+    bar.setTextVisible(True)
+    bar.setAlignment(QtCore.Qt.AlignCenter)
+    bar.setMinimumHeight(26)
+    pct = QtGui.QLabel("")
+    pct.setMinimumWidth(48)
+    pct.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+    ph.addWidget(bar, 1)
+    ph.addWidget(pct)
+    right.addWidget(pframe)
+
+    class _St(object):
+        """Eski 'etiket' arayüzü (setText/text) + çubuk ilerlemesi (frac: 0..1 ya da None)."""
+
+        def __init__(self):
+            self.t = ""
+
+        def set(self, text, frac=None):
+            self.t = text
+            bar.setFormat(text.replace("%p", "").replace("%v", "").replace("%m", ""))
+            bar.setToolTip(text)
+            if frac is None:
+                bar.setValue(0)
+                pct.setText("")
+            else:
+                v = int(round(max(0.0, min(1.0, frac)) * 100))
+                bar.setValue(v)
+                pct.setText("%%%d" % v)
+
+        def setText(self, text):                   # bitiş / hata / iptal mesajı: çubuk değerine dokunma
+            self.t = text
+            bar.setFormat(text.replace("%p", "").replace("%v", "").replace("%m", ""))
+            bar.setToolTip(text)
+
+        def text(self):
+            return self.t
+
+    lbl_st = _St()
+    lbl_st.setText("Hazır. Ayarları seç, 3B görünümü çevir ve Render'a bas.")
+    outer.addLayout(right, 1)
+    dlg.resize(1180, 760)
+
+    def sync_enabled(*_a):
+        gl = ck_gl.isChecked()
+        sp_rg.setEnabled(gl)
+        sp_bn.setEnabled(gl or sp_rs.value() > 0)
+    ck_gl.toggled.connect(sync_enabled)
+    sp_rs.valueChanged.connect(sync_enabled)
+    sync_enabled()
+
+    state = {"scene": None, "key": None, "busy": False, "cancel": False, "last": 0.0,
+             "out": None, "path": None}
+
+    def alive():
+        return dlg.isVisible() and not state["cancel"]
+
+    def status(msg, force=False, frac=None):
+        now = time.time()
+        if force or now - state["last"] > 0.15:
+            state["last"] = now
+            lbl_st.set(msg, frac)
+            QtCore.QCoreApplication.processEvents()
+        if not alive():
+            raise _Cancelled()
+
+    def tick():
+        QtCore.QCoreApplication.processEvents()
+        return alive()
+
+    def put(arr, w, h):
+        a = np.ascontiguousarray(arr)
+        qi = QtGui.QImage(a.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
+        lbl.set_pixmap_full(QtGui.QPixmap.fromImage(qi))
+
+    def show(img, rows, frac=None, label="ışınlar izleniyor"):
+        h, w = img.shape[:2]
+        put(np.clip(img * 255.0, 0, 255).astype(np.uint8), w, h)
+        lbl_st.set(label, (rows / float(h)) if frac is None else frac)
+        QtCore.QCoreApplication.processEvents()
+        return alive()
+
+    def busy(on):
+        state["busy"] = on
+        for wd in light_widgets + [ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, sp_rg, sp_rs, sp_bn, ck_sv]:
+            wd.setEnabled(not on)
+        btn_s.setEnabled(on)
+        if not on:
+            sync_enabled()
+            sync_lights()
+            btn_k.setEnabled(state["out"] is not None)
+
+    def do_render(*_a):
+        if state["busy"]:
+            return
+        state["cancel"] = False
+        busy(True)
+        t0 = time.time()
+        try:
+            if Gui.ActiveDocument is None:
+                lbl_st.setText("Açık belge yok.")
+                return
+            d = Gui.ActiveDocument.Document
+            view = Gui.ActiveDocument.ActiveView
+            cam, aspect = read_camera(view)
+            g["WIDTH"] = sp_w.value()
+            g["TESS_FACTOR"] = _QUALITY[cb_q.currentIndex()][1]
+            g["SHADOWS"] = ck_sh.isChecked()
+            g["GLASS"] = ck_gl.isChecked()
+            g["REFLECT_GLASS"] = sp_rg.value() / 100.0
+            g["REFLECT_SURF"] = sp_rs.value() / 100.0
+            g["BOUNCES"] = sp_bn.value()
+            fc_info = ""
+            fc = None
+            if ck_fc.isChecked():
+                try:
+                    fc = read_freecad_lights(lambda m: FreeCAD.Console.PrintMessage("RayTrace: " + m + "\n"))
+                except Exception as ex:
+                    FreeCAD.Console.PrintWarning("RayTrace: FreeCAD ışık ayarları okunamadı (%s); kendi ayarlar kullanılıyor.\n" % ex)
+            if fc is not None:
+                g["LIGHTS"], g["AMBIENT"], g["AMBIENT_COLOR"], fc_info = fc
+            else:
+                g["AMBIENT"] = sp_amb.value() / 100.0
+                g["AMBIENT_COLOR"] = colors["amb"]
+                g["LIGHTS"] = [dict(on=r[0].isChecked(), h=float(r[1].value()), v=float(r[2].value()),
+                                    color=colors["l%d" % i], power=r[4].value() / 100.0, shadow=r[5].isChecked())
+                               for i, r in enumerate(lrows)]
+            g["AA"] = 0 if cb_aa.currentIndex() == 0 else cb_aa.currentIndex() + 1
+            w = int(WIDTH)
+            h = max(1, int(round(w / aspect)))
+            key = (d.Name, len(d.Objects), TESS_FACTOR)
+            if state["scene"] is None or state["key"] != key:
+                state["scene"], nobj = collect_scene(d, status)
+                state["key"] = key
+                FreeCAD.Console.PrintMessage("RayTrace: %d nesne, %d üçgen (hazırlık %.1f sn)\n"
+                                             % (nobj, state["scene"].count, time.time() - t0))
+            t1 = time.time()
+            out = render(state["scene"], cam, w, h, shadows=SHADOWS, progress=show, tile=TILE,
+                         tick=tick, stage=lambda s: status(s, True, None))
+            if out is None:
+                raise _Cancelled()
+            state["out"] = out
+            put(out, w, h)
+            msg = ""
+            if ck_sv.isChecked():
+                path = pick_out_path(d.FileName)
+                try:
+                    write_png(path, out)
+                    state["path"] = path
+                    msg = " | kaydedildi: %s" % path
+                except Exception as ex:
+                    msg = " | KAYDEDİLEMEDİ (%s)" % ex
+            dt = time.time() - t0
+            lbl_st.set("bitti: %dx%d | %d üçgen | render %.1f sn | toplam %.1f sn"
+                       % (w, h, state["scene"].count, time.time() - t1, dt), 1.0)
+            bar.setToolTip(("kaydedildi: %s" % state["path"]) if ck_sv.isChecked() and state["path"] else msg.strip(" |"))
+            FreeCAD.Console.PrintMessage("RayTrace: render %.1f sn, toplam %.1f sn%s\n"
+                                         % (time.time() - t1, dt, msg))
+        except _Cancelled:
+            lbl_st.setText("iptal edildi.")
+            FreeCAD.Console.PrintMessage("RayTrace: iptal edildi.\n")
+        except Exception:
+            import traceback
+            FreeCAD.Console.PrintError("RayTrace hatası:\n" + traceback.format_exc())
+            lbl_st.setText("HATA: Report View'a bak.")
+        finally:
+            busy(False)
+
+    def do_stop(*_a):
+        state["cancel"] = True
+
+    def do_save(*_a):
+        if state["out"] is None:
+            return
+        try:
+            start = state["path"] or pick_out_path(FreeCAD.ActiveDocument.FileName if FreeCAD.ActiveDocument else "")
+        except Exception:
+            start = "render.png"
+        res = QtGui.QFileDialog.getSaveFileName(dlg, "Render'ı kaydet", start, "PNG (*.png)")
+        path = res[0] if isinstance(res, (tuple, list)) else res
+        if not path:
+            return
+        if not path.lower().endswith(".png"):
+            path += ".png"
+        try:
+            write_png(path, state["out"])
+            state["path"] = path
+            lbl_st.setText("kaydedildi: %s" % path)
+        except Exception as ex:
+            lbl_st.setText("KAYDEDİLEMEDİ (%s)" % ex)
+
+    def do_refresh(*_a):
+        state["scene"] = None
+        lbl_st.setText("Sahne bir sonraki Render'da yeniden okunacak.")
+
+    btn_r.clicked.connect(do_render)
+    btn_s.clicked.connect(do_stop)
+    btn_k.clicked.connect(do_save)
+    btn_y.clicked.connect(do_refresh)
+
+    FreeCAD._raytrace_dlg = dlg
+    dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
+    dlg.show()
+    # test/otomasyon için dışarıdan tetikleme
+    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl,
+                                                            rglass=sp_rg, rsurf=sp_rs, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, lights=lrows, ambient=sp_amb, fclights=ck_fc),
+                             status=lbl_st, bar=bar, pct=pct, state=state)
+
+
+try:
+    import FreeCADGui  # noqa: F401
+    _IN_FREECAD = True
+except ImportError:
+    _IN_FREECAD = False
+
+if _IN_FREECAD:
+    main()
