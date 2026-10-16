@@ -3,13 +3,14 @@
 Seçim FreeCAD kullanıcı parametrelerine kaydedilir; kayıt yoksa FreeCAD arayüz diline göre belirlenir."""
 
 LANG = "tr"
+_TR_EXTRA = {"Settings": "Ayarlar"}
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"
 
 
 def T(s):
     if LANG == "en":
         return EN.get(s, s)
-    return s
+    return _TR_EXTRA.get(s, s)
 
 
 def set_lang(lang, save=True):
@@ -45,6 +46,7 @@ def init_lang():
 
 
 EN = {
+    "Settings": "Settings",
     # --- ui: kalite ---
     "RayTrace: açık belge yok.\n": "RayTrace: no open document.\n",
     "Kalite Ayarları": "Quality Settings",

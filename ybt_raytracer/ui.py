@@ -299,7 +299,7 @@ def main(lang=None):
     sc_left.setWidgetResizable(True)
     sc_left.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)   # içerik sığmazsa kırpmak yerine kaydır
     lcol = QtGui.QVBoxLayout()                        # üstte sabit: başlık + düğmeler, altta kaydırılabilir ayarlar
-    head = QtGui.QLabel("Settings")
+    head = QtGui.QLabel(T("Settings"))
     head.setStyleSheet("font-weight: bold; font-size: 14px;")
     cb_lang = QtGui.QComboBox()
     cb_lang.addItem("Türkçe", "tr")
