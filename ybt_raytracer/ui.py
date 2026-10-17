@@ -10,6 +10,7 @@ from .render import render
 from .output import pick_out_path, write_png
 from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 from . import materials as _mats
+from . import theme as _theme
 from . import __version__ as _VER
 
 
@@ -41,6 +42,7 @@ def main(lang=None):
 
     dlg = QtGui.QDialog(Gui.getMainWindow())
     dlg.setWindowTitle("FC YBT Raytracer v%s" % _VER)
+    _theme.apply(dlg)                                           # koyu gri palet (theme.py)
     try:
         _ic = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
         if os.path.exists(_ic):
@@ -301,6 +303,48 @@ def main(lang=None):
     btn_m.setToolTip(T("Nesnelere malzeme ata, malzeme kütüphanesini düzenle"))
     b3 = QtGui.QHBoxLayout()
     b3.addWidget(btn_m)
+    def fix_left_height():
+        """Sol panel içeriği, kaydırma alanında sıkışmasın: yeterli yüksekliği korur, taşarsa kaydırma çubuğu çıkar."""
+        try:
+            left.setMinimumHeight(0)
+            lv.activate()
+            left.setMinimumHeight(lv.sizeHint().height())
+        except Exception:
+            pass
+
+    def collapsible(box, title, start_open=False):
+        """Grup kutusunu, başlığına tıklayınca açılıp kapanan bölüme çevirir (yer kaplamasın)."""
+        idx = lv.indexOf(box)
+        lv.removeWidget(box)
+        box.setTitle("")
+        box.setStyleSheet("QGroupBox { border: none; margin-top: 0px; padding-top: 0px; }")
+        wrap = QtGui.QWidget()
+        wl = QtGui.QVBoxLayout(wrap)
+        wl.setContentsMargins(0, 0, 0, 0)
+        wl.setSpacing(0)
+        hb = QtGui.QToolButton()
+        hb.setCheckable(True)
+        hb.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
+        hb.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed)
+        hb.setStyleSheet("QToolButton { text-align: left; background-color: %s; border: 1px solid %s; border-radius: 3px; padding: 4px 8px; }"
+                         "QToolButton:hover { background-color: %s; }" % (_theme.HEADER, _theme.BORDER, _theme.BTN))
+        hb.setToolTip(T("Tıklayınca açılır / kapanır"))
+
+        def upd(on):
+            hb.setText(("\u25be  " if on else "\u25b8  ") + title)
+            box.setVisible(on)
+            QtCore.QTimer.singleShot(0, fix_left_height)
+        hb.toggled.connect(upd)
+        wl.addWidget(hb)
+        wl.addWidget(box)
+        hb.setChecked(start_open)
+        upd(start_open)
+        lv.insertWidget(idx, wrap)
+        return hb
+
+    collapsible(qbox, T("Kalite Ayarları"), start_open=True)
+    collapsible(fbox, T("Sanal Zemin"))
+    collapsible(lbox, T("Işık Ayarları"))
     lv.addStretch(1)
 
     sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
@@ -347,55 +391,192 @@ def main(lang=None):
 
     # ================= SAĞ: Ön izleme ekranı (ortalanmış) =================
     right = QtGui.QVBoxLayout()
-    title = QtGui.QLabel("FC YBT Raytracer  <span style='font-size:11px; font-weight:normal; color:gray;'>v%s</span>" % _VER)
+    title = QtGui.QLabel(T("Önizleme ve Seçim Ekranı"))
     title.setAlignment(QtCore.Qt.AlignCenter)
-    title.setStyleSheet("font-weight: bold; font-size: 16px;")
+    title.setStyleSheet("font-weight: bold; font-size: 15px; color: #e8e8ea;")
     right.addWidget(title)
+    vrow = QtGui.QHBoxLayout()
+    btn_fit = QtGui.QPushButton(T("Otomatik ortala"))
+    btn_fit.setToolTip(T("Görüntüyü pencereye sığdırıp ortalar (çift tıklama da aynı işi yapar)"))
+    btn_11 = QtGui.QPushButton("1:1")
+    btn_11.setToolTip(T("Gerçek boyut: görüntünün bir pikseli ekranda bir piksel"))
+    lbl_zoom = QtGui.QLabel("")
+    lbl_zoom.setMinimumWidth(52)
+    lbl_hint = QtGui.QLabel(T("Tekerlek: yakınlaştır / uzaklaştır  ·  Sürükle: kaydır  ·  Tıkla: parçayı seç"))
+    lbl_hint.setStyleSheet("color: #85858a;")
+    vrow.addWidget(btn_fit)
+    vrow.addWidget(btn_11)
+    vrow.addWidget(lbl_zoom)
+    vrow.addStretch(1)
+    vrow.addWidget(lbl_hint)
+    right.addLayout(vrow)
 
-    class _Preview(QtGui.QLabel):
-        """Görüntüyü kutuya sığdırıp ortalar (en-boy oranı korunur)."""
+    class _Preview(QtGui.QWidget):
+        """Önizleme/seçim ekranı: çerçeveli, fare tekerleğiyle yakınlaştırılır, sürüklenerek kaydırılır, tıklamayla nesne seçer.
+        Görüntü yakınlaştırılınca (>= 2 kat) pikseller yumuşatılmadan gösterilir."""
 
         def __init__(self):
-            QtGui.QLabel.__init__(self, T("Ön izleme ekranı"))
+            QtGui.QWidget.__init__(self)
             self.pm = None
             self.on_click = None                      # f(u, v, ctrl): u,v = görüntü içinde 0..1 konum
-            self.setAlignment(QtCore.Qt.AlignCenter)
+            self.on_view = None                       # f(ölçek): görünüm değişince
+            self.scale = 1.0                          # ekran pikseli / görüntü pikseli
+            self.ox = self.oy = 0.0                   # görüntünün sol-üst köşesi (widget koordinatı)
+            self.fitted = True
+            self._press = None
             self.setMinimumSize(320, 240)
             self.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
-            self.setFrameShape(QtGui.QFrame.StyledPanel)
+            self.setMouseTracking(False)
 
+        # --- geometri
+        def _fit_scale(self):
+            if self.pm is None:
+                return 1.0
+            return max(1e-3, min((self.width() - 8) / float(self.pm.width()), (self.height() - 8) / float(self.pm.height())))
+
+        def fit(self):
+            self.fitted = True
+            self._apply_fit()
+            self.update()
+
+        def _apply_fit(self):
+            if self.pm is None:
+                return
+            self.scale = self._fit_scale()
+            self.ox = (self.width() - self.pm.width() * self.scale) / 2.0
+            self.oy = (self.height() - self.pm.height() * self.scale) / 2.0
+            self._notify()
+
+        def actual_size(self):
+            self._zoom_to(1.0, self.width() / 2.0, self.height() / 2.0)
+
+        def _clamp(self):
+            if self.pm is None:
+                return
+            iw, ih = self.pm.width() * self.scale, self.pm.height() * self.scale
+            for attr, size, win in (("ox", iw, self.width()), ("oy", ih, self.height())):
+                v = getattr(self, attr)
+                if size <= win:
+                    v = (win - size) / 2.0                      # küçükse ortala
+                else:
+                    v = min(0.0, max(win - size, v))            # büyükse kenar boşluk bırakma
+                setattr(self, attr, v)
+
+        def _notify(self):
+            if self.on_view is not None:
+                self.on_view(self.scale)
+
+        def _zoom_to(self, new_scale, ax, ay):
+            if self.pm is None:
+                return
+            fs = self._fit_scale()
+            new_scale = min(max(new_scale, fs), 64.0)
+            ix, iy = (ax - self.ox) / self.scale, (ay - self.oy) / self.scale     # imlecin altındaki görüntü noktası
+            self.scale = new_scale
+            self.ox, self.oy = ax - ix * new_scale, ay - iy * new_scale
+            self._clamp()
+            self.fitted = abs(new_scale - fs) < 1e-6
+            self._notify()
+            self.update()
+
+        # --- içerik
         def set_pixmap_full(self, pm):
+            first = self.pm is None or self.pm.size() != pm.size()
             self.pm = pm
-            self.refit()
+            if first or self.fitted:
+                self.fitted = True
+                self._apply_fit()
+            self.update()
 
-        def refit(self):
-            if self.pm is not None:
-                sz = self.size()
-                self.setPixmap(self.pm.scaled(max(1, sz.width() - 6), max(1, sz.height() - 6),
-                                              QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+        def pixmap(self):
+            return self.pm
+
+        def image_rect(self):
+            return (self.ox, self.oy, self.pm.width() * self.scale, self.pm.height() * self.scale) if self.pm is not None else None
 
         def resizeEvent(self, ev):
-            QtGui.QLabel.resizeEvent(self, ev)
-            self.refit()
+            QtGui.QWidget.resizeEvent(self, ev)
+            if self.fitted:
+                self._apply_fit()
+            else:
+                self._clamp()
 
-        def mousePressEvent(self, ev):
-            """Görüntüye tıklama: etiket içindeki konumu görüntü koordinatına (0..1) çevirir."""
-            QtGui.QLabel.mousePressEvent(self, ev)
-            pm = self.pixmap()
-            if self.on_click is None or pm is None or pm.isNull() or ev.button() != QtCore.Qt.LeftButton:
+        def paintEvent(self, ev):
+            p = QtGui.QPainter(self)
+            p.fillRect(self.rect(), QtGui.QColor(_theme.PREVIEW_BG))
+            if self.pm is None:
+                p.setPen(QtGui.QColor(_theme.TEXT_DIS))
+                p.drawText(self.rect(), QtCore.Qt.AlignCenter, T("Ön izleme ekranı"))
+            else:
+                p.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, self.scale < 2.0)
+                p.drawPixmap(QtCore.QRectF(self.ox, self.oy, self.pm.width() * self.scale, self.pm.height() * self.scale),
+                             self.pm, QtCore.QRectF(self.pm.rect()))
+            p.setPen(QtGui.QColor(_theme.PREVIEW_BORDER))
+            p.drawRect(self.rect().adjusted(0, 0, -1, -1))
+            p.end()
+
+        # --- fare
+        def wheelEvent(self, ev):
+            if self.pm is None:
                 return
             try:
-                p = ev.position()
-                x, y = p.x(), p.y()
+                pt = ev.position()
+                ax, ay = pt.x(), pt.y()
             except AttributeError:
-                x, y = ev.x(), ev.y()
-            pw, ph_ = float(pm.width()), float(pm.height())
-            u = (x - (self.width() - pw) / 2.0) / pw
-            v = (y - (self.height() - ph_) / 2.0) / ph_
+                ax, ay = ev.x(), ev.y()
+            d = ev.angleDelta().y()
+            if d:
+                self._zoom_to(self.scale * (1.2 ** (d / 120.0)), ax, ay)
+            ev.accept()
+
+        def _pos(self, ev):
+            try:
+                pt = ev.position()
+                return pt.x(), pt.y()
+            except AttributeError:
+                return float(ev.x()), float(ev.y())
+
+        def mousePressEvent(self, ev):
+            if ev.button() in (QtCore.Qt.LeftButton, QtCore.Qt.MiddleButton) and self.pm is not None:
+                x, y = self._pos(ev)
+                self._press = (ev.button(), x, y, self.ox, self.oy, False)
+            QtGui.QWidget.mousePressEvent(self, ev)
+
+        def mouseMoveEvent(self, ev):
+            if self._press is None:
+                return
+            btn, x0, y0, ox0, oy0, moved = self._press
+            x, y = self._pos(ev)
+            if not moved and (abs(x - x0) + abs(y - y0)) < 5:
+                return
+            if not moved:
+                self.setCursor(QtCore.Qt.ClosedHandCursor)
+            self._press = (btn, x0, y0, ox0, oy0, True)
+            self.ox, self.oy = ox0 + (x - x0), oy0 + (y - y0)
+            self._clamp()
+            self.fitted = False if self.scale > self._fit_scale() + 1e-6 else self.fitted
+            self.update()
+
+        def mouseReleaseEvent(self, ev):
+            pr, self._press = self._press, None
+            self.unsetCursor()
+            QtGui.QWidget.mouseReleaseEvent(self, ev)
+            if pr is None or pr[5] or pr[0] != QtCore.Qt.LeftButton or self.on_click is None or self.pm is None:
+                return                                              # kaydırma ya da orta tuş: seçme yok
+            x, y = self._pos(ev)
+            u = (x - self.ox) / (self.pm.width() * self.scale)
+            v = (y - self.oy) / (self.pm.height() * self.scale)
             if 0.0 <= u < 1.0 and 0.0 <= v < 1.0:
                 self.on_click(u, v, bool(ev.modifiers() & QtCore.Qt.ControlModifier))
 
+        def mouseDoubleClickEvent(self, ev):
+            if self.pm is not None:
+                self.fit()
+
     lbl = _Preview()
+    lbl.on_view = lambda sc_: lbl_zoom.setText("%d%%" % int(round(sc_ * 100)))
+    btn_fit.clicked.connect(lambda *_a: lbl.fit())
+    btn_11.clicked.connect(lambda *_a: lbl.actual_size())
     right.addWidget(lbl, 1)
     # ---- işlem çubuğu: ön izlemeyle aynı genişlikte; içinde yapılan işin adı, sağda yüzde ----
     pframe = QtGui.QFrame()
@@ -542,6 +723,7 @@ def main(lang=None):
             return
         state["cancel"] = False
         busy(True)
+        lbl.fit()
         t0 = time.time()
         try:
             if Gui.ActiveDocument is None:

@@ -15,6 +15,10 @@ v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğ
         * Benzer nesneler: şekil imzası (yüz/kenar sayısı, alan, hacim; konum/dönmeden bağımsız) aynı olan nesneler (kopyalar, Link'ler)
           listede "Benzer ×N" olarak gösterilir; "Benzerleri birlikte seç", "Benzerleri yan yana diz" ve "Benzerlerini seç" ile toplu işlem.
         * api.pick_object(scene, camera, w, h, x, y).
+        * Yeni görünüm: koyu gri renk paleti (theme.py + icons/; iki pencerede de); "Önizleme ve Seçim Ekranı": çerçeveli, fare tekerleğiyle
+          yakınlaştırma/uzaklaştırma (imleç altında sabit), sürükleyerek kaydırma, "Otomatik ortala" ve "1:1" düğmeleri, çift tıklama = sığdır,
+          yakınlaşınca pikseller yumuşatılmadan gösterilir. Kalite / Sanal Zemin / Işık bölümleri başlığa tıklayınca açılır-kapanır
+          (Sanal Zemin ve Işık varsayılan kapalı).
         * Malzemeler penceresi: render penceresinin soluna açılır; "Her zaman üstte" kutusu (varsayılan açık, ayar kaydedilir) önizlemeye
           tıklayınca arkaya kaçmasını önler; konsol tarzı işlem günlüğü (her işlem zaman damgalı); sürgü/sayı değişiminde önizleme
           1 sn sessizlik beklenince yenilenir (PREVIEW_DELAY_MS). Render penceresi başlığında sürüm gösterilir.

@@ -11,6 +11,8 @@ Kullanıcı: Sedat (Türkçe konuşur; Manjaro/KDE Wayland; FreeCAD 1.1.4; YouTu
 - `core.py` Scene (üçgenler, renk, alpha, `mid`/`mtable` = malzeme), ışın-üçgen, smooth_normals.
 - `accel.py` ekran karoları, ışık-uzayı ızgarası, Morton küme hızlandırıcı (`_closest_general`).
 - `render.py` ana izleyici (Whitted: gölge, yansıma, Snell kırılma, zemin, doku, malzeme tabloları), fork tabanlı çok süreç.
+- `theme.py`: koyu palet QSS (apply(dlg)); ok/onay ikonları `icons/*.png`. NOT: QGroupBox::title bu Qt'de QSS ile güvenilir çizilmiyor; başlıklar `ui.py` içindeki `collapsible()` başlık düğmesiyle verilir. Sol panelin kaydırma alanında sıkışmaması için `fix_left_height()`.
+- Önizleme ekranı `_Preview` (ui.py): kendi paintEvent'i, ölçek/ofset durumu (`scale, ox, oy, fitted`), tekerlek zoom, sürükle-kaydır (5 px eşik; altı = tıklama), `on_click(u, v, ctrl)` görüntü içi 0..1.
 - `pick.py`: tıkla-seç. `Scene.oid` (üçgen başına nesne indeksi) + `Scene.onames` (o.Name) `collect_scene`'de doldurulur; `pick(scene, cam, w, h, fx, fy)` tek ışını tüm üçgenlerle sınar. ui.py: `_Preview.mousePressEvent` -> `on_preview_click` -> Malzemeler penceresinin `_ybt_api["pick"]` (boya kovası modu `btn_paint`). `state["pick"]` = (sahne, kamera, w, h) son render'a aittir, sahne sıfırlansa da kalır.
 - Benzer nesneler (surface_ui.py): `_signature(shp)` (yüz/kenar sayısı, alan, |hacim|, 4 anlamlı hane; mesh için üçgen sayısı) -> `sim_info()` gruplar. Seçim genişletme `expand_similar`, `sellock` bayrağı seçim sinyalinin yeniden girmesini önler.
 - `freecad_scene.py` `_gather` (görünür nesneleri toplar: Link/Assembly/Part/Body/Mesh), `collect_scene` (tessellate + malzeme; `tess_cache`, `camera/aspect` ile kadraj dışı atma, "dahil et" süzgeci).

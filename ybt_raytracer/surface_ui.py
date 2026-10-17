@@ -6,6 +6,7 @@ from . import settings as S
 from . import materials as M
 from .i18n import T
 from .core import Scene
+from . import theme as _theme
 
 PREVIEW_DELAY_MS = 1000     # parametre (sürgü/sayı) değişiminden sonra önizleme bu kadar sessizlik beklenince yenilenir
 
@@ -135,6 +136,7 @@ def open_surface(on_change=None, is_busy=None):
     dlg = QtGui.QDialog(main_dlg if (pin0 and main_dlg is not None) else Gui.getMainWindow())
     dlg.setWindowTitle(T("Yüzey / Malzeme Düzenleyici"))
     dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
+    _theme.apply(dlg)                                           # koyu gri palet (ana pencereyle aynı)
     st = {"mat": M.normalize({}), "name": "", "lock": False, "items": []}
     widgets = {}
 

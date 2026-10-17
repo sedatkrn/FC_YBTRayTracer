@@ -290,4 +290,10 @@ EN = {
     "Liste yenilendi: %d nesne": "List refreshed: %d object(s)",
     "Her zaman üstte: %s": "Always on top: %s",
     "Hazır: %d nesne listelendi.": "Ready: %d object(s) listed.",
+    "Önizleme ve Seçim Ekranı": "Preview and Selection",
+    "Otomatik ortala": "Auto fit",
+    "Görüntüyü pencereye sığdırıp ortalar (çift tıklama da aynı işi yapar)": "Fits the image to the window and centres it (a double-click does the same)",
+    "Gerçek boyut: görüntünün bir pikseli ekranda bir piksel": "Actual size: one image pixel is one screen pixel",
+    "Tekerlek: yakınlaştır / uzaklaştır  ·  Sürükle: kaydır  ·  Tıkla: parçayı seç": "Wheel: zoom in / out  ·  Drag: pan  ·  Click: select part",
+    "Tıklayınca açılır / kapanır": "Click to expand / collapse",
 }
