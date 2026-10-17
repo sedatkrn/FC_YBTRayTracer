@@ -26,6 +26,11 @@
       <file>ybt_raytracer/materials.py</file>
       <file>ybt_raytracer/surface_ui.py</file>
       <file>ybt_raytracer/api.py</file>
+      <file>ybt_raytracer/pick.py</file>
+      <file>ybt_raytracer/theme.py</file>
+      <file>ybt_raytracer/icons/down.png</file>
+      <file>ybt_raytracer/icons/up.png</file>
+      <file>ybt_raytracer/icons/check.png</file>
       <file>ybt_raytracer/icon.png</file>
       <file>FC_ybt_raytracer.png</file>
       <file>ybt_raytracer/textures.py</file>
