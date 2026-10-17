@@ -21,6 +21,8 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - Part, Body, App::Part, App::Link, Assembly, BIM (Arch) kapsayıcıları; renkler `ShapeAppearance`'tan
 - **Çok çekirdekli render** (Çekirdek: Otomatik/1/2/4; Linux'ta ayrı süreçler, sonuç tek çekirdekle birebir aynı)
 - **Mesh nesneleri** (`Mesh::Feature`: STL/OBJ içe aktarma, Şekil→Mesh): üçgenler üçgenleme gerekmeden doğrudan kullanılır; App::Part / Link içinde de doğru konumlanır, malzeme atanabilir
+- **Önizlemede tıkla-seç + boya kovası**: render aldıktan sonra önizlemede bir parçaya tıklayın, Malzemeler penceresinde seçilir (Ctrl ile ekleme). "Boya kovası" açıkken tıklanan parçaya düzenlenen malzeme atanır.
+- **Benzer nesneler**: aynı şekle sahip nesneler (kopyalar, Link'ler, konumu/dönmesi farklı olsa da) listede ×N olarak işaretlenir; "Benzerleri birlikte seç" ile cıvata gibi çok kopyalı parçalara tek hamlede malzeme atanır / dahil-hariç yapılır.
 - **"Render'a dahil et"** kutusu: Malzemeler (Surface) penceresindeki nesne listesinde her nesnenin onay kutusu; kutusu kaldırılan nesne sahneye hiç girmez (gölge/yansıma da vermez)
 - **"Kadraj dışındaki nesneleri atla"** seçeneği: kameranın görmediği nesneler üçgenlenmez ve sahne boyutuna katılmaz (büyük modelde yakın plan çekimlerde hızlandırır)
 - **Arayüzsüz API** (`ybt_raytracer.api`): panel açmadan render, **turntable** ve hareketli parça **animasyonu** (aşağıya bakın)

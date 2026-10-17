@@ -9,6 +9,12 @@ v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğ
         * "Render'a dahil et": Malzemeler penceresinde nesne başına onay kutusu + Seçilileri dahil et / hariç tut düğmeleri (nesnenin YBTInclude özelliği).
         * "Kadraj dışındaki nesneleri atla" seçeneği (CULL_OFFSCREEN): kadraj dışı nesneler üçgenlenmez, sahne boyutuna/gölgeye/zemine katılmaz.
         * Malzemesiz Part sahnesinde v1.2.2 ile piksel piksel aynı çıktı (regresyon testi).
+        * Önizlemede tıkla-seç: render önizlemesinde bir parçaya tıklayınca Malzemeler penceresinde o nesne seçilir (Ctrl: seçime ekle) ve 3B
+          görünümde vurgulanır (ybt_raytracer/pick.py; sahne artık üçgen başına nesne kimliği taşır). "Boya kovası" modunda tıklanan parçaya
+          düzenlenen malzeme doğrudan atanır.
+        * Benzer nesneler: şekil imzası (yüz/kenar sayısı, alan, hacim; konum/dönmeden bağımsız) aynı olan nesneler (kopyalar, Link'ler)
+          listede "Benzer ×N" olarak gösterilir; "Benzerleri birlikte seç", "Benzerleri yan yana diz" ve "Benzerlerini seç" ile toplu işlem.
+        * api.pick_object(scene, camera, w, h, x, y).
         * Düzeltme: yumuşak yüzeylerde köşe eşleştirme çakışması giderildi (karmaşık gövdelerde, ör. jant lastiği, harf/benek biçimli bozulma;
           eski xor-özet farklı köşeleri aynı sayıp normallerini karıştırıyordu, artık çakışmasız tam anahtar).
 v1.2.2: * Malzeme penceresinde nesne listesi artık yalnızca render edilen gerçek katı/yüzeyleri gösterir (düzlem, eksen, joint, kapsayıcı yok); arama kutusu ve Yenile düğmesi eklendi.

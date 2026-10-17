@@ -7,7 +7,7 @@ from . import settings as S
 class Scene(object):
     """Üçgen listesi + ışın izleme için ön hesaplar. Her şey sahne merkezine göredir (float64)."""
 
-    def __init__(self, tris, colors, alpha=None, mid=None, mtable=None):
+    def __init__(self, tris, colors, alpha=None, mid=None, mtable=None, oid=None, onames=None):
         tris = np.asarray(tris, dtype=np.float64).reshape(-1, 3, 3)
         colors = np.asarray(colors, dtype=np.float64).reshape(-1, 3)
         flat = tris.reshape(-1, 3)
@@ -28,6 +28,9 @@ class Scene(object):
         # malzeme: üçgen başına indeks (0 = atanmamış -> genel ayarlar); mtable[i-1] = malzeme sözlüğü
         self.mid = (np.zeros(len(ok), dtype=np.int32) if mid is None else np.asarray(mid, dtype=np.int32).reshape(-1))[ok]
         self.mtable = list(mtable or [])
+        # nesne: üçgen başına indeks (-1 = bilinmiyor); onames[i] = nesnenin belge adı (tıkla-seç / pick için)
+        self.oid = (np.full(len(ok), -1, dtype=np.int32) if oid is None else np.asarray(oid, dtype=np.int32).reshape(-1))[ok]
+        self.onames = list(onames or [])
         self.n_unit = n / np.sqrt(nn)[:, None]
         a = np.cross(e2, n) / nn[:, None]               # u = (p-v0)·a
         b = np.cross(n, e1) / nn[:, None]               # v = (p-v0)·b

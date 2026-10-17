@@ -243,6 +243,13 @@ def render_document(doc=None, out_path=None, width=None, height=None, camera=Non
                         settings=values, fc_lights=fc_lights, progress=progress, tick=tick, stage=stage)
 
 
+def pick_object(scene, camera, width, height, x, y):
+    """Görüntüde (x, y) pikselindeki nesne: (nesne_adı, üçgen_indeksi) ya da None (arka plan / zemin).
+    scene: prepare_scene çıktısı; camera/width/height: o görüntünün render parametreleri."""
+    from .pick import pick
+    return pick(scene, _as_camera(camera), int(width), int(height), float(x), float(y))
+
+
 def turntable(doc=None, out_dir=".", frames=72, width=960, elevation=20.0, name="kare", fov=35.0, aspect=None,
               tess_cache=None, on_frame=None, **kw):
     """Kamerayı sahne çevresinde döndürüp PNG kare dizisi yazar: <out_dir>/<name>_0001.png ...

@@ -256,4 +256,24 @@ EN = {
     "Render'dan hariç tutuldu: %s": "Excluded from render: %s",
     "%d nesne render'a dahil edildi.": "%d object(s) included in the render.",
     "%d nesne render'dan hariç tutuldu.": "%d object(s) excluded from the render.",
+    "Benzer": "Similar",
+    "Aynı şekle sahip nesne sayısı (aynı parçanın kopyaları / Link'ler)": "Number of objects with the same shape (copies / links of the same part)",
+    "Benzerleri birlikte seç": "Select similar together",
+    "Bir nesneyi seçince aynı şekle sahip tüm nesneler (kopyalar, Link'ler) de seçilir; atama / dahil-hariç işlemleri hepsine uygulanır":
+        "Selecting an object also selects every object with the same shape (copies, links); assign / include-exclude then apply to all of them",
+    "Benzerleri yan yana diz": "Group similar together",
+    "Listeyi şekle göre gruplar: aynı parçanın kopyaları art arda gelir": "Orders the list by shape: copies of the same part are listed one after another",
+    "Benzerlerini seç": "Select similar",
+    "Seçili nesnelerle aynı şekle sahip tüm nesneleri de seçer (bir kerelik)": "Also selects every object with the same shape as the selected ones (one-off)",
+    "Boya kovası: önizlemeye tıkla": "Paint bucket: click the preview",
+    "Açıkken ana penceredeki render önizlemesinde bir parçaya tıklayınca, aşağıda düzenlenen malzeme o parçaya atanır. Kapalıyken tıklama yalnızca parçayı listede seçer.":
+        "When on, clicking a part in the render preview of the main window assigns the material edited below to it. When off, a click only selects the part in the list.",
+    "%d benzer nesne seçildi.": "%d similar object(s) selected.",
+    "Seçildi: %s": "Selected: %s",
+    "%d nesneye boyandı: %s — sonucu görmek için yeniden Render'a basın.": "Painted %d object(s) with: %s — press Render again to see the result.",
+    "Önce bir render alın; sonra önizlemede parçaya tıklayabilirsiniz.": "Render first; then you can click a part in the preview.",
+    "Tıklanan yerde nesne yok (arka plan ya da zemin).": "No object at the clicked spot (background or floor).",
+    "Tıklanan: %s": "Clicked: %s",
+    "Render aldıktan sonra bir parçaya tıklayın: Malzemeler penceresinde seçilir (Ctrl: seçime ekle)":
+        "After rendering, click a part: it gets selected in the Materials window (Ctrl: add to selection)",
 }

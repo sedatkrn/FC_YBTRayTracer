@@ -10,6 +10,7 @@ Modüller:
   output         PNG yazıcı, çıktı yolu
   freecad_scene  FreeCAD nesnelerini üçgenlere çevirme, kamera, ışık tercihleri
   ui             ayar paneli ve önizleme penceresi
-  api            arayüzsüz API: render_document, prepare_scene, orbit_cameras, turntable (animasyon)
+  api            arayüzsüz API: render_document, prepare_scene, orbit_cameras, turntable (animasyon), pick_object
+  pick           tıkla-seç: görüntüdeki piksel -> nesne (önizleme tıklaması, boya kovası)
 """
 __version__ = "1.3.0"

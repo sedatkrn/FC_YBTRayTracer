@@ -357,6 +357,7 @@ def main(lang=None):
         def __init__(self):
             QtGui.QLabel.__init__(self, T("Ön izleme ekranı"))
             self.pm = None
+            self.on_click = None                      # f(u, v, ctrl): u,v = görüntü içinde 0..1 konum
             self.setAlignment(QtCore.Qt.AlignCenter)
             self.setMinimumSize(320, 240)
             self.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
@@ -375,6 +376,23 @@ def main(lang=None):
         def resizeEvent(self, ev):
             QtGui.QLabel.resizeEvent(self, ev)
             self.refit()
+
+        def mousePressEvent(self, ev):
+            """Görüntüye tıklama: etiket içindeki konumu görüntü koordinatına (0..1) çevirir."""
+            QtGui.QLabel.mousePressEvent(self, ev)
+            pm = self.pixmap()
+            if self.on_click is None or pm is None or pm.isNull() or ev.button() != QtCore.Qt.LeftButton:
+                return
+            try:
+                p = ev.position()
+                x, y = p.x(), p.y()
+            except AttributeError:
+                x, y = ev.x(), ev.y()
+            pw, ph_ = float(pm.width()), float(pm.height())
+            u = (x - (self.width() - pw) / 2.0) / pw
+            v = (y - (self.height() - ph_) / 2.0) / ph_
+            if 0.0 <= u < 1.0 and 0.0 <= v < 1.0:
+                self.on_click(u, v, bool(ev.modifiers() & QtCore.Qt.ControlModifier))
 
     lbl = _Preview()
     right.addWidget(lbl, 1)
@@ -445,7 +463,7 @@ def main(lang=None):
     sync_enabled()
 
     state = {"scene": None, "key": None, "busy": False, "cancel": False, "last": 0.0,
-             "out": None, "path": None}
+             "out": None, "path": None, "pick": None}
 
     def alive():
         return dlg.isVisible() and not state["cancel"]
@@ -563,6 +581,7 @@ def main(lang=None):
             if out is None:
                 raise _Cancelled()
             state["out"] = out
+            state["pick"] = (state["scene"], cam, w, h)     # tıkla-seç: gösterilen görüntüye ait sahne/kamera (sahne sonradan sıfırlansa da)
             put(out, w, h)
             msg = ""
             if ck_sv.isChecked():
@@ -625,6 +644,41 @@ def main(lang=None):
         from .surface_ui import open_surface
         open_surface(on_change=lambda: state.__setitem__("scene", None), is_busy=lambda: state["busy"])
     btn_m.clicked.connect(open_mats)
+
+    def on_preview_click(u, v, ctrl):
+        """Önizlemede tıklanan nesneyi bul; Malzemeler penceresinde seç (boya kovası açıksa malzemeyi ata)."""
+        if state["busy"]:
+            return
+        pk = state["pick"]
+        if pk is None:
+            lbl_st.setText(T("Önce bir render alın; sonra önizlemede parçaya tıklayabilirsiniz."))
+            return
+        sc, cam_, w_, h_ = pk
+        try:
+            from .pick import pick as _pick
+            hit = _pick(sc, cam_, w_, h_, u * w_, v * h_)
+        except Exception:
+            import traceback
+            FreeCAD.Console.PrintError(T("RayTrace hatası:\n") + traceback.format_exc())
+            return
+        if hit is None:
+            lbl_st.setText(T("Tıklanan yerde nesne yok (arka plan ya da zemin)."))
+            return
+        sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+        try:
+            alive_ = sd is not None and sd.isVisible()
+        except Exception:                             # pencere kapanmış (silinmiş Qt nesnesi)
+            alive_ = False
+        if not alive_:
+            open_mats()
+            sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+        if sd is None:
+            return
+        sd._ybt_api["pick"](hit[0], ctrl)
+        o = FreeCAD.ActiveDocument.getObject(hit[0]) if FreeCAD.ActiveDocument else None
+        lbl_st.setText(T("Tıklanan: %s") % (o.Label if o is not None else hit[0]))
+    lbl.on_click = on_preview_click
+    lbl.setToolTip(T("Render aldıktan sonra bir parçaya tıklayın: Malzemeler penceresinde seçilir (Ctrl: seçime ekle)"))
 
     FreeCAD._raytrace_dlg = dlg
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut

@@ -78,17 +78,28 @@ def render_preview(mat, w=280, h=210):
 
 
 # ---------------------------------------------------------------- pencere
+def _signature(shp):
+    """Benzerlik imzası: konumdan/dönmeden bağımsız şekil özeti (yüz/kenar sayısı, alan, hacim). Aynı imza = aynı parça
+    (bir parçanın kopyaları, Link'ler, birbirinin aynı cıvatalar...). Mesh için üçgen sayısı."""
+    try:
+        if getattr(shp, "is_mesh", False):
+            return ("m", len(shp.tri))
+        return ("s", len(shp.Faces), len(shp.Edges), float("%.4g" % shp.Area), float("%.4g" % abs(shp.Volume)))
+    except Exception:
+        return None
+
+
 def _renderable(doc):
     """Render motorunun gerçekten çizeceği nesneler (aynı tarama): görünür, yüzeyli gerçek şekiller.
     Origin/düzlem/eksen, Joint, boş kapsayıcılar ve gizli nesneler listede yer almaz.
-    Döner: [(nesne, hedef)] (kopyalar elenmiş)."""
+    Döner: [(nesne, hedef, imza)] (kopyalar elenmiş). imza: _signature (benzer nesneleri bulmak için)."""
     from .freecad_scene import _gather
     out, seen = [], set()
-    for o, tgt, _shp, _sub in _gather(doc, lambda *_a: None):
+    for o, tgt, shp, _sub in _gather(doc, lambda *_a: None):
         if o.Name in seen:
             continue
         seen.add(o.Name)
-        out.append((o, tgt))
+        out.append((o, tgt, _signature(shp)))
     return out
 
 
@@ -128,11 +139,12 @@ def open_surface(on_change=None, is_busy=None):
     frow.addWidget(btn_scan)
     left.addLayout(frow)
     tree = QtGui.QTreeWidget()
-    tree.setColumnCount(2)
-    tree.setHeaderLabels([T("Nesne"), T("Malzeme")])
+    tree.setColumnCount(3)
+    tree.setHeaderLabels([T("Nesne"), T("Malzeme"), T("Benzer")])
     tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
     tree.setRootIsDecorated(False)
     tree.setMinimumWidth(300)
+    tree.headerItem().setToolTip(2, T("Aynı şekle sahip nesne sayısı (aynı parçanın kopyaları / Link'ler)"))
     tree.headerItem().setToolTip(0, T("İşaretli nesneler render'a dahil edilir; işareti kaldırılanlar sahneye hiç alınmaz"))
     left.addWidget(tree, 3)
     inc_row = QtGui.QHBoxLayout()
@@ -146,6 +158,23 @@ def open_surface(on_change=None, is_busy=None):
     hint = QtGui.QLabel(T("Kutusu işaretli olmayan nesneler render'a girmez."))
     hint.setStyleSheet("color: gray;")
     left.addWidget(hint)
+    ck_sim = QtGui.QCheckBox(T("Benzerleri birlikte seç"))
+    ck_sim.setToolTip(T("Bir nesneyi seçince aynı şekle sahip tüm nesneler (kopyalar, Link'ler) de seçilir; "
+                        "atama / dahil-hariç işlemleri hepsine uygulanır"))
+    ck_grp = QtGui.QCheckBox(T("Benzerleri yan yana diz"))
+    ck_grp.setToolTip(T("Listeyi şekle göre gruplar: aynı parçanın kopyaları art arda gelir"))
+    btn_sim = QtGui.QPushButton(T("Benzerlerini seç"))
+    btn_sim.setToolTip(T("Seçili nesnelerle aynı şekle sahip tüm nesneleri de seçer (bir kerelik)"))
+    sim_row = QtGui.QHBoxLayout()
+    sim_row.addWidget(ck_sim)
+    sim_row.addWidget(ck_grp)
+    sim_row.addWidget(btn_sim)
+    left.addLayout(sim_row)
+    btn_paint = QtGui.QPushButton(T("Boya kovası: önizlemeye tıkla"))
+    btn_paint.setCheckable(True)
+    btn_paint.setToolTip(T("Açıkken ana penceredeki render önizlemesinde bir parçaya tıklayınca, aşağıda düzenlenen malzeme "
+                           "o parçaya atanır. Kapalıyken tıklama yalnızca parçayı listede seçer."))
+    left.addWidget(btn_paint)
     left.addWidget(QtGui.QLabel("<b>%s</b>" % T("Malzeme kütüphanesi")))
     lst = QtGui.QListWidget()
     left.addWidget(lst, 3)
@@ -305,23 +334,44 @@ def open_surface(on_change=None, is_busy=None):
         """Hariç tutulan nesne soluk gösterilir."""
         try:
             brush = QtGui.QBrush(QtGui.QColor(128, 128, 128)) if not inc else QtGui.QBrush()
-            for c in (0, 1):
+            for c in (0, 1, 2):
                 it.setForeground(c, brush)
         except Exception:
             pass
 
+    def sim_info():
+        """nesne adı -> benzerlik grubu (aynı imza); grup boyutları ve ilk görülme sırası."""
+        grp, size, order = {}, {}, {}
+        for o, _tgt, sig in st["items"]:
+            key = sig if sig is not None else ("u", o.Name)      # imzası olmayan tek başına
+            grp[o.Name] = key
+            size[key] = size.get(key, 0) + 1
+            order.setdefault(key, len(order))
+        return grp, size, order
+
+    def similar_names(names):
+        """Verilen nesnelerle aynı gruptaki tüm nesne adları (kendileri dahil)."""
+        grp, _size, _order = sim_info()
+        keys = {grp[n] for n in names if n in grp}
+        return {n for n, k in grp.items() if k in keys} | set(names)
+
     def refresh_tree():
         sel = {it.data(0, QtCore.Qt.UserRole) for it in tree.selectedItems()}
         flt = ed_filter.text().strip().lower()
+        grp, size, order = sim_info()
+        rows = list(st["items"])
+        if ck_grp.isChecked():
+            rows.sort(key=lambda r: (order.get(grp.get(r[0].Name), 0), r[0].Label.lower()))
         st["tlock"] = True                          # onay kutusu değişim sinyali yeniden doldururken çalışmasın
         try:
             tree.clear()
-            for o, tgt in st["items"]:
+            for o, tgt, _sig in rows:
                 label = o.Label
                 if flt and flt not in label.lower() and flt not in M.assigned(o).lower():
                     continue
                 mn = M.assigned(o)
-                it = QtGui.QTreeWidgetItem([label, display_name(mn) if mn else "—"])
+                n_sim = size.get(grp.get(o.Name), 1)
+                it = QtGui.QTreeWidgetItem([label, display_name(mn) if mn else "—", ("×%d" % n_sim) if n_sim > 1 else ""])
                 it.setData(0, QtCore.Qt.UserRole, o.Name)
                 it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
                 inc = M.included(o)
@@ -447,7 +497,77 @@ def open_surface(on_change=None, is_busy=None):
         if m is not None:
             fill_editor(n, m)
 
-    def on_tree_sel():
+    def select_names(names, add=False):
+        """Listede verilen adlı nesneleri seç (add=True: mevcut seçime ekle) ve ilkine kaydır."""
+        names = set(names)
+        st["sellock"] = True
+        try:
+            if not add:
+                tree.clearSelection()
+            first = None
+            for i in range(tree.topLevelItemCount()):
+                it = tree.topLevelItem(i)
+                if it.data(0, QtCore.Qt.UserRole) in names:
+                    it.setSelected(True)
+                    if first is None:
+                        first = it
+            if first is not None:
+                tree.scrollToItem(first)
+        finally:
+            st["sellock"] = False
+        on_tree_sel(expand=False)
+        return len(tree.selectedItems())
+
+    def expand_similar():
+        names = {it.data(0, QtCore.Qt.UserRole) for it in tree.selectedItems()}
+        if not names:
+            return 0
+        alln = similar_names(names)
+        if alln != names:
+            select_names(alln, add=True)
+        return len(alln)
+
+    def do_select_similar():
+        if not tree.selectedItems():
+            msg(T("Önce soldaki listeden nesne seçin."))
+            return
+        n = expand_similar()
+        msg(T("%d benzer nesne seçildi.") % n)
+
+    def on_pick(name, add=False):
+        """Render önizlemesinde tıklanan nesne (ana pencereden çağrılır). Boya kovası açıksa malzemeyi atar."""
+        o = doc.getObject(name)
+        if o is None:
+            return
+        names = {name} | (similar_names({name}) if ck_sim.isChecked() else set())
+        if not any(it.data(0, QtCore.Qt.UserRole) == name for it in (tree.topLevelItem(i) for i in range(tree.topLevelItemCount()))):
+            ed_filter.clear()                                   # süzgeç nesneyi gizliyorsa kaldır
+            refresh_tree()
+        try:
+            import FreeCADGui as _Gui
+            _Gui.Selection.clearSelection()
+            _Gui.Selection.addSelection(o)                      # 3B görünümde de vurgula
+        except Exception:
+            pass
+        if btn_paint.isChecked():
+            mname = commit_current()
+            if mname is None:
+                return
+            objs = [x for x in (doc.getObject(n) for n in names) if x is not None]
+            for x in objs:
+                M.assign(x, mname)
+            changed()
+            select_names(names)
+            msg(T("%d nesneye boyandı: %s — sonucu görmek için yeniden Render'a basın.") % (len(objs), display_name(mname)))
+        else:
+            select_names(names, add=add)
+            msg(T("Seçildi: %s") % o.Label + ((" (+%d benzer)" % (len(names) - 1)) if len(names) > 1 else ""))
+
+    def on_tree_sel(expand=True):
+        if st.get("sellock"):
+            return
+        if expand and ck_sim.isChecked() and tree.selectedItems():
+            expand_similar()
         its = tree.selectedItems()
         if len(its) == 1:
             o = doc.getObject(its[0].data(0, QtCore.Qt.UserRole))
@@ -468,7 +588,10 @@ def open_surface(on_change=None, is_busy=None):
     btn_del.clicked.connect(do_del)
     lst.itemClicked.connect(on_lib_click)
     lst.itemDoubleClicked.connect(lambda it: (on_lib_click(it), do_assign()))
-    tree.itemSelectionChanged.connect(on_tree_sel)
+    tree.itemSelectionChanged.connect(lambda: on_tree_sel())
+    btn_sim.clicked.connect(lambda *_a: do_select_similar())
+    ck_grp.toggled.connect(lambda _b: refresh_tree())
+    ck_sim.toggled.connect(lambda on: expand_similar() if on else None)
     ed_name.textEdited.connect(lambda _t: None)
     ed_filter.textChanged.connect(lambda _t: refresh_tree())
     btn_scan.clicked.connect(lambda *_a: (rescan(), refresh_tree()))
@@ -481,7 +604,8 @@ def open_surface(on_change=None, is_busy=None):
     FreeCAD._ybt_surface_dlg = dlg
     dlg._ybt_api = dict(tree=tree, lib=lst, name=ed_name, widgets=widgets, state=st, assign=do_assign, clear=do_clear,
                         save=do_save, preview=do_preview, fill=fill_editor, refresh=refresh_tree, msg=lbl_msg, prev=prev,
-                        include=set_selected_included)
+                        include=set_selected_included, pick=on_pick, select=select_names, similar=similar_names,
+                        sim_check=ck_sim, paint=btn_paint)
     dlg.show()
     do_preview()
     return dlg

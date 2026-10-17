@@ -501,7 +501,7 @@ def collect_scene(doc, status=_nostatus, tess_cache=None, camera=None, aspect=No
         FreeCAD.Console.PrintMessage(
             T("RayTrace: %d nesne bulundu (%.1f sn), sahne köşegeni %.1f mm, tessellate toleransı %.3f mm\n")
             % (len(items), t1 - t0, bb.DiagonalLength, tol))
-    tris, cols, alps, mids = [], [], [], []
+    tris, cols, alps, mids, oids, onames = [], [], [], [], [], []
     mtable, mindex = [], {}
     mlib = _mats.library()
     invisible = []
@@ -510,6 +510,8 @@ def collect_scene(doc, status=_nostatus, tess_cache=None, camera=None, aspect=No
     for k, (o, tgt, shp, sub) in enumerate(items):
         name = (sub.rstrip(".") or o.Name)
         n_before = ntri
+        oi = len(onames)
+        onames.append(o.Name)
         base, dc, how = _display_colors(o, tgt, len(shp.Faces))
         abase, ad = _display_opacity(o, tgt, len(shp.Faces))
         mname = _mats.assigned(o) or _mats.assigned(tgt)
@@ -537,6 +539,7 @@ def collect_scene(doc, status=_nostatus, tess_cache=None, camera=None, aspect=No
             cols.append(np.tile(np.array(base, dtype=np.float64), (len(tri), 1)))
             alps.append(np.full(len(tri), abase))
             mids.append(np.full(len(tri), mi, dtype=np.int32))
+            oids.append(np.full(len(tri), oi, dtype=np.int32))
             status(T("üçgenleniyor %d/%d: %s (%d üçgen)") % (k + 1, len(items), name[:24], ntri),
                    frac=(k + 1) / float(len(items)))
             if S.DEBUG:
@@ -561,6 +564,7 @@ def collect_scene(doc, status=_nostatus, tess_cache=None, camera=None, aspect=No
                     cols.append(np.tile(np.array(c, dtype=np.float64), (len(F), 1)))
                     alps.append(np.full(len(F), ad[0] if ad is not None else abase))
                     mids.append(np.full(len(F), mi, dtype=np.int32))
+                    oids.append(np.full(len(F), oi, dtype=np.int32))
                     status(T("üçgenleniyor %d/%d: %s (%d üçgen)") % (k + 1, len(items), name[:24], ntri),
                            frac=(k + 1) / float(len(items)))
                     continue
@@ -585,6 +589,7 @@ def collect_scene(doc, status=_nostatus, tess_cache=None, camera=None, aspect=No
             cols.append(np.tile(np.array(c, dtype=np.float64), (len(F), 1)))
             alps.append(np.full(len(F), ad[i] if ad is not None else abase))
             mids.append(np.full(len(F), mi, dtype=np.int32))
+            oids.append(np.full(len(F), oi, dtype=np.int32))
         if S.DEBUG:
             b = shp.BoundBox
             FreeCAD.Console.PrintMessage(
@@ -599,7 +604,8 @@ def collect_scene(doc, status=_nostatus, tess_cache=None, camera=None, aspect=No
         raise RuntimeError(T("Tessellation üçgen üretmedi."))
     t2 = time.time()
     status(T("ışın izleme ön hesapları (%d üçgen)...") % ntri, True)
-    sc = Scene(np.concatenate(tris), np.concatenate(cols), np.concatenate(alps), np.concatenate(mids), mtable)
+    sc = Scene(np.concatenate(tris), np.concatenate(cols), np.concatenate(alps), np.concatenate(mids), mtable,
+             np.concatenate(oids), onames)
     FreeCAD.Console.PrintMessage(T("RayTrace: hazırlık: tarama %.1f sn, üçgenleme %.1f sn, ön hesap %.1f sn\n")
                                  % (t1 - t0, t2 - t1, time.time() - t2))
     return sc, len(items)
