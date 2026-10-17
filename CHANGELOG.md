@@ -2,6 +2,9 @@
 
 ```
 v1.4.0 (hazırlanıyor):
+
+- **Ortam tıkanıklığı (AO)**: köşelerde ve nesne–zemin temasında yumuşak temas gölgesi; "Işık Ayarları"nda şiddet, erişim ve ışın sayısı. Bilateral süzgeçle gürültü giderilir.
+- Performans: kümelerde 8'li ağaç ve `tmax` ile kısa menzilli ışınlar, `einsum` tabanlı nokta çarpımı, daha hızlı bant seçimi.
         * Malzeme kütüphanesi: 60 hazır malzeme, kategorili liste (Plastik, Boya, Metal, Cam/sıvı, Doğal/yapı, Deri/karbon, Işık); kullanıcı
           malzemeleri "Benim malzemelerim" altında.
         * Doku malzemeleri: malzemeye doku atanabilir (tex / tex_scale / tex_mix); nesnede UV gerekmez, doku dünya koordinatından üç düzlemli

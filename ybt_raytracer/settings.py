@@ -9,6 +9,11 @@ BG_TOP = (0.62, 0.72, 0.86)
 BG_BOTTOM = (0.93, 0.94, 0.96)
 AMBIENT = 0.28          # ortam ışığı şiddeti (0..1)
 AMBIENT_COLOR = (1.0, 1.0, 1.0)
+AO = False              # ortam tıkanıklığı (ambient occlusion): köşeler/girintiler/zemin dibi ortam ışığından daha az alır
+AO_SAMPLES = 12         # piksel başına AO ışını (az = gürültülü ama hızlı; gürültü bilateral süzgeçle azaltılır)
+AO_RADIUS = 0.06        # AO erişimi (sahne köşegeninin oranı)
+AO_STRENGTH = 0.9       # 0..1: ortam ışığının AO ile ne kadar kısılacağı
+AO_STEP = 2             # AO ışınları her AO_STEP pikselde bir atılır (2 = dörtte biri), aradaki pikseller bilateral süzgeçle doldurulur
 # En çok 3 ışık. h = yatay açı (derece, 0 = kameradan; eksi = sol, artı = sağ),
 # v = dikey açı (0 = göz hizası, artı = yukarıdan). Açılar KAMERAYA göredir.
 LIGHTS = [

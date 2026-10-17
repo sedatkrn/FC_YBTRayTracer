@@ -9,13 +9,41 @@ from . import settings as S
 from .materials import shininess as _shin
 from .i18n import T
 from .textures import load as load_texture
-from .core import _any, _closest, _closest_sorted, _norm, camera_basis
+from .core import _any, _closest, _closest_sorted, _dot, _norm, camera_basis
 from .parallel import _Ticker, _limit_blas
-from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins, _screen_boxes, raster_rows
+from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins, _screen_boxes, band_sel, raster_rows
 
 
 def _acc(acc, idx, vals):
     np.add.at(acc, idx, vals)
+
+
+def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
+    """AO'yu seyrek örneklerden tüm piksellere yayan + gürültüyü azaltan bilateral süzgeç: yalnız ışın atılmış (have),
+    aynı nesnedeki, benzer derinlik ve normaldeki komşular ağırlıkla karışır."""
+    h, w = ao.shape
+    hit = ids >= 0
+    obj = np.where(hit, np.where(ids == fid, -2, oid[np.minimum(ids, len(oid) - 1)]), -3).astype(np.int32)
+    obj = np.where(hit & (ids != fid) & (obj < 0), ids + 1000000, obj)          # nesnesiz (oid=-1) üçgen: kendi kimliği
+    nrm = n_ext[np.maximum(ids, 0)].astype(np.float32)
+    tt = np.where(np.isfinite(ts), ts, 0.0).astype(np.float32)
+    P = R
+    pad = lambda a, v: np.pad(a, ((P, P), (P, P)) + ((0, 0),) * (a.ndim - 2), constant_values=v)
+    ob_p, tt_p, ao_p, hv_p = pad(obj, -9), pad(tt, 0.0), pad(ao.astype(np.float32), 0.0), pad(have.astype(np.float32), 0.0)
+    nr_p = np.pad(nrm, ((P, P), (P, P), (0, 0)))
+    acc = np.zeros((h, w), dtype=np.float32)
+    wsum = np.zeros((h, w), dtype=np.float32)
+    tol = np.maximum(tt * 0.02, 1e-9)
+    sig2 = 2.0 * (R * 0.55) ** 2
+    for dy in range(-R, R + 1):
+        for dx in range(-R, R + 1):
+            sl = (slice(P + dy, P + dy + h), slice(P + dx, P + dx + w))
+            same = (ob_p[sl] == obj) & hit & (np.abs(tt_p[sl] - tt) < tol * (1.0 + 0.5 * np.hypot(dx, dy)))
+            nd = (nr_p[sl] * nrm).sum(2)
+            wgt = same * hv_p[sl] * np.clip((nd - 0.7) / 0.3, 0.0, 1.0) * np.float32(np.exp(-(dx * dx + dy * dy) / sig2))
+            acc += wgt * ao_p[sl]
+            wsum += wgt
+    return np.where(hit & (wsum > 1e-6), acc / np.maximum(wsum, 1e-6), 0.0)
 
 
 def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, tick=None, stage=None):
@@ -193,7 +221,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                                   _LightGrid(scene, lt[0], G_sh, gl_ids) if len(gl_ids) else None)
                 grids[li] = gcache[gk]
     clusters = None
-    if secondary and not brute:
+    ao_on = bool(S.AO) and not brute and scene.count > 0 and int(S.AO_SAMPLES) > 0 and float(S.AO_STRENGTH) > 0.0
+    if (secondary or ao_on) and not brute:
         say(T("yansıma/saydamlık hızlandırıcısı hazırlanıyor..."))
         if "clusters" not in cache:
             cache["clusters"] = _Clusters(scene)
@@ -242,6 +271,10 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     vis = {}                                                   # (sx, sy) -> (t tamponu, üçgen tamponu)
     if raster:
         vis[(0.5, 0.5)] = (mkbuf(np.float64, np.inf), mkbuf(np.int64, -1))
+    ao_on = ao_on and raster
+    ao_buf = mkbuf(np.float64, 0.0) if ao_on else None
+    ao_have = mkbuf(np.float64, 0.0) if ao_on else None        # AO ışını atılan pikseller (kalanlar süzgeçle doldurulur)
+    ao_step = max(1, int(S.AO_STEP))
 
     def lights_blocked(Pl, li):
         """Yüzey noktalarından li. ışığa giden yol: 0 = açık, 1 = opak engel, 2 = cam engel."""
@@ -265,6 +298,20 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         if gop is not None:
             out[gop.shadowed(scene, Pl, Ld, tk)] = 1
         return out
+
+    def floor_apply(RO, RD, tb, ti):
+        """Analitik zemin düzlemi: nesnelerden yakınsa tb/ti (yerinde) zemin isabetiyle değiştirilir."""
+        dzz = RD[:, 2]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            tf = (z_floor - RO[:, 2]) / dzz
+        okf = (np.abs(dzz) > 1e-12) & (tf > eps) & (tf < tb)
+        if okf.any():
+            ix = np.nonzero(okf)[0]
+            hx = RO[ix, :2] + RD[ix, :2] * tf[ix][:, None]
+            far = (hx ** 2).sum(1) > f_rad2
+            ix = ix[~far]
+            tb[ix] = tf[ix]
+            ti[ix] = fid
 
     def trace(px, py, sx, sy):
         """px,py: piksel koordinatları (n,), sx,sy: piksel içi konum (0..1). Döner doğrusal renk (n,3)."""
@@ -323,17 +370,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     tb[gm], ti[gm] = t_, i_
 
             if f_on:                                           # analitik zemin düzlemi: nesnelerden yakınsa onun yerine
-                dzz = RD[:, 2]
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    tf = (z_floor - RO[:, 2]) / dzz
-                okf = (np.abs(dzz) > 1e-12) & (tf > eps) & (tf < tb)
-                if okf.any():
-                    ix = np.nonzero(okf)[0]
-                    hx = RO[ix, :2] + RD[ix, :2] * tf[ix][:, None]
-                    far = (hx ** 2).sum(1) > f_rad2
-                    ix = ix[~far]
-                    tb[ix] = tf[ix]
-                    ti[ix] = fid
+                floor_apply(RO, RD, tb, ti)
 
             miss = np.nonzero(ti < 0)[0]
             if len(miss):
@@ -350,7 +387,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             Dh = RD[hi]
             P = RO[hi] + Dh * tb[hi][:, None]
             ngeo = n_ext[tid].copy()                             # düzlemsel (yüz) normali, bakana dönük
-            sgn = np.where((ngeo * Dh).sum(1) > 0, -1.0, 1.0)
+            sgn = np.where(_dot(ngeo, Dh) > 0, -1.0, 1.0)
             ngeo *= sgn[:, None]
             nrm = ngeo                                           # gölgeleme normali
             Psh = P                                              # gölge ışını çıkış noktası
@@ -359,12 +396,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if len(sm):
                     ts = tid[sm]
                     Ps = P[sm]
-                    bu = np.clip((Ps * scene.A[ts]).sum(1) - scene.v0A[ts], 0.0, 1.0)
-                    bv = np.clip((Ps * scene.B[ts]).sum(1) - scene.v0B[ts], 0.0, 1.0)
+                    bu = np.clip(_dot(Ps, scene.A[ts]) - scene.v0A[ts], 0.0, 1.0)
+                    bv = np.clip(_dot(Ps, scene.B[ts]) - scene.v0B[ts], 0.0, 1.0)
                     bw = np.clip(1.0 - bu - bv, 0.0, 1.0)
                     vns = vn[ts] * sgn[sm][:, None, None]            # bakan tarafa dönük köşe normalleri
                     nsm = bw[:, None] * vns[:, 0] + bu[:, None] * vns[:, 1] + bv[:, None] * vns[:, 2]
-                    ln = np.sqrt((nsm * nsm).sum(1))[:, None]
+                    ln = np.sqrt(_dot(nsm, nsm))[:, None]
                     nrm = nrm.copy()
                     nrm[sm] = np.where(ln > 1e-12, nsm / np.maximum(ln, 1e-12), ngeo[sm])
                     # gölge terminatörü düzeltmesi (Estevez & Kulla): noktayı köşe teğet düzlemlerinin üstüne taşı
@@ -398,7 +435,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     Pw = P[ix] + scene.center
                     wt3 = np.abs(ngeo[ix]) ** 4
                     wt3 /= wt3.sum(1, keepdims=True)
-                    cosg = np.maximum(np.abs((ngeo[ix] * Dh[ix]).sum(1)), 0.2)
+                    cosg = np.maximum(np.abs(_dot(ngeo[ix], Dh[ix])), 0.2)
                     dist = tb[hi][ix] if persp else np.ones(len(ix))
                     foot = dist * pix_ang_g / cosg * (1.0 + 3.0 * RN[hi][ix])
                     lod = np.log2(np.maximum(foot / (tw / tx.base_w), 1.0))
@@ -419,10 +456,13 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             else:
                 spec_k, shin_k, metal_k = float(spec_tab[0]), float(shin_tab[0]), 0.0
 
-            lit = np.tile(amb, (len(hi), 1))
+            if ao_buf is not None and depth == 0:               # birincil isabetlerde ortam ışığı AO ile kısılır
+                lit = amb[None, :] * (1.0 - float(S.AO_STRENGTH) * ao_buf[py[pix[hi]], px[pix[hi]]])[:, None]
+            else:
+                lit = np.tile(amb, (len(hi), 1))
             spec_sum = np.zeros((len(hi), 3))
             for li, (Ld, lcol, power, cast) in enumerate(lights):
-                ndl = np.clip((nrm * Ld).sum(1), 0, None)
+                ndl = np.clip(_dot(nrm, Ld), 0, None)
                 if cast:
                     lit_idx = np.nonzero(ndl > 0)[0]
                     if len(lit_idx):
@@ -431,7 +471,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                         ndl[lit_idx[blk == 2]] *= 0.55            # camdan geçen ışık: yarı gölge
                 lit += (power * ndl)[:, None] * lcol
                 Hh = _norm(Ld - Dh)
-                sp = np.clip((nrm * Hh).sum(1), 0, None) ** shin_k * (ndl > 0)
+                sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * (ndl > 0)
                 spec_sum += (spec_k * min(power / 0.7, 1.5) * sp)[:, None] * lcol
             if has_mat:                                         # metal: vurgu yüzey renginde
                 spec_sum = spec_sum * (1.0 - metal_k[:, None] + metal_k[:, None] * np.minimum(albedo_raw * 1.4, 1.0))
@@ -448,7 +488,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     surf[isf] = surf[isf] * (1.0 - haze) + bot_l * haze
 
             glass = a < 0.999
-            cosv = np.clip(-(nrm * Dh).sum(1), 0, 1)
+            cosv = np.clip(-_dot(nrm, Dh), 0, 1)
             rg_k = np.where(mt > 0, refl_tab[mt], r_glass) if has_mat else r_glass
             R = np.where(glass, np.clip(rg_k * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), refl_tab[mt] if has_mat else r_surf)
             if f_on:
@@ -461,7 +501,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if rm.any():
                     entering = sgn > 0                           # yüz normalleri dışa bakar: dışarıdan giren ışın
                     eta = np.where(entering, 1.0 / ior_k, ior_k)
-                    ci = np.clip(-(nrm * Dh).sum(1), 0.0, 1.0)
+                    ci = np.clip(-_dot(nrm, Dh), 0.0, 1.0)
                     kk = 1.0 - eta * eta * (1.0 - ci * ci)
                     # tam iç yansıma; yansıma bütçesi (BOUNCES) bittiyse ışın enerji kaybetmesin, düz geçsin
                     tir = rm & (kk < 0.0) & (RN[hi] < bounces)
@@ -484,7 +524,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             nxt = []
             sel = np.nonzero((wr * W > S.REFL_MIN_W) & (RN[hi] < bounces))[0]
             if len(sel):                                         # yansıyan ışınlar
-                Dr = Dh[sel] - 2.0 * (Dh[sel] * nrm[sel]).sum(1)[:, None] * nrm[sel]
+                Dr = Dh[sel] - 2.0 * _dot(Dh[sel], nrm[sel])[:, None] * nrm[sel]
                 nxt.append((pix[hi][sel], P[sel] + ngeo[sel] * eps, _norm(Dr), (W * wr)[sel],
                             RN[hi][sel] + 1, np.zeros(len(sel), dtype=bool),
                             (tid[sel] == fid) if f_on else np.zeros(len(sel), dtype=bool)))
@@ -498,7 +538,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                         ns_ = nrm[sel][rs]
                         Di = Dh[sel][rs]
                         et = eta[sel][rs]
-                        cs = np.clip(-(ns_ * Di).sum(1), 0.0, 1.0)
+                        cs = np.clip(-_dot(ns_, Di), 0.0, 1.0)
                         kq = np.maximum(1.0 - et * et * (1.0 - cs * cs), 0.0)
                         Dn = et[:, None] * Di + (et * cs - np.sqrt(kq))[:, None] * ns_
                         Dt = Dt.copy()
@@ -636,13 +676,80 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 return r
         return run_threads(items, fn, on_done)
 
+    # ---- 0. geçiş (AO açıksa): görünürlük tamponu -> piksel başına AO ışınları -> bilateral süzgeç ----
+    if ao_on:
+        tmax_ao = float(S.AO_RADIUS) * scene.diag
+        m_ao = max(1, int(S.AO_SAMPLES))
+
+        def vis_band(ty):
+            r0, r1 = ty * tile, min(ty * tile + tile, h)
+            vt_, vi_ = raster_rows(scene, boxes, r0, r1, w, 0.5, 0.5, prim_rays)
+            vis[(0.5, 0.5)][0][r0:r1] = vt_
+            vis[(0.5, 0.5)][1][r0:r1] = vi_
+
+        say(T("görünürlük tamponu hazırlanıyor..."))
+        if run_parallel(list(range(ny)), vis_band,
+                        lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), T("görünürlük"))) is False:
+            return None
+
+        def ao_band(ty):
+            r0, r1 = ty * tile, min(ty * tile + tile, h)
+            nrow = r1 - r0
+            px = np.tile(np.arange(w), nrow)
+            py = np.repeat(np.arange(r0, r1), w)
+            O, D = prim_rays(px, py, 0.5, 0.5)
+            O = np.broadcast_to(O, D.shape)
+            tb = vis[(0.5, 0.5)][0][r0:r1].ravel().copy()
+            ti = vis[(0.5, 0.5)][1][r0:r1].ravel().copy()
+            if f_on:
+                floor_apply(O, D, tb, ti)
+            idx = np.nonzero((ti >= 0) & (px % ao_step == 0) & (py % ao_step == 0))[0]
+            out = np.zeros(nrow * w)
+            hv = np.zeros(nrow * w)
+            hv[idx] = 1.0
+            ao_have[r0:r1] = hv.reshape(nrow, w)
+            if len(idx):
+                Dh = D[idx]
+                P = O[idx] + Dh * tb[idx][:, None]
+                nn = n_ext[ti[idx]].copy()
+                nn *= np.where(_dot(nn, Dh) > 0, -1.0, 1.0)[:, None]
+                helper = np.where(np.abs(nn[:, :1]) < 0.9, np.array([[1.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]))
+                t1 = _norm(np.cross(nn, helper))
+                t2 = np.cross(nn, t1)
+                hsh = np.sin(px[idx] * 12.9898 + py[idx] * 78.233) * 43758.5453
+                rot = hsh - np.floor(hsh)                                   # piksel başına sabit, rastgele dönüş
+                Po = P + nn * eps
+                occ = np.zeros(len(idx))
+                chunks_o, chunks_d = [], []
+                for j in range(m_ao):
+                    u = (j + 0.5) / m_ao
+                    rr_, ph = np.sqrt(u), 2.0 * np.pi * (((j * 0.7548776662466927) + rot) % 1.0)
+                    d_ = (rr_ * np.cos(ph))[:, None] * t1 + (rr_ * np.sin(ph))[:, None] * t2 + np.sqrt(1.0 - u) * nn
+                    chunks_o.append(Po)
+                    chunks_d.append(d_)
+                Ao = np.concatenate(chunks_o)
+                Ad = np.concatenate(chunks_d)
+                t_, i_ = _closest_general(scene, clusters, Ao, Ad, tk, tmax_ao)
+                v_ = np.where(i_ >= 0, 1.0 - np.minimum(t_ / tmax_ao, 1.0), 0.0)
+                occ = v_.reshape(m_ao, len(idx)).mean(0)
+                out[idx] = occ
+            ao_buf[r0:r1] = out.reshape(nrow, w)
+
+        say(T("ortam tıkanıklığı hesaplanıyor..."))
+        if run_parallel(list(range(ny)), ao_band,
+                        lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), T("ortam tıkanıklığı"))) is False:
+            return None
+        ao_buf[:] = _ao_blur(np.array(ao_buf), np.array(ao_have), np.array(vis[(0.5, 0.5)][1]), np.array(vis[(0.5, 0.5)][0]), n_ext,
+                             fid if f_on else -1, scene.oid, 2 * ao_step + 1)
+        say(T("ışınlar izleniyor..."))
+
     # ---- 1. geçiş: piksel başına 1 örnek (piksel merkezi), bant bant ----
     def band(ty):
         r0, r1 = ty * tile, min(ty * tile + tile, h)
         nrow = r1 - r0
         px = np.tile(np.arange(w), nrow)
         py = np.repeat(np.arange(r0, r1), w)
-        if raster:
+        if raster and not ao_on:
             vt_, vi_ = raster_rows(scene, boxes, r0, r1, w, 0.5, 0.5, prim_rays)
             vis[(0.5, 0.5)][0][r0:r1] = vt_
             vis[(0.5, 0.5)][1][r0:r1] = vi_
@@ -676,14 +783,18 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         if raster and ne:
             emask = np.zeros((h, w), dtype=bool)
             emask[ey, ex_] = True
-            for oy in offs_s:
-                for ox in offs_s:
-                    vis[(ox, oy)] = (mkbuf(np.float64, np.inf), mkbuf(np.int64, -1))
+            aa_keys = [(ox, oy) for oy in offs_s for ox in offs_s]
+            for key_ in aa_keys:
+                vis[key_] = (mkbuf(np.float64, np.inf), mkbuf(np.int64, -1))
 
             def aa_vis(ty):
                 r0, r1 = ty * tile, min(ty * tile + tile, h)
-                for (ox, oy), (bt, bi) in vis.items():
-                    vt_, vi_ = raster_rows(scene, boxes, r0, r1, w, ox, oy, prim_rays, mask=emask)
+                if not emask[r0:r1].any():
+                    return
+                sel_ = band_sel(boxes, r0, r1, w)
+                for (ox, oy) in aa_keys:
+                    bt, bi = vis[(ox, oy)]
+                    vt_, vi_ = raster_rows(scene, boxes, r0, r1, w, ox, oy, prim_rays, mask=emask, sel=sel_)
                     bt[r0:r1] = vt_
                     bi[r0:r1] = vi_
 

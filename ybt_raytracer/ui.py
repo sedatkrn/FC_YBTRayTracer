@@ -194,6 +194,33 @@ def main(lang=None):
     arow.addWidget(cb_amb)
     arow.addWidget(sp_amb)
     lvb.addLayout(arow)
+    ck_ao = QtGui.QCheckBox(T("Ortam tıkanıklığı (AO)"))
+    ck_ao.setChecked(bool(S.AO))
+    ck_ao.setToolTip(T("Köşeler, girintiler ve nesnelerin zemine değdiği yerler ortam ışığını daha az alır (temas gölgesi). "
+                       "Gerçekçilik katar; süreyi artırır. Ortam ışığı çok düşükse etkisi az görünür."))
+    sp_aos = spin(0, 100, S.AO_STRENGTH * 100, 5, " %")
+    sp_aos.setToolTip(T("AO şiddeti: ortam ışığının ne kadarının kısılacağı"))
+    sp_aor = spin(1, 50, S.AO_RADIUS * 100, 1, " %")
+    sp_aor.setToolTip(T("AO erişimi: sahne boyutunun yüzdesi (büyük = geniş, yumuşak gölgelenme)"))
+    sp_aon = spin(2, 64, S.AO_SAMPLES, 2)
+    sp_aon.setToolTip(T("Piksel başına AO ışını (çok = daha temiz, daha yavaş)"))
+    aor = QtGui.QHBoxLayout()
+    aor.addWidget(ck_ao)
+    aor.addStretch(1)
+    aor.addWidget(sp_aos)
+    lvb.addLayout(aor)
+    aor2 = QtGui.QHBoxLayout()
+    aor2.addWidget(QtGui.QLabel(T("AO erişimi")))
+    aor2.addWidget(sp_aor)
+    aor2.addWidget(QtGui.QLabel(T("Işın sayısı")))
+    aor2.addWidget(sp_aon)
+    lvb.addLayout(aor2)
+
+    def sync_ao(*_a):
+        for wd in (sp_aos, sp_aor, sp_aon):
+            wd.setEnabled(ck_ao.isChecked())
+    ck_ao.toggled.connect(sync_ao)
+    sync_ao()
     lv.addWidget(lbox)
     light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb]
 
@@ -677,7 +704,7 @@ def main(lang=None):
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -693,6 +720,10 @@ def main(lang=None):
         g["GLASS"] = ck_gl.isChecked()
         g["SMOOTH"] = ck_sm.isChecked()
         g["CULL_OFFSCREEN"] = ck_cull.isChecked()
+        g["AO"] = ck_ao.isChecked()
+        g["AO_STRENGTH"] = sp_aos.value() / 100.0
+        g["AO_RADIUS"] = sp_aor.value() / 100.0
+        g["AO_SAMPLES"] = sp_aon.value()
         g["REFLECTIONS"] = ck_rf.isChecked()
         g["REFRACTION"] = ck_rr.isChecked()
         g["BOUNCES"] = sp_bn.value()
@@ -886,6 +917,6 @@ def main(lang=None):
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
-    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
+    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
                                                             refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)

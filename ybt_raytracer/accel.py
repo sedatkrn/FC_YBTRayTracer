@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from . import settings as S
-from .core import _any, _norm
+from .core import _any, _dot, _norm
 
 
 _PAIR_BUDGET = 6000000   # hücre-üçgen çifti üst sınırı (bellek koruması)
@@ -110,7 +110,13 @@ def _mask_sat(mask):
     return sat
 
 
-def raster_rows(sc, boxes, r0, r1, w, sx, sy, rays, mask=None, chunk=1500000):
+def band_sel(boxes, r0, r1, w):
+    """r0..r1-1 satırlarını (her piksel içi konum için) kapsayabilecek üçgenler; raster_rows(sel=...) ile tekrar kullanılır."""
+    bx0, bx1, by0, by1, valid = boxes
+    return np.nonzero(valid & (by1 >= r0) & (by0 <= r1) & (bx1 >= 0) & (bx0 <= w))[0]
+
+
+def raster_rows(sc, boxes, r0, r1, w, sx, sy, rays, mask=None, chunk=1500000, sel=None):
     """
     Görünürlük tamponu: r0..r1-1 satırlarındaki piksellerin (piksel içi konum sx, sy) birincil ışınlarının
     ilk çarptığı üçgen. _closest ile AYNI sonucu verir (aynı kesişim sınaması, aynı eşitlik kuralı) ama
@@ -123,7 +129,8 @@ def raster_rows(sc, boxes, r0, r1, w, sx, sy, rays, mask=None, chunk=1500000):
     nrow = r1 - r0
     out_t = np.full(nrow * w, np.inf)
     out_i = np.full(nrow * w, -1, dtype=np.int64)
-    sel = np.nonzero(valid & (by1 >= r0 + sy) & (by0 <= r1 - 1 + sy) & (bx1 >= sx) & (bx0 <= w - 1 + sx))[0]
+    if sel is None:
+        sel = band_sel(boxes, r0, r1, w)
     if len(sel) == 0:
         return out_t.reshape(nrow, w), out_i.reshape(nrow, w)
     ix0 = np.maximum(np.ceil(bx0[sel] - sx), 0).astype(np.int64)
@@ -164,17 +171,17 @@ def raster_rows(sc, boxes, r0, r1, w, sx, sy, rays, mask=None, chunk=1500000):
         if len(tri):
             O, D = rays(px, py, sx, sy)
             Nn = sc.N[tri]
-            Dn = (D * Nn).sum(1)
-            On = (O * Nn).sum(1) if O.ndim == 2 else Nn @ O
+            Dn = _dot(D, Nn)
+            On = _dot(O, Nn) if O.ndim == 2 else Nn @ O
             with np.errstate(divide="ignore", invalid="ignore"):
                 t = (sc.v0N[tri] - On) / Dn
                 Aa, Bb = sc.A[tri], sc.B[tri]
                 if O.ndim == 2:
-                    u = (O * Aa).sum(1) - sc.v0A[tri] + t * (D * Aa).sum(1)
-                    v = (O * Bb).sum(1) - sc.v0B[tri] + t * (D * Bb).sum(1)
+                    u = _dot(O, Aa) - sc.v0A[tri] + t * _dot(D, Aa)
+                    v = _dot(O, Bb) - sc.v0B[tri] + t * _dot(D, Bb)
                 else:
-                    u = Aa @ O - sc.v0A[tri] + t * (D * Aa).sum(1)
-                    v = Bb @ O - sc.v0B[tri] + t * (D * Bb).sum(1)
+                    u = Aa @ O - sc.v0A[tri] + t * _dot(D, Aa)
+                    v = Bb @ O - sc.v0B[tri] + t * _dot(D, Bb)
                 hit = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
             if hit.any():
                 P_.append(((py[hit] - r0) * w + px[hit]).astype(np.int64))
@@ -333,9 +340,9 @@ class _LightGrid(object):
             Nn = sc.N[tri]
             Aa, Bb = sc.A[tri], sc.B[tri]
             with np.errstate(divide="ignore", invalid="ignore"):
-                t = (sc.v0N[tri] - (Pp * Nn).sum(1)) / (Nn @ L)
-                u = (Pp * Aa).sum(1) - sc.v0A[tri] + t * (Aa @ L)
-                v = (Pp * Bb).sum(1) - sc.v0B[tri] + t * (Bb @ L)
+                t = (sc.v0N[tri] - _dot(Pp, Nn)) / (Nn @ L)
+                u = _dot(Pp, Aa) - sc.v0A[tri] + t * (Aa @ L)
+                v = _dot(Pp, Bb) - sc.v0B[tri] + t * (Bb @ L)
                 hit = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
             if hit.any():
                 res[np.unique(pl[hit])] = True
@@ -351,6 +358,7 @@ class _Clusters(object):
     """
     SZ = 32      # küme başına üçgen
     G = 64       # büyük kutu başına küme
+    F = 8        # büyük kutu ağacında düğüm başına çocuk
 
     def __init__(self, sc):
         c = sc.tri.mean(1)
@@ -384,34 +392,65 @@ class _Clusters(object):
         hi2 = np.concatenate([self.hi, np.full((padk, 3), -np.inf)])
         self.slo = lo2.reshape(K2, self.G, 3).min(1)               # büyük kutular: 64 kümelik gruplar
         self.shi = hi2.reshape(K2, self.G, 3).max(1)
+        # büyük kutuların üstüne 8'li ağaç: ışın tüm büyük kutuları değil yalnız isabet ettiği dalları sınar
+        self.tlo, self.thi, self.tcnt = [self.slo], [self.shi], [K2]
+        while self.tcnt[-1] > 1:
+            lo_, hi_ = self.tlo[-1], self.thi[-1]
+            n_ = len(lo_)
+            m_ = -(-n_ // self.F) * self.F
+            lo_ = np.concatenate([lo_, np.full((m_ - n_, 3), np.inf)])
+            hi_ = np.concatenate([hi_, np.full((m_ - n_, 3), -np.inf)])
+            self.tlo.append(lo_.reshape(-1, self.F, 3).min(1))
+            self.thi.append(hi_.reshape(-1, self.F, 3).max(1))
+            self.tcnt.append(len(self.tlo[-1]))
 
 
 _BIG = np.iinfo(np.int64).max // 4
 
 
-def _closest_general(sc, cl, O, D, tk=None):
+def _big_hits(cl, o, d, inv, tmax=np.inf):
+    """Işın x büyük kutu isabetleri, 8'li ağaçta yukarıdan aşağıya inerek. Döner (ışın, kutu, giriş mesafesi)."""
+    R = len(o)
+    F = cl.F
+    rr = np.arange(R)
+    nn = np.zeros(R, dtype=np.int64)
+    for L in range(len(cl.tlo) - 1, -1, -1):
+        oo, ii = o[rr], inv[rr]
+        with np.errstate(invalid="ignore"):
+            t1 = (cl.tlo[L][nn] - oo) * ii
+            t2 = (cl.thi[L][nn] - oo) * ii
+        tn = np.minimum(t1, t2).max(1)
+        tf = np.maximum(t1, t2).min(1)
+        ok = (tn <= tf) & (tf >= 0.0) & (tn <= tmax)
+        rr, nn, tn = rr[ok], nn[ok], tn[ok]
+        if L == 0:
+            return rr, nn, tn
+        if len(rr) == 0:
+            return rr, nn, tn
+        rr = np.repeat(rr, F)
+        nn = np.repeat(nn, F) * F + np.tile(np.arange(F), len(nn))
+        keep = nn < cl.tcnt[L - 1]
+        rr, nn = rr[keep], nn[keep]
+    return rr, nn, np.zeros(0)
+
+
+def _closest_general(sc, cl, O, D, tk=None, tmax=None):
     """
     Rastgele yönlü ışınlar için en yakın isabet. Üç kademe: büyük kutular (64 küme) -> küme kutuları
     (32 üçgen) -> üçgenler. Işın yalnız çarptığı kutuların içine girer.
     """
     R = len(O)
-    tb = np.full(R, np.inf)
+    tb = np.full(R, np.inf if tmax is None else float(tmax))      # tmax: bu uzaklığın ötesi aranmaz (AO gibi kısa menzilli ışınlar)
     ib = np.full(R, -1, dtype=np.int64)
     K, G, SZ = cl.K, cl.G, cl.SZ
     tol = float(S.TIE_TOL) * sc.diag
-    K2 = len(cl.slo)
-    step = max(1, 3000000 // max(K2, 1))
+    step = 100000
     gar = np.arange(G)
     for s in range(0, R, step):
         o, d = O[s:s + step], D[s:s + step]
         with np.errstate(divide="ignore", invalid="ignore"):
             inv = 1.0 / np.where(np.abs(d) < 1e-12, 1e-12, d)
-            t1 = (cl.slo[None] - o[:, None]) * inv[:, None]
-            t2 = (cl.shi[None] - o[:, None]) * inv[:, None]
-        tnear = np.minimum(t1, t2).max(2)
-        tfar = np.maximum(t1, t2).min(2)
-        hit1 = (tnear <= tfar) & (tfar >= 0.0)
-        r1, s1 = np.nonzero(hit1)
+        r1, s1, tnear1 = _big_hits(cl, o, d, inv, np.inf if tmax is None else float(tmax))
         P2 = 20000
 
         def process(rr, ss, o=o, d=d, inv=inv, s=s):
@@ -439,9 +478,9 @@ def _closest_general(sc, cl, O, D, tk=None):
                 Dd, Oo = d[rry], o[rry]
                 Nn, An, Bn = sc.N[tid], sc.A[tid], sc.B[tid]
                 with np.errstate(divide="ignore", invalid="ignore"):
-                    t = (sc.v0N[tid] - (Oo * Nn).sum(1)) / (Dd * Nn).sum(1)
-                    u = (Oo * An).sum(1) - sc.v0A[tid] + t * (Dd * An).sum(1)
-                    v = (Oo * Bn).sum(1) - sc.v0B[tid] + t * (Dd * Bn).sum(1)
+                    t = (sc.v0N[tid] - _dot(Oo, Nn)) / _dot(Dd, Nn)
+                    u = _dot(Oo, An) - sc.v0A[tid] + t * _dot(Dd, An)
+                    v = _dot(Oo, Bn) - sc.v0B[tid] + t * _dot(Dd, Bn)
                     okt = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
                 t = np.where(okt, t, np.inf)
                 order = np.argsort(rry, kind="stable")             # aynı ışının çiftleri bitişik olsun
@@ -470,7 +509,7 @@ def _closest_general(sc, cl, O, D, tk=None):
         # bir kutunun giriş mesafesinden küçükse o kutu (ve ardındakiler) atlanır.
         if len(r1) == 0:
             continue
-        tn1 = np.maximum(tnear[r1, s1], 0.0)
+        tn1 = np.maximum(tnear1, 0.0)
         o_ = np.lexsort((tn1, r1))
         r1, s1, tn1 = r1[o_], s1[o_], tn1[o_]
         rank = np.arange(len(r1)) - np.searchsorted(r1, r1, side="left")
