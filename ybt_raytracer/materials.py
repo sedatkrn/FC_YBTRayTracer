@@ -11,6 +11,9 @@ Bir malzeme sözlüğü:
   transp  0..1   saydamlık (0 = opak, 1 = tam saydam)
   ior     1..3   kırılma indisi (yalnız saydam malzemede etkili; 1 = düz geçiş)
   lum     0..1   kendi ışığı (parlama, ışıktan bağımsız)
+  tex     ""/anahtar  doku (textures.PRESETS anahtarı; "" = düz renk). Nesneye UV gerekmez: dünya koordinatından üç düzlemli izdüşüm.
+  tex_scale  >=0 doku tekrarının belge birimiyle (mm) genişliği; 0 = otomatik (sahne boyutuna göre)
+  tex_mix 0..1   doku ile malzeme/nesne renginin karışımı (1 = yalnız doku)
 Atama nesnenin 'YBTMaterial' (metin) özelliğinde saklanır; belgeyle birlikte kaydolur.
 "Render'a dahil et" işareti nesnenin 'YBTInclude' (mantıksal) özelliğinde saklanır; özellik yoksa nesne dahildir.
 """
@@ -20,7 +23,8 @@ import os
 PROP = "YBTMaterial"
 INC_PROP = "YBTInclude"
 
-DEFAULT = dict(color=None, diffuse=1.0, spec=0.30, gloss=0.28, metal=0.0, refl=0.0, transp=0.0, ior=1.0, lum=0.0)
+DEFAULT = dict(color=None, diffuse=1.0, spec=0.30, gloss=0.28, metal=0.0, refl=0.0, transp=0.0, ior=1.0, lum=0.0,
+               tex="", tex_scale=0.0, tex_mix=1.0)
 KEYS = tuple(DEFAULT.keys())
 
 
@@ -36,24 +40,98 @@ def _m(**kw):
     return d
 
 
-# Ad'lar Türkçe (kaynak); arayüzde i18n.T ile çevrilir.
+# Ad'lar Türkçe (kaynak); arayüzde i18n.T ile çevrilir. CATEGORIES: kütüphane listesindeki gruplar (sırayla).
 BUILTIN = {
+    # --- Plastik / kauçuk
     "Mat plastik":      _m(color=(0.80, 0.80, 0.82), spec=0.12, gloss=0.18),
     "Parlak plastik":   _m(color=(0.75, 0.10, 0.10), spec=0.60, gloss=0.55, refl=0.06),
+    "Beyaz plastik":    _m(color=(0.93, 0.93, 0.92), spec=0.30, gloss=0.35, refl=0.03),
+    "Siyah plastik":    _m(color=(0.03, 0.03, 0.035), spec=0.45, gloss=0.50, refl=0.05),
+    "Mavi plastik":     _m(color=(0.08, 0.22, 0.65), spec=0.50, gloss=0.50, refl=0.05),
+    "Yeşil plastik":    _m(color=(0.10, 0.50, 0.18), spec=0.50, gloss=0.50, refl=0.05),
+    "Sarı plastik":     _m(color=(0.95, 0.78, 0.08), spec=0.50, gloss=0.50, refl=0.05),
     "Kauçuk":           _m(color=(0.06, 0.06, 0.06), spec=0.05, gloss=0.12),
+    "Silikon":          _m(color=(0.85, 0.85, 0.82), spec=0.25, gloss=0.25, refl=0.02),
+    "Naylon (mat)":     _m(color=(0.92, 0.91, 0.86), spec=0.10, gloss=0.15),
+    # --- Boya
     "Boya (araba)":     _m(color=(0.70, 0.05, 0.05), spec=0.70, gloss=0.70, refl=0.15),
-    "Seramik":          _m(color=(0.93, 0.93, 0.90), spec=0.70, gloss=0.65, refl=0.08),
-    "Ahşap (cilalı)":   _m(color=(0.55, 0.33, 0.16), spec=0.25, gloss=0.35, refl=0.03),
+    "Boya (mavi metalik)": _m(color=(0.10, 0.25, 0.60), spec=0.80, gloss=0.75, metal=0.35, refl=0.18),
+    "Boya (siyah piyano)": _m(color=(0.02, 0.02, 0.025), spec=0.90, gloss=0.85, refl=0.25),
+    "Boya (beyaz mat)": _m(color=(0.90, 0.90, 0.88), spec=0.08, gloss=0.15),
+    "Boya (gri mat)":   _m(color=(0.45, 0.46, 0.48), spec=0.08, gloss=0.15),
+    "Toz boya (kum)":   _m(color=(0.42, 0.40, 0.36), spec=0.15, gloss=0.20),
+    # --- Metal
     "Krom":             _m(color=(0.92, 0.92, 0.95), diffuse=0.20, spec=1.00, gloss=0.90, metal=1.0, refl=0.85),
     "Çelik (fırçalı)":  _m(color=(0.62, 0.63, 0.66), diffuse=0.55, spec=0.55, gloss=0.40, metal=1.0, refl=0.15),
+    "Çelik (cilalı)":   _m(color=(0.70, 0.71, 0.74), diffuse=0.30, spec=0.90, gloss=0.80, metal=1.0, refl=0.55),
+    "Paslanmaz çelik":  _m(color=(0.75, 0.76, 0.78), diffuse=0.45, spec=0.70, gloss=0.55, metal=1.0, refl=0.25),
+    "Dökme demir":      _m(color=(0.22, 0.22, 0.24), diffuse=0.70, spec=0.25, gloss=0.25, metal=0.8, refl=0.04),
+    "Fırçalı çelik (dokulu)": _m(color=(0.70, 0.72, 0.76), diffuse=0.50, spec=0.60, gloss=0.45, metal=1.0, refl=0.12,
+                                 tex="celik_firca", tex_mix=0.85),
     "Alüminyum":        _m(color=(0.80, 0.81, 0.83), diffuse=0.50, spec=0.70, gloss=0.55, metal=1.0, refl=0.30),
+    "Eloksal (siyah)":  _m(color=(0.06, 0.06, 0.07), diffuse=0.55, spec=0.50, gloss=0.45, metal=0.9, refl=0.10),
+    "Eloksal (mavi)":   _m(color=(0.10, 0.25, 0.70), diffuse=0.55, spec=0.60, gloss=0.50, metal=0.9, refl=0.12),
+    "Eloksal (kırmızı)": _m(color=(0.70, 0.08, 0.08), diffuse=0.55, spec=0.60, gloss=0.50, metal=0.9, refl=0.12),
     "Altın":            _m(color=(1.00, 0.77, 0.34), diffuse=0.40, spec=0.90, gloss=0.75, metal=1.0, refl=0.35),
+    "Gümüş":            _m(color=(0.96, 0.95, 0.92), diffuse=0.30, spec=0.95, gloss=0.85, metal=1.0, refl=0.60),
     "Bakır":            _m(color=(0.95, 0.52, 0.38), diffuse=0.45, spec=0.80, gloss=0.65, metal=1.0, refl=0.30),
+    "Pirinç":           _m(color=(0.86, 0.66, 0.28), diffuse=0.45, spec=0.80, gloss=0.65, metal=1.0, refl=0.28),
+    "Bronz":            _m(color=(0.68, 0.45, 0.22), diffuse=0.50, spec=0.65, gloss=0.50, metal=1.0, refl=0.18),
+    "Titanyum":         _m(color=(0.58, 0.56, 0.54), diffuse=0.50, spec=0.60, gloss=0.50, metal=1.0, refl=0.20),
+    "Kurşun":           _m(color=(0.38, 0.39, 0.42), diffuse=0.65, spec=0.30, gloss=0.30, metal=1.0, refl=0.08),
+    "Pas":              _m(color=(0.45, 0.22, 0.10), diffuse=1.0, spec=0.08, gloss=0.15),
+    # --- Cam / sıvı
     "Cam":              _m(color=(0.85, 0.95, 0.95), spec=1.00, gloss=0.90, refl=1.0, transp=0.90, ior=1.5),
-    "Su":               _m(color=(0.70, 0.88, 0.95), spec=1.00, gloss=0.90, refl=1.0, transp=0.92, ior=1.33),
+    "Cam (yeşilimsi)":  _m(color=(0.60, 0.85, 0.72), spec=1.00, gloss=0.90, refl=1.0, transp=0.85, ior=1.5),
+    "Cam (füme)":       _m(color=(0.25, 0.27, 0.30), spec=1.00, gloss=0.90, refl=1.0, transp=0.75, ior=1.5),
+    "Cam (mavi)":       _m(color=(0.45, 0.70, 0.95), spec=1.00, gloss=0.90, refl=1.0, transp=0.82, ior=1.5),
     "Buzlu cam":        _m(color=(0.90, 0.95, 0.95), spec=0.40, gloss=0.30, refl=0.40, transp=0.75, ior=1.0),
+    "Akrilik (şeffaf)": _m(color=(0.92, 0.96, 0.96), spec=0.90, gloss=0.85, refl=0.7, transp=0.88, ior=1.49),
+    "Su":               _m(color=(0.70, 0.88, 0.95), spec=1.00, gloss=0.90, refl=1.0, transp=0.92, ior=1.33),
+    "Elmas":            _m(color=(0.95, 0.98, 1.00), spec=1.00, gloss=0.95, refl=1.0, transp=0.92, ior=2.4),
+    # --- Doğal / yapı (dokulu)
+    "Ahşap (cilalı)":   _m(color=(0.55, 0.33, 0.16), spec=0.25, gloss=0.35, refl=0.03),
+    "Ahşap (dokulu)":   _m(color=(0.70, 0.55, 0.38), spec=0.20, gloss=0.30, refl=0.02, tex="ahsap", tex_scale=0.0),
+    "Mermer (dokulu)":  _m(color=(0.90, 0.90, 0.90), spec=0.55, gloss=0.65, refl=0.08, tex="mermer"),
+    "Travertin":        _m(color=(0.85, 0.80, 0.70), spec=0.15, gloss=0.25, tex="travertin"),
+    "Beton":            _m(color=(0.70, 0.70, 0.68), spec=0.05, gloss=0.12, tex="beton"),
+    "Tuğla":            _m(color=(0.70, 0.35, 0.28), spec=0.05, gloss=0.12, tex="tugla"),
+    "Taş kaplama":      _m(color=(0.60, 0.58, 0.54), spec=0.08, gloss=0.15, tex="tas_duvar"),
+    "Terrakota":        _m(color=(0.75, 0.45, 0.32), spec=0.08, gloss=0.18, tex="terrakota"),
+    "Sıva":             _m(color=(0.90, 0.88, 0.82), spec=0.04, gloss=0.10, tex="siva"),
+    "Çakıl":            _m(color=(0.60, 0.58, 0.55), spec=0.06, gloss=0.12, tex="cakil"),
+    "Seramik":          _m(color=(0.93, 0.93, 0.90), spec=0.70, gloss=0.65, refl=0.08),
+    "Porselen":         _m(color=(0.97, 0.97, 0.95), spec=0.85, gloss=0.80, refl=0.10),
+    # --- Kumaş / deri / karbon
+    "Deri (dokulu)":    _m(color=(0.80, 0.70, 0.65), spec=0.30, gloss=0.30, refl=0.02, tex="deri"),
+    "Karbon fiber":     _m(color=(0.90, 0.92, 0.96), spec=0.60, gloss=0.65, refl=0.10, tex="karbon"),
+    # --- Işık
     "Parlayan (ışık)":  _m(color=(1.00, 0.95, 0.80), spec=0.0, lum=1.0),
+    "LED (beyaz)":      _m(color=(1.00, 1.00, 1.00), spec=0.0, lum=1.0),
+    "LED (kırmızı)":    _m(color=(1.00, 0.15, 0.10), spec=0.0, lum=1.0),
+    "LED (yeşil)":      _m(color=(0.20, 1.00, 0.30), spec=0.0, lum=1.0),
 }
+
+CATEGORIES = [
+    ("Plastik / kauçuk", ["Mat plastik", "Parlak plastik", "Beyaz plastik", "Siyah plastik", "Mavi plastik", "Yeşil plastik",
+                          "Sarı plastik", "Kauçuk", "Silikon", "Naylon (mat)"]),
+    ("Boya", ["Boya (araba)", "Boya (mavi metalik)", "Boya (siyah piyano)", "Boya (beyaz mat)", "Boya (gri mat)", "Toz boya (kum)"]),
+    ("Metal", ["Krom", "Çelik (fırçalı)", "Çelik (cilalı)", "Paslanmaz çelik", "Dökme demir", "Fırçalı çelik (dokulu)", "Alüminyum",
+               "Eloksal (siyah)", "Eloksal (mavi)", "Eloksal (kırmızı)", "Altın", "Gümüş", "Bakır", "Pirinç", "Bronz", "Titanyum",
+               "Kurşun", "Pas"]),
+    ("Cam / sıvı", ["Cam", "Cam (yeşilimsi)", "Cam (füme)", "Cam (mavi)", "Buzlu cam", "Akrilik (şeffaf)", "Su", "Elmas"]),
+    ("Doğal / yapı", ["Ahşap (cilalı)", "Ahşap (dokulu)", "Mermer (dokulu)", "Travertin", "Beton", "Tuğla", "Taş kaplama",
+                      "Terrakota", "Sıva", "Çakıl", "Seramik", "Porselen"]),
+    ("Deri / karbon", ["Deri (dokulu)", "Karbon fiber"]),
+    ("Işık", ["Parlayan (ışık)", "LED (beyaz)", "LED (kırmızı)", "LED (yeşil)"]),
+]
+
+
+def category_of(name):
+    for cat, names in CATEGORIES:
+        if name in names:
+            return cat
+    return ""
 
 
 def user_lib_path():
@@ -90,9 +168,11 @@ def normalize(d):
             out[k] = d[k]
     c = out["color"]
     out["color"] = tuple(min(max(float(x), 0.0), 1.0) for x in c) if c else None
-    lim = dict(diffuse=(0, 1), spec=(0, 1), gloss=(0, 1), metal=(0, 1), refl=(0, 1), transp=(0, 1), ior=(1, 3), lum=(0, 1))
+    lim = dict(diffuse=(0, 1), spec=(0, 1), gloss=(0, 1), metal=(0, 1), refl=(0, 1), transp=(0, 1), ior=(1, 3), lum=(0, 1),
+               tex_scale=(0, 1e9), tex_mix=(0, 1))
     for k, (lo, hi) in lim.items():
         out[k] = min(max(float(out[k]), lo), hi)
+    out["tex"] = str(out["tex"] or "")
     return out
 
 

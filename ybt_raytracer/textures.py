@@ -17,6 +17,11 @@ PRESETS = [
     ("terrakota", "Terrakota karo", "terrakota.png", "repeat", 0.7),
     ("siva", "Sıva (kaba)", "siva.png", "repeat", 0.25),
     ("ahsap", "Ahşap", "ahsap.png", "mirror", 0.5),
+    ("beton", "Beton", "beton.png", "repeat", 0.4),
+    ("karbon", "Karbon fiber", "karbon.png", "repeat", 0.1),
+    ("tugla", "Tuğla", "tugla.png", "repeat", 0.4),
+    ("deri", "Deri", "deri.png", "repeat", 0.2),
+    ("celik_firca", "Fırçalı metal", "celik_firca.png", "repeat", 0.4),
 ]
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "textures")
 _CACHE = {}

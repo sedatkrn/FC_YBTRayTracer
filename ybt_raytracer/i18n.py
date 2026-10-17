@@ -233,6 +233,29 @@ EN = {
     "Seramik": "Ceramic", "Ahşap (cilalı)": "Wood (polished)", "Krom": "Chrome", "Çelik (fırçalı)": "Steel (brushed)",
     "Alüminyum": "Aluminium", "Altın": "Gold", "Bakır": "Copper", "Cam": "Glass", "Su": "Water", "Buzlu cam": "Frosted glass",
     "Parlayan (ışık)": "Emissive (light)",
+    # v1.3: malzeme kütüphanesi (kategoriler, yeni malzemeler, doku)
+    "(yok: düz renk)": "(none: plain colour)", "Ahşap (dokulu)": "Wood (textured)", "Akrilik (şeffaf)": "Acrylic (clear)",
+    "Benim malzemelerim": "My materials", "Beton": "Concrete", "Beyaz plastik": "White plastic", "Boya": "Paint",
+    "Boya (beyaz mat)": "Paint (matte white)", "Boya (gri mat)": "Paint (matte grey)", "Boya (mavi metalik)": "Paint (metallic blue)",
+    "Boya (siyah piyano)": "Paint (piano black)", "Bronz": "Bronze", "Cam (füme)": "Glass (smoked)", "Cam (mavi)": "Glass (blue)",
+    "Cam (yeşilimsi)": "Glass (greenish)", "Cam / sıvı": "Glass / liquid", "Deri": "Leather", "Deri (dokulu)": "Leather (textured)",
+    "Deri / karbon": "Leather / carbon", "Doku": "Texture", "Doku boyu (mm; 0 = otomatik)": "Texture size (mm; 0 = auto)",
+    "Doku karışımı": "Texture mix",
+    "Doku seçiliyken: 0 = yalnız malzeme/nesne rengi, 1 = yalnız doku": "With a texture: 0 = material/object colour only, 1 = texture only",
+    "Dokunun bir tekrarının nesne üzerindeki genişliği (belge birimi, mm). 0 = sahne boyutuna göre otomatik":
+        "Width of one texture repeat on the object (document units, mm). 0 = automatic from the scene size",
+    "Doğal / yapı": "Natural / building", "Dökme demir": "Cast iron", "Elmas": "Diamond", "Eloksal (kırmızı)": "Anodized (red)",
+    "Eloksal (mavi)": "Anodized (blue)", "Eloksal (siyah)": "Anodized (black)", "Fırçalı metal": "Brushed metal",
+    "Fırçalı çelik (dokulu)": "Brushed steel (textured)", "Gümüş": "Silver", "Işık": "Light", "Karbon fiber": "Carbon fibre",
+    "Kurşun": "Lead", "Küp": "Cube", "Küre": "Sphere", "LED (beyaz)": "LED (white)", "LED (kırmızı)": "LED (red)",
+    "LED (yeşil)": "LED (green)",
+    "Malzemeye doku atar. Nesnede UV gerekmez: doku dünya koordinatından üç yönden izdüşürülür.":
+        "Assigns a texture to the material. No UVs needed: the texture is projected from world coordinates along three axes.",
+    "Mavi plastik": "Blue plastic", "Mermer (dokulu)": "Marble (textured)", "Naylon (mat)": "Nylon (matte)", "Pas": "Rust",
+    "Paslanmaz çelik": "Stainless steel", "Pirinç": "Brass", "Plastik / kauçuk": "Plastic / rubber", "Porselen": "Porcelain",
+    "Sarı plastik": "Yellow plastic", "Silikon": "Silicone", "Siyah plastik": "Black plastic", "Sıva": "Plaster",
+    "Terrakota": "Terracotta", "Titanyum": "Titanium", "Toz boya (kum)": "Powder coat (sand)", "Travertin": "Travertine",
+    "Tuğla": "Brick", "Yeşil plastik": "Green plastic", "Çelik (cilalı)": "Steel (polished)", "Önizleme şekli": "Preview shape",
     # v1.3: render'a dahil et, kadraj dışı atla
     "Kadraj dışındaki nesneleri atla": "Skip objects outside the frame",
     "Kadrajın dışında kalan nesneler sahneye hiç alınmaz: üçgenlenmez, gölge/yansıma vermez, "

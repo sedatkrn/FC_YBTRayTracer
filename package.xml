@@ -41,6 +41,11 @@
       <file>ybt_raytracer/textures/tas_duvar.png</file>
       <file>ybt_raytracer/textures/terrakota.png</file>
       <file>ybt_raytracer/textures/travertin.png</file>
+      <file>ybt_raytracer/textures/beton.png</file>
+      <file>ybt_raytracer/textures/karbon.png</file>
+      <file>ybt_raytracer/textures/tugla.png</file>
+      <file>ybt_raytracer/textures/deri.png</file>
+      <file>ybt_raytracer/textures/celik_firca.png</file>
     </macro>
   </content>
 </package>

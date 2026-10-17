@@ -7,6 +7,7 @@ from . import materials as M
 from .i18n import T
 from .core import Scene
 from . import theme as _theme
+from . import textures as _tex
 
 PREVIEW_DELAY_MS = 1000     # parametre (sürgü/sayı) değişiminden sonra önizleme bu kadar sessizlik beklenince yenilenir
 
@@ -19,12 +20,40 @@ _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
     ("transp", "Saydamlık", 0.0, 1.0, "0 = opak, 1 = tam saydam"),
     ("ior", "Kırılma indisi (IOR)", 1.0, 3.0, "Saydam malzemede ışığın bükülmesi: cam 1.5, su 1.33, elmas 2.4; 1 = düz geçiş"),
     ("lum", "Kendi ışığı (luminosity)", 0.0, 1.0, "Işıktan bağımsız parlama"),
+    ("tex_mix", "Doku karışımı", 0.0, 1.0, "Doku seçiliyken: 0 = yalnız malzeme/nesne rengi, 1 = yalnız doku"),
+    ("tex_scale", "Doku boyu (mm; 0 = otomatik)", 0.0, 2000.0, "Dokunun bir tekrarının nesne üzerindeki genişliği (belge birimi, mm). 0 = sahne boyutuna göre otomatik"),
 ]
 
 
 # ---------------------------------------------------------------- önizleme sahnesi
-def _preview_scene(mat):
-    """Zemin üstünde bir küre; zemin dama deseni (yansıma/kırılma/saydamlık görünsün)."""
+def _cube_tris(side=1.7, rot=np.radians(32.0)):
+    """Zemine oturan, z ekseninde döndürülmüş küp: 12 üçgen, dışa bakan sarım."""
+    h = side / 2.0
+    c, s_ = np.cos(rot), np.sin(rot)
+    V = []
+    for x in (-h, h):
+        for y in (-h, h):
+            for z in (0.0, side):
+                V.append((c * x - s_ * y, s_ * x + c * y, z))
+    V = np.array(V)
+    cen = np.array([0.0, 0.0, h])
+    quads = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    out = []
+    for q in quads:
+        for tri in ((q[0], q[1], q[2]), (q[0], q[2], q[3])):
+            a, b, d = V[tri[0]], V[tri[1]], V[tri[2]]
+            n = np.cross(b - a, d - a)
+            if np.dot(n, (a + b + d) / 3.0 - cen) < 0:
+                b, d = d, b
+            out.append((a, b, d))
+    return np.array(out)
+
+
+def _preview_scene(mat, shape="sphere"):
+    """Zemin üstünde bir küre (ya da küp); zemin dama deseni (yansıma/kırılma/saydamlık görünsün)."""
+    mat = dict(mat)
+    if mat.get("tex"):                                     # önizleme nesnesi ~2 birim: doku tekrarı 1 birim (ya da mm/100)
+        mat["tex_scale"] = 1.0 if mat.get("tex_scale", 0.0) <= 0 else mat["tex_scale"] / 100.0
     nu, nv = 48, 24
     th = np.linspace(0, 2 * np.pi, nu + 1)
     ph = np.linspace(0, np.pi, nv + 1)
@@ -37,7 +66,7 @@ def _preview_scene(mat):
         for j in range(nu):
             a, b, c, d = P[i, j], P[i, j + 1], P[i + 1, j + 1], P[i + 1, j]
             tris += [(a, c, b), (a, d, c)]            # dışa bakan sarım (FreeCAD ile aynı)
-    sph = np.array(tris)
+    sph = np.array(tris) if shape != "cube" else _cube_tris()
     cols = [np.tile((0.7, 0.7, 0.72) if mat["color"] is None else mat["color"], (len(sph), 1))]
     alps = [np.full(len(sph), 1.0 - mat["transp"])]
     mids = [np.ones(len(sph), dtype=np.int32)]
@@ -58,10 +87,10 @@ def _preview_scene(mat):
     return Scene(tris, cols, alps, mids, [mat])
 
 
-def render_preview(mat, w=280, h=210):
-    """Malzemeyi küre üzerinde çizer. Döner: (h,w,3) uint8. Genel ayarlar geçici olarak değiştirilip geri yüklenir."""
+def render_preview(mat, w=280, h=210, shape="sphere"):
+    """Malzemeyi küre (shape="cube": küp) üzerinde çizer. Döner: (h,w,3) uint8. Genel ayarlar geçici olarak değiştirilip geri yüklenir."""
     from .render import render
-    sc = _preview_scene(mat)
+    sc = _preview_scene(mat, shape)
     saved = {k: getattr(S, k) for k in ("LIGHTS", "AMBIENT", "AMBIENT_COLOR", "FLOOR", "AA", "BOUNCES", "GLASS", "SMOOTH",
                                         "THREADS", "REFLECT_GLASS", "REFLECT_SURF", "IOR", "REFLECTIONS", "REFRACTION", "SPEC", "SHININESS")}
     try:
@@ -224,6 +253,19 @@ def open_surface(on_change=None, is_busy=None):
     prev.setAlignment(QtCore.Qt.AlignCenter)
     prev.setFrameShape(QtGui.QFrame.StyledPanel)
     right.addWidget(prev, 0, QtCore.Qt.AlignHCenter)
+    shape_row = QtGui.QHBoxLayout()
+    shape_row.addStretch(1)
+    shape_row.addWidget(QtGui.QLabel(T("Önizleme şekli")))
+    cb_shape = QtGui.QComboBox()
+    cb_shape.addItem(T("Küre"), "sphere")
+    cb_shape.addItem(T("Küp"), "cube")
+    try:
+        cb_shape.setCurrentIndex(1 if prm.GetString("PreviewShape", "sphere") == "cube" else 0)
+    except Exception:
+        pass
+    shape_row.addWidget(cb_shape)
+    shape_row.addStretch(1)
+    right.addLayout(shape_row)
     name_row = QtGui.QHBoxLayout()
     name_row.addWidget(QtGui.QLabel(T("Ad")))
     ed_name = QtGui.QLineEdit()
@@ -234,6 +276,15 @@ def open_surface(on_change=None, is_busy=None):
     name_row.addWidget(btn_color)
     right.addLayout(name_row)
     right.addWidget(ck_fc)
+    tex_row = QtGui.QHBoxLayout()
+    tex_row.addWidget(QtGui.QLabel(T("Doku")))
+    cb_tex = QtGui.QComboBox()
+    cb_tex.addItem(T("(yok: düz renk)"), "")
+    for k_, nm_, _fn, _md, _rl in _tex.PRESETS:
+        cb_tex.addItem(T(nm_), k_)
+    cb_tex.setToolTip(T("Malzemeye doku atar. Nesnede UV gerekmez: doku dünya koordinatından üç yönden izdüşürülür."))
+    tex_row.addWidget(cb_tex, 1)
+    right.addLayout(tex_row)
     grid = QtGui.QGridLayout()
     for r, (key, label, lo, hi, tip) in enumerate(_PARAMS):
         lb = QtGui.QLabel(T(label))
@@ -298,7 +349,7 @@ def open_surface(on_change=None, is_busy=None):
         if is_busy is not None and is_busy():
             return
         try:
-            img = render_preview(M.normalize(st["mat"]), 280, 210)
+            img = render_preview(M.normalize(st["mat"]), 280, 210, cb_shape.currentData() or "sphere")
         except Exception as ex:
             msg("önizleme: %s" % ex)
             return
@@ -319,6 +370,7 @@ def open_surface(on_change=None, is_busy=None):
             v = st["mat"][key]
             sp.setValue(v)
             sl.setValue(int(round((v - lo) / (hi - lo) * 1000)))
+        cb_tex.setCurrentIndex(max(0, cb_tex.findData(st["mat"].get("tex", ""))))
         ck_fc.setChecked(st["mat"]["color"] is None)
         btn_color.setStyleSheet(color_css(st["mat"]["color"] or (0.7, 0.7, 0.72)))
         btn_color.setEnabled(st["mat"]["color"] is not None)
@@ -349,6 +401,21 @@ def open_surface(on_change=None, is_busy=None):
 
     for key, (sl, sp, lo, hi) in widgets.items():
         make_param_handlers(key, sl, sp, lo, hi)
+
+    def on_tex_changed(_i):
+        if st["lock"]:
+            return
+        st["mat"]["tex"] = cb_tex.currentData() or ""
+        schedule()
+    cb_tex.currentIndexChanged.connect(on_tex_changed)
+
+    def on_shape_changed(_i):
+        try:
+            prm.SetString("PreviewShape", cb_shape.currentData() or "sphere")
+        except Exception:
+            pass
+        schedule()
+    cb_shape.currentIndexChanged.connect(on_shape_changed)
 
     def on_fc_toggle(on):
         if st["lock"]:
@@ -450,13 +517,37 @@ def open_surface(on_change=None, is_busy=None):
         lst.clear()
         lib = M.library()
         user = M.load_user()
-        for n in lib:
+        shown = set()
+
+        def add_item(n, indent=True):
             label = display_name(n) + ("" if n in M.BUILTIN and n not in user else "  ★")
-            it = QtGui.QListWidgetItem(label)
+            it = QtGui.QListWidgetItem(("   " if indent else "") + label)
             it.setData(QtCore.Qt.UserRole, n)
             lst.addItem(it)
+            shown.add(n)
             if n == select:
                 lst.setCurrentItem(it)
+
+        def add_header(t):
+            it = QtGui.QListWidgetItem(t)
+            it.setFlags(QtCore.Qt.ItemIsEnabled)                 # seçilemez başlık
+            f = it.font()
+            f.setBold(True)
+            it.setFont(f)
+            it.setForeground(QtGui.QBrush(QtGui.QColor(_theme.ACCENT_LIGHT)))
+            lst.addItem(it)
+
+        for cat, names in M.CATEGORIES:
+            have = [n for n in names if n in lib]
+            if have:
+                add_header(T(cat))
+                for n in have:
+                    add_item(n)
+        mine = [n for n in lib if n not in shown]
+        if mine:
+            add_header(T("Benim malzemelerim"))
+            for n in mine:
+                add_item(n)
 
     def sel_objects():
         return [o for o in (doc.getObject(it.data(0, QtCore.Qt.UserRole)) for it in tree.selectedItems()) if o is not None]
@@ -555,6 +646,8 @@ def open_surface(on_change=None, is_busy=None):
 
     def on_lib_click(it, *_a):
         n = it.data(QtCore.Qt.UserRole)
+        if n is None:                                       # kategori başlığı
+            return
         m = M.get(n)
         if m is not None:
             fill_editor(n, m)

@@ -76,6 +76,16 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     ior_tab = np.array([ior] + [m["ior"] if S.REFRACTION else 1.0 for m in mt_])
     lum_tab = np.array([0.0] + [m["lum"] for m in mt_])
     has_mat = len(mt_) > 0
+    # doku atanmış malzemeler: indeks (1 tabanlı, mid ile aynı) -> (Texture, tekrar genişliği, karışım)
+    tex_mats = {}
+    for i_, m_ in enumerate(mt_):
+        if m_.get("tex"):
+            t_ = load_texture(m_["tex"])
+            if t_ is not None:
+                w_ = float(m_.get("tex_scale", 0.0))
+                w_ = w_ if w_ > 0 else t_.rel * scene.diag
+                tex_mats[i_ + 1] = (t_, max(w_, 1e-6 * scene.diag), float(m_.get("tex_mix", 1.0)))
+    pix_ang_g = 2.0 * (np.tan(cam["size"] / 2.0) if bool(cam["persp"]) else cam["size"] / 2.0) / max(h, 1)
     refr = bool(S.GLASS and has_glass and float(ior_tab.max()) > 1.0005)   # kırılma: Snell yasası, çıkışta tam iç yansıma
     f_on = bool(S.FLOOR)
     f_alpha = float(min(max(S.FLOOR_OPACITY, 0.0), 1.0))
@@ -380,6 +390,28 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     albedo[isf0] = ftex.sample(u, v, lod)
             a = alpha_ext[tid]
             mt = mid_ext[tid]                                   # nokta başına malzeme indeksi
+            if tex_mats:                                        # malzeme dokusu: UV'siz, dünya koordinatından üç düzlemli izdüşüm
+                for k_, (tx, tw, mix) in tex_mats.items():
+                    ix = np.nonzero(mt == k_)[0]
+                    if len(ix) == 0:
+                        continue
+                    Pw = P[ix] + scene.center
+                    wt3 = np.abs(ngeo[ix]) ** 4
+                    wt3 /= wt3.sum(1, keepdims=True)
+                    cosg = np.maximum(np.abs((ngeo[ix] * Dh[ix]).sum(1)), 0.2)
+                    dist = tb[hi][ix] if persp else np.ones(len(ix))
+                    foot = dist * pix_ang_g / cosg * (1.0 + 3.0 * RN[hi][ix])
+                    lod = np.log2(np.maximum(foot / (tw / tx.base_w), 1.0))
+                    per = tw * tx.span
+                    tcol = np.zeros((len(ix), 3))
+                    wsum = np.zeros(len(ix))
+                    for ax, (a_, b_) in enumerate(((1, 2), (0, 2), (0, 1))):
+                        sl = np.nonzero(wt3[:, ax] > 0.02)[0]
+                        if len(sl):
+                            tcol[sl] += wt3[sl, ax][:, None] * tx.sample(Pw[sl, a_] / per, Pw[sl, b_] / (per * tx.aspect), lod[sl])
+                            wsum[sl] += wt3[sl, ax]
+                    tcol /= np.maximum(wsum, 1e-9)[:, None]
+                    albedo[ix] = (1.0 - mix) * albedo[ix] + mix * tcol
             albedo_raw = albedo
             if has_mat:
                 albedo = albedo * dif_tab[mt][:, None]

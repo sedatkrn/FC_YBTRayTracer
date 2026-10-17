@@ -1,6 +1,12 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.4.0 (hazırlanıyor):
+        * Malzeme kütüphanesi: 60 hazır malzeme, kategorili liste (Plastik, Boya, Metal, Cam/sıvı, Doğal/yapı, Deri/karbon, Işık); kullanıcı
+          malzemeleri "Benim malzemelerim" altında.
+        * Doku malzemeleri: malzemeye doku atanabilir (tex / tex_scale / tex_mix); nesnede UV gerekmez, doku dünya koordinatından üç düzlemli
+          izdüşümle uygulanır; mip düzeyli süzme. Yeni dokular: beton, karbon fiber, tuğla, deri, fırçalı metal (tools/make_textures.py).
+        * Önizleme şekli: küre ya da küp (seçim hatırlanır).
 v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğrudan sahneye alınır; App::Part / Link (LinkTransform dahil) içinde doğru konumlanır;
           malzeme atanabilir, Malzemeler penceresindeki listede görünür.
         * Arayüzsüz API (ybt_raytracer.api): render_document, render_scene, prepare_scene; kamera yardımcıları (make_camera, fit_camera, orbit_cameras);
