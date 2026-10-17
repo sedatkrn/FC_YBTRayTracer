@@ -276,4 +276,18 @@ EN = {
     "Tıklanan: %s": "Clicked: %s",
     "Render aldıktan sonra bir parçaya tıklayın: Malzemeler penceresinde seçilir (Ctrl: seçime ekle)":
         "After rendering, click a part: it gets selected in the Materials window (Ctrl: add to selection)",
+    "Her zaman üstte": "Always on top",
+    "Açıkken bu pencere render penceresinin üstünde kalır (önizlemede tıklayınca arkaya kaçmaz). Kapatınca normal pencere gibi davranır.":
+        "When on, this window stays above the render window (it won't drop behind when you click the preview). When off it behaves like a normal window.",
+    "İşlem günlüğü": "Activity log",
+    "Seçim: %d nesne": "Selection: %d object(s)",
+    "Benzerleri yan yana diz: %s": "Group similar together: %s",
+    "Benzerleri birlikte seç: %s": "Select similar together: %s",
+    "Boya kovası: %s": "Paint bucket: %s",
+    "açık — önizlemede parçaya tıklayın": "on — click a part in the preview",
+    "açık": "on", "kapalı": "off",
+    "Malzeme yüklendi: %s": "Material loaded: %s",
+    "Liste yenilendi: %d nesne": "List refreshed: %d object(s)",
+    "Her zaman üstte: %s": "Always on top: %s",
+    "Hazır: %d nesne listelendi.": "Ready: %d object(s) listed.",
 }

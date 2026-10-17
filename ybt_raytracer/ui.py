@@ -10,6 +10,7 @@ from .render import render
 from .output import pick_out_path, write_png
 from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 from . import materials as _mats
+from . import __version__ as _VER
 
 
 _QUALITY = [("Low", 0.012), ("Hızlı", 0.004), ("Normal", 0.0015), ("İnce", 0.0008)]   # Low: çok büyük montajlar için
@@ -39,7 +40,7 @@ def main(lang=None):
     g = vars(S)                      # ayarlar settings modülünde durur
 
     dlg = QtGui.QDialog(Gui.getMainWindow())
-    dlg.setWindowTitle("FC YBT Raytracer")
+    dlg.setWindowTitle("FC YBT Raytracer v%s" % _VER)
     try:
         _ic = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
         if os.path.exists(_ic):
@@ -346,7 +347,7 @@ def main(lang=None):
 
     # ================= SAĞ: Ön izleme ekranı (ortalanmış) =================
     right = QtGui.QVBoxLayout()
-    title = QtGui.QLabel("FC YBT Raytracer")
+    title = QtGui.QLabel("FC YBT Raytracer  <span style='font-size:11px; font-weight:normal; color:gray;'>v%s</span>" % _VER)
     title.setAlignment(QtCore.Qt.AlignCenter)
     title.setStyleSheet("font-weight: bold; font-size: 16px;")
     right.addWidget(title)

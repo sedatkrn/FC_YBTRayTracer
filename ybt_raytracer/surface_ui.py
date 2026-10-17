@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """Surface (yüzey/malzeme) penceresi: nesne listesi + malzeme kütüphanesi + parametre düzenleyici + canlı önizleme küresi."""
+import time
 import numpy as np
 from . import settings as S
 from . import materials as M
 from .i18n import T
 from .core import Scene
+
+PREVIEW_DELAY_MS = 1000     # parametre (sürgü/sayı) değişiminden sonra önizleme bu kadar sessizlik beklenince yenilenir
 
 _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
     ("diffuse", "Yayılı (diffuse)", 0.0, 1.0, "Mat ışık çarpanı"),
@@ -119,7 +122,17 @@ def open_surface(on_change=None, is_busy=None):
         FreeCAD.Console.PrintError(T("RayTrace: açık belge yok.\n"))
         return None
 
-    dlg = QtGui.QDialog(Gui.getMainWindow())
+    prm = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer")
+    main_dlg = getattr(FreeCAD, "_raytrace_dlg", None)
+    try:
+        if main_dlg is not None and not main_dlg.isVisible():
+            main_dlg = None
+    except Exception:                                   # kapanmış (silinmiş) Qt nesnesi
+        main_dlg = None
+    pin0 = bool(prm.GetBool("SurfaceOnTop", True))
+    # "en üstte": render penceresinin çocuğu (transient) olur; pencere yöneticisi onu her zaman ebeveyninin üstünde tutar
+    # (Wayland'de de çalışır). Kapalıyken FreeCAD ana penceresinin çocuğudur: render penceresi onu örtebilir.
+    dlg = QtGui.QDialog(main_dlg if (pin0 and main_dlg is not None) else Gui.getMainWindow())
     dlg.setWindowTitle(T("Yüzey / Malzeme Düzenleyici"))
     dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
     st = {"mat": M.normalize({}), "name": "", "lock": False, "items": []}
@@ -128,7 +141,15 @@ def open_surface(on_change=None, is_busy=None):
     root = QtGui.QHBoxLayout(dlg)
     # ---------- sol: nesneler + kütüphane
     left = QtGui.QVBoxLayout()
-    left.addWidget(QtGui.QLabel("<b>%s</b>" % T("Nesneler")))
+    hrow = QtGui.QHBoxLayout()
+    hrow.addWidget(QtGui.QLabel("<b>%s</b>" % T("Nesneler")))
+    hrow.addStretch(1)
+    btn_pin = QtGui.QCheckBox(T("Her zaman üstte"))
+    btn_pin.setChecked(pin0 and main_dlg is not None)
+    btn_pin.setEnabled(main_dlg is not None)
+    btn_pin.setToolTip(T("Açıkken bu pencere render penceresinin üstünde kalır (önizlemede tıklayınca arkaya kaçmaz). Kapatınca normal pencere gibi davranır."))
+    hrow.addWidget(btn_pin)
+    left.addLayout(hrow)
     frow = QtGui.QHBoxLayout()
     ed_filter = QtGui.QLineEdit()
     ed_filter.setPlaceholderText(T("Ara..."))
@@ -225,10 +246,30 @@ def open_surface(on_change=None, is_busy=None):
     b2.addWidget(btn_save)
     b2.addWidget(btn_del)
     right.addLayout(b2)
-    lbl_msg = QtGui.QLabel("")
-    lbl_msg.setWordWrap(True)
-    right.addWidget(lbl_msg)
-    right.addStretch(1)
+    class _Log(QtGui.QPlainTextEdit):
+        """Konsol tarzı işlem günlüğü: her işlem zaman damgasıyla bir satır olarak eklenir."""
+
+        def __init__(self):
+            QtGui.QPlainTextEdit.__init__(self)
+            self.setReadOnly(True)
+            self.setMaximumBlockCount(500)
+            self.setMinimumHeight(110)
+            self.setLineWrapMode(QtGui.QPlainTextEdit.WidgetWidth)
+            f = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
+            self.setFont(f)
+            self.setPlaceholderText(T("İşlem günlüğü"))
+            self.last = ""
+
+        def setText(self, t):
+            self.last = t
+            self.appendPlainText("[%s] %s" % (time.strftime("%H:%M:%S"), t))
+            sb = self.verticalScrollBar()
+            sb.setValue(sb.maximum())
+
+        def text(self):
+            return self.last
+    lbl_msg = _Log()
+    right.addWidget(lbl_msg, 1)
     root.addLayout(right, 1)
 
     # ---------- yardımcılar
@@ -257,8 +298,8 @@ def open_surface(on_change=None, is_busy=None):
 
     timer.timeout.connect(do_preview)
 
-    def schedule():
-        timer.start(150)
+    def schedule(delay=150):
+        timer.start(delay)
 
     def fill_editor(name, mat):
         st["lock"] = True
@@ -283,7 +324,7 @@ def open_surface(on_change=None, is_busy=None):
             sp.setValue(val)
             st["lock"] = False
             st["mat"][key] = val
-            schedule()
+            schedule(PREVIEW_DELAY_MS)
 
         def from_spin(val):
             if st["lock"]:
@@ -292,7 +333,7 @@ def open_surface(on_change=None, is_busy=None):
             sl.setValue(int(round((val - lo) / (hi - lo) * 1000)))
             st["lock"] = False
             st["mat"][key] = float(val)
-            schedule()
+            schedule(PREVIEW_DELAY_MS)
         sl.valueChanged.connect(from_slider)
         sp.valueChanged.connect(from_spin)
 
@@ -496,6 +537,7 @@ def open_surface(on_change=None, is_busy=None):
         m = M.get(n)
         if m is not None:
             fill_editor(n, m)
+            msg(T("Malzeme yüklendi: %s") % display_name(n))
 
     def select_names(names, add=False):
         """Listede verilen adlı nesneleri seç (add=True: mevcut seçime ekle) ve ilkine kaydır."""
@@ -562,6 +604,8 @@ def open_surface(on_change=None, is_busy=None):
         else:
             select_names(names, add=add)
             msg(T("Seçildi: %s") % o.Label + ((" (+%d benzer)" % (len(names) - 1)) if len(names) > 1 else ""))
+        if btn_pin.isChecked():
+            dlg.raise_()                                        # önizlemeye tıklayınca ana pencere öne geçip bunu örtmesin
 
     def on_tree_sel(expand=True):
         if st.get("sellock"):
@@ -588,24 +632,66 @@ def open_surface(on_change=None, is_busy=None):
     btn_del.clicked.connect(do_del)
     lst.itemClicked.connect(on_lib_click)
     lst.itemDoubleClicked.connect(lambda it: (on_lib_click(it), do_assign()))
-    tree.itemSelectionChanged.connect(lambda: on_tree_sel())
+    def on_tree_sel_user():
+        on_tree_sel()
+        if st.get("tlock") or st.get("sellock"):
+            return
+        its = tree.selectedItems()
+        key = tuple(sorted(it.data(0, QtCore.Qt.UserRole) for it in its))
+        if key and key != st.get("lastsel"):
+            lab = [it.text(0) for it in its]
+            msg(T("Seçim: %d nesne") % len(its) + " (" + ", ".join(lab[:3]) + (", ..." if len(lab) > 3 else "") + ")")
+        st["lastsel"] = key
+    tree.itemSelectionChanged.connect(on_tree_sel_user)
     btn_sim.clicked.connect(lambda *_a: do_select_similar())
-    ck_grp.toggled.connect(lambda _b: refresh_tree())
-    ck_sim.toggled.connect(lambda on: expand_similar() if on else None)
+    ck_grp.toggled.connect(lambda on: (refresh_tree(), msg(T("Benzerleri yan yana diz: %s") % (T("açık") if on else T("kapalı")))))
+    ck_sim.toggled.connect(lambda on: (msg(T("Benzerleri birlikte seç: %s") % (T("açık") if on else T("kapalı"))),
+                                       expand_similar() if on else None))
+    btn_paint.toggled.connect(lambda on: msg(T("Boya kovası: %s") % (T("açık — önizlemede parçaya tıklayın") if on else T("kapalı"))))
     ed_name.textEdited.connect(lambda _t: None)
     ed_filter.textChanged.connect(lambda _t: refresh_tree())
-    btn_scan.clicked.connect(lambda *_a: (rescan(), refresh_tree()))
+    btn_scan.clicked.connect(lambda *_a: (rescan(), refresh_tree(), msg(T("Liste yenilendi: %d nesne") % len(st["items"]))))
 
     rescan()
     refresh_tree()
     refresh_lib()
     fill_editor("", M.normalize(dict(color=(0.7, 0.7, 0.72))))
-    dlg.resize(760, 640)
+    dlg.resize(900, 760)
+
+    def place_near_main():
+        """Render penceresinin soluna, üst kenarları hizalı; sığmazsa sağına; ekran dışına taşmaz."""
+        try:
+            if main_dlg is None:
+                return
+            mg = main_dlg.frameGeometry()
+            scr = main_dlg.screen().availableGeometry()
+            w, h = dlg.width(), dlg.height()
+            x = mg.left() - w
+            if x < scr.left():
+                x = mg.right() + 1
+                if x + w > scr.right():
+                    x = scr.left()
+            y = max(scr.top(), min(mg.top(), scr.bottom() - h))
+            dlg.move(x, y)
+        except Exception:
+            pass
+
+    def set_pin(on):
+        """Her zaman üstte: render penceresinin (açık) ya da FreeCAD ana penceresinin çocuğu olur."""
+        prm.SetBool("SurfaceOnTop", bool(on))
+        pos = dlg.pos()
+        dlg.setParent(main_dlg if on else Gui.getMainWindow(), dlg.windowFlags())
+        dlg.show()
+        dlg.move(pos)
+        msg(T("Her zaman üstte: %s") % (T("açık") if on else T("kapalı")))
+    btn_pin.toggled.connect(set_pin)
     FreeCAD._ybt_surface_dlg = dlg
     dlg._ybt_api = dict(tree=tree, lib=lst, name=ed_name, widgets=widgets, state=st, assign=do_assign, clear=do_clear,
                         save=do_save, preview=do_preview, fill=fill_editor, refresh=refresh_tree, msg=lbl_msg, prev=prev,
                         include=set_selected_included, pick=on_pick, select=select_names, similar=similar_names,
                         sim_check=ck_sim, paint=btn_paint)
+    place_near_main()
     dlg.show()
     do_preview()
+    msg(T("Hazır: %d nesne listelendi.") % len(st["items"]))
     return dlg

@@ -15,6 +15,9 @@ v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğ
         * Benzer nesneler: şekil imzası (yüz/kenar sayısı, alan, hacim; konum/dönmeden bağımsız) aynı olan nesneler (kopyalar, Link'ler)
           listede "Benzer ×N" olarak gösterilir; "Benzerleri birlikte seç", "Benzerleri yan yana diz" ve "Benzerlerini seç" ile toplu işlem.
         * api.pick_object(scene, camera, w, h, x, y).
+        * Malzemeler penceresi: render penceresinin soluna açılır; "Her zaman üstte" kutusu (varsayılan açık, ayar kaydedilir) önizlemeye
+          tıklayınca arkaya kaçmasını önler; konsol tarzı işlem günlüğü (her işlem zaman damgalı); sürgü/sayı değişiminde önizleme
+          1 sn sessizlik beklenince yenilenir (PREVIEW_DELAY_MS). Render penceresi başlığında sürüm gösterilir.
         * Düzeltme: yumuşak yüzeylerde köşe eşleştirme çakışması giderildi (karmaşık gövdelerde, ör. jant lastiği, harf/benek biçimli bozulma;
           eski xor-özet farklı köşeleri aynı sayıp normallerini karıştırıyordu, artık çakışmasız tam anahtar).
 v1.2.2: * Malzeme penceresinde nesne listesi artık yalnızca render edilen gerçek katı/yüzeyleri gösterir (düzlem, eksen, joint, kapsayıcı yok); arama kutusu ve Yenile düğmesi eklendi.
