@@ -9,7 +9,7 @@ from . import settings as S
 from .materials import shininess as _shin
 from .i18n import T
 from .textures import load as load_texture
-from .core import _any, _closest, _norm, camera_basis
+from .core import _any, _closest, _closest_sorted, _norm, camera_basis
 from .parallel import _Ticker, _limit_blas
 from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins
 
@@ -145,6 +145,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         cache["bins_key"], cache["bins"] = bkey, (nx, ny, offs, sids, always)
     tk()
     allids = np.arange(scene.count)
+    # ön ışınlar için üçgen başına kamera derinliği alt sınırı (ön-arka sıralı erken çıkış)
+    scene._sort_ctx = (pos, fwd)
+    if cache.get("smin_key") != bkey[:5]:
+        cache["smin"] = ((scene.tri - pos) @ fwd).min(1)
+        cache["smin_key"] = bkey[:5]
+    smin = cache["smin"]
     grids = {}
     if shadows and not brute and any(lt[3] for lt in lights):
         say(T("gölge ızgaraları hazırlanıyor..."))
@@ -260,7 +266,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                             ids = np.concatenate((always, ids))
                         if len(ids) == 0:
                             continue
-                    t_, i_ = _closest(scene, RO[sel], RD[sel], ids)
+                    t_, i_ = _closest_sorted(scene, RO[sel], RD[sel], ids, smin)
                     tb[sel], ti[sel] = t_, i_
             gm = np.nonzero(~RP)[0]
             if len(gm):

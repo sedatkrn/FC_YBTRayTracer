@@ -116,6 +116,48 @@ def _closest(sc, O, D, ids):
     return tb, ib
 
 
+def _closest_sorted(sc, O, D, ids, smin, first=256, big=32768):
+    """_closest ile aynı sonucu verir ama üçgenleri kameraya yakınlığa göre gruplar halinde dener:
+    bir ışının bulduğu isabet, kalan gruplardaki hiçbir üçgenden daha uzak olamıyorsa ışın elenir.
+    smin: üçgen başına (köşelerin kamera ekseni üzerindeki en küçük derinliği, kamera konumuna göre).
+    Işın başlangıcı kamera konumundan farklıysa (ortografik) çağıran O'nun derinlik farkını smin'e göre düzeltir:
+    sınır = smin - o_off; burada o_off ışının kendi derinliği, _closest_sorted içinde hesaplanır (sc._sort_ctx)."""
+    pos, fwd = sc._sort_ctx
+    ids = np.asarray(ids, dtype=np.int64)
+    if len(ids) <= first:
+        return _closest(sc, O, D, ids)
+    order = np.argsort(smin[ids], kind="stable")
+    ids = ids[order]
+    ss = smin[ids]
+    R, K = len(D), len(ids)
+    tb = np.full(R, np.inf)
+    ib = np.full(R, -1, dtype=np.int64)
+    o_off = (O - pos) @ fwd
+    tol = sc.diag * S.TIE_TOL
+    act = np.arange(R)
+    p, size = 0, first
+    while p < K and len(act):
+        batch = ids[p:p + size]
+        t, i = _closest(sc, O[act], D[act], batch)
+        old = tb[act]
+        oi = ib[act]
+        take = t < old - tol
+        near = (~take) & (t <= old + tol) & (i >= 0)
+        if near.any():
+            better = (i < oi) if not S.TIE_LAST else (i > oi)
+            better |= (oi < 0)
+            take |= near & better
+        tb[act] = np.where(take, t, old)
+        ib[act] = np.where(take, i, oi)
+        p += len(batch)
+        size = min(size * 2, big)
+        if p < K:
+            bound = ss[p] - o_off[act]
+            act = act[~(tb[act] + tol < bound)]
+    ib[~np.isfinite(tb)] = -1
+    return tb, ib
+
+
 def _any(sc, O, D, ids):
     R, K = len(D), len(ids)
     step = max(1, S._MAXPAIR // max(K, 1))
