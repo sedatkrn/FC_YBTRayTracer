@@ -9,6 +9,8 @@ v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğ
         * "Render'a dahil et": Malzemeler penceresinde nesne başına onay kutusu + Seçilileri dahil et / hariç tut düğmeleri (nesnenin YBTInclude özelliği).
         * "Kadraj dışındaki nesneleri atla" seçeneği (CULL_OFFSCREEN): kadraj dışı nesneler üçgenlenmez, sahne boyutuna/gölgeye/zemine katılmaz.
         * Malzemesiz Part sahnesinde v1.2.2 ile piksel piksel aynı çıktı (regresyon testi).
+        * Düzeltme: yumuşak yüzeylerde köşe eşleştirme çakışması giderildi (karmaşık gövdelerde, ör. jant lastiği, harf/benek biçimli bozulma;
+          eski xor-özet farklı köşeleri aynı sayıp normallerini karıştırıyordu, artık çakışmasız tam anahtar).
 v1.2.2: * Malzeme penceresinde nesne listesi artık yalnızca render edilen gerçek katı/yüzeyleri gösterir (düzlem, eksen, joint, kapsayıcı yok); arama kutusu ve Yenile düğmesi eklendi.
 v1.2.1: * Kalite ayarlarında "Cam yansıması / Yüzey yansıması / Kırılma (IOR)" alanları kaldırıldı; yerine "Yansımalar" ve "Kırılma" açma-kapama kutuları
           (değerler artık malzemeden gelir). Malzemesiz saydam nesneler cam (IOR 1.5) sayılır.

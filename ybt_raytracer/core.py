@@ -45,8 +45,14 @@ class Scene(object):
         fn = self.n_unit
         wt = np.sqrt((self.N * self.N).sum(1))                    # 2 x alan
         q = np.round(self.tri.reshape(-1, 3) / (self.diag * 1e-6)).astype(np.int64)
-        h = q[:, 0] * 73856093 ^ q[:, 1] * 19349663 ^ q[:, 2] * 83492791
-        _u, vid = np.unique(h, return_inverse=True)
+        # Köşe kimliği ÇAKIŞMASIZ olmalı: eski xor-özet farklı köşeleri aynı sayıp normallerini karıştırıyordu
+        # (karmaşık yüzeylerde benek/harf biçimli bozulma). Koordinatlar 21 bite sığıyorsa tek int64'e paketlenir.
+        q -= q.min(0)
+        if int(q.max()) < (1 << 21):
+            key = (q[:, 0] << 42) | (q[:, 1] << 21) | q[:, 2]
+            _u, vid = np.unique(key, return_inverse=True)
+        else:
+            _u, vid = np.unique(q, axis=0, return_inverse=True)
         vid = vid.reshape(-1)
         cface = np.repeat(np.arange(n), 3)                         # köşe -> yüz
         order = np.argsort(vid, kind="stable")
