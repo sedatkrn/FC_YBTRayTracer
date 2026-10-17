@@ -296,4 +296,8 @@ EN = {
     "Gerçek boyut: görüntünün bir pikseli ekranda bir piksel": "Actual size: one image pixel is one screen pixel",
     "Tekerlek: yakınlaştır / uzaklaştır  ·  Sürükle: kaydır  ·  Tıkla: parçayı seç": "Wheel: zoom in / out  ·  Drag: pan  ·  Click: select part",
     "Tıklayınca açılır / kapanır": "Click to expand / collapse",
+    "Nesneler taranıyor...": "Scanning objects...",
+    "Açılıyor...": "Opening...",
+    "sn": "s",
+    "önbellek": "cached",
 }

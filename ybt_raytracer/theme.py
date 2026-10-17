@@ -34,7 +34,8 @@ QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; le
 
 QPushButton {{ background-color: {BTN}; border: 1px solid {BORDER}; border-radius: 3px; padding: 4px 10px; min-height: 16px; }}
 QPushButton:hover {{ background-color: {BTN_HOVER}; }}
-QPushButton:pressed, QPushButton:checked {{ background-color: {ACCENT}; color: #ffffff; }}
+QPushButton:pressed {{ background-color: {ACCENT}; color: #ffffff; padding-top: 6px; padding-bottom: 2px; border-color: {ACCENT_LIGHT}; }}
+QPushButton:checked {{ background-color: {ACCENT}; color: #ffffff; }}
 QPushButton:disabled {{ background-color: {PANEL}; color: {TEXT_DIS}; border-color: {PANEL}; }}
 QToolButton {{ background-color: transparent; border: none; padding: 2px 4px; color: #e8e8ea; font-weight: bold; }}
 QToolButton:hover {{ color: #ffffff; }}

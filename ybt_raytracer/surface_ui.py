@@ -83,14 +83,22 @@ def render_preview(mat, w=280, h=210):
 
 # ---------------------------------------------------------------- pencere
 def _signature(shp):
-    """Benzerlik imzası: konumdan/dönmeden bağımsız şekil özeti (yüz/kenar sayısı, alan, hacim). Aynı imza = aynı parça
-    (bir parçanın kopyaları, Link'ler, birbirinin aynı cıvatalar...). Mesh için üçgen sayısı."""
+    """Benzerlik imzası (ucuz; Area/Volume 877 parçada ~22 sn sürüyordu): şekil türü, yüz/kenar sayısı ve YEREL sınır kutusu
+    (üst yerleşim sıfırlanır: aynı parçanın konum/dönmesi farklı kopyaları aynı imzayı verir). Mesh için üçgen sayısı.
+    Not: shp bu işlev için gezilen geçici bir şekildir; yerleşimi değiştirmek güvenlidir."""
     try:
         if getattr(shp, "is_mesh", False):
             return ("m", len(shp.tri))
-        return ("s", len(shp.Faces), len(shp.Edges), float("%.4g" % shp.Area), float("%.4g" % abs(shp.Volume)))
+        import FreeCAD
+        shp.Placement = FreeCAD.Placement()
+        bb = shp.BoundBox
+        return ("s", shp.ShapeType, shp.countElement("Face"), shp.countElement("Edge"),
+                float("%.3g" % bb.XLength), float("%.3g" % bb.YLength), float("%.3g" % bb.ZLength))
     except Exception:
         return None
+
+
+_scan_cache = {}     # doc imzası -> [(nesne, hedef, imza)]; "Yenile" düğmesi önbelleği atlar
 
 
 def _renderable(doc):
@@ -366,12 +374,23 @@ def open_surface(on_change=None, is_busy=None):
     def display_name(n):
         return T(n) if n in M.BUILTIN else n
 
-    def rescan():
+    def doc_key():
+        return (doc.Name, len(doc.Objects), hash(tuple((o.Name, bool(getattr(o, "Visibility", True))) for o in doc.Objects)))
+
+    def rescan(force=False):
+        """Gerçekten çizilecek nesneleri tarar; belge değişmediyse önbellekten alır (büyük montajlarda açılış hızlı)."""
+        k = doc_key()
+        if not force and k in _scan_cache:
+            st["items"] = _scan_cache[k]
+            return True
         try:
             st["items"] = _renderable(doc)
+            _scan_cache.clear()
+            _scan_cache[k] = st["items"]
         except Exception as ex:
             st["items"] = []
             msg("tarama: %s" % ex)
+        return False
 
     def style_item(it, inc):
         """Hariç tutulan nesne soluk gösterilir."""
@@ -652,10 +671,21 @@ def open_surface(on_change=None, is_busy=None):
     btn_paint.toggled.connect(lambda on: msg(T("Boya kovası: %s") % (T("açık — önizlemede parçaya tıklayın") if on else T("kapalı"))))
     ed_name.textEdited.connect(lambda _t: None)
     ed_filter.textChanged.connect(lambda _t: refresh_tree())
-    btn_scan.clicked.connect(lambda *_a: (rescan(), refresh_tree(), msg(T("Liste yenilendi: %d nesne") % len(st["items"]))))
+    def do_rescan(*_a):
+        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        btn_scan.setEnabled(False)
+        msg(T("Nesneler taranıyor..."))
+        QtGui.QApplication.processEvents()
+        t0 = time.time()
+        try:
+            rescan(force=True)
+            refresh_tree()
+        finally:
+            btn_scan.setEnabled(True)
+            QtGui.QApplication.restoreOverrideCursor()
+        msg(T("Liste yenilendi: %d nesne") % len(st["items"]) + " (%.1f %s)" % (time.time() - t0, T("sn")))
+    btn_scan.clicked.connect(do_rescan)
 
-    rescan()
-    refresh_tree()
     refresh_lib()
     fill_editor("", M.normalize(dict(color=(0.7, 0.7, 0.72))))
     dlg.resize(900, 760)
@@ -694,6 +724,18 @@ def open_surface(on_change=None, is_busy=None):
                         sim_check=ck_sim, paint=btn_paint)
     place_near_main()
     dlg.show()
-    do_preview()
-    msg(T("Hazır: %d nesne listelendi.") % len(st["items"]))
+    msg(T("Nesneler taranıyor..."))
+    QtGui.QApplication.processEvents()                          # pencere hemen görünsün; tarama (büyük montajda saniyeler) arkasından
+
+    def finish_open():
+        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        t0 = time.time()
+        try:
+            cached = rescan()
+            refresh_tree()
+            do_preview()
+        finally:
+            QtGui.QApplication.restoreOverrideCursor()
+        msg(T("Hazır: %d nesne listelendi.") % len(st["items"]) + " (%.1f %s%s)" % (time.time() - t0, T("sn"), ", " + T("önbellek") if cached else ""))
+    QtCore.QTimer.singleShot(0, finish_open)
     return dlg

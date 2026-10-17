@@ -22,6 +22,10 @@ v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğ
         * Malzemeler penceresi: render penceresinin soluna açılır; "Her zaman üstte" kutusu (varsayılan açık, ayar kaydedilir) önizlemeye
           tıklayınca arkaya kaçmasını önler; konsol tarzı işlem günlüğü (her işlem zaman damgalı); sürgü/sayı değişiminde önizleme
           1 sn sessizlik beklenince yenilenir (PREVIEW_DELAY_MS). Render penceresi başlığında sürüm gösterilir.
+        * Malzemeler penceresi hızlı açılır: pencere hemen görünür, nesne taraması arkasından yapılır ve belge değişmedikçe önbellekten gelir
+          ("Yenile" önbelleği atlar); benzer nesne imzası ucuzlatıldı (Area/Volume yerine yüz/kenar sayısı + yerel sınır kutusu; 877 parçada
+          25 sn -> 2,5 sn). Pencere açıkken düğmeye basmak onu öne getirir; basılınca düğme "Açılıyor..." gösterir, imleç bekleme imleci olur;
+          düğmelerde basma efekti.
         * Düzeltme: yumuşak yüzeylerde köşe eşleştirme çakışması giderildi (karmaşık gövdelerde, ör. jant lastiği, harf/benek biçimli bozulma;
           eski xor-özet farklı köşeleri aynı sayıp normallerini karıştırıyordu, artık çakışmasız tam anahtar).
 v1.2.2: * Malzeme penceresinde nesne listesi artık yalnızca render edilen gerçek katı/yüzeyleri gösterir (düzlem, eksen, joint, kapsayıcı yok); arama kutusu ve Yenile düğmesi eklendi.

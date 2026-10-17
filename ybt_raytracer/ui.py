@@ -824,8 +824,27 @@ def main(lang=None):
     btn_y.clicked.connect(do_refresh)
 
     def open_mats(*_a):
+        """Malzemeler penceresi zaten açıksa yalnızca öne getirir (kapatıp yeniden taramaz); değilse açar."""
+        sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+        try:
+            if sd is not None and sd.isVisible():
+                sd.raise_()
+                sd.activateWindow()
+                return
+        except Exception:                                 # kapanmış (silinmiş) Qt nesnesi
+            pass
         from .surface_ui import open_surface
-        open_surface(on_change=lambda: state.__setitem__("scene", None), is_busy=lambda: state["busy"])
+        txt = btn_m.text()
+        btn_m.setText(T("Açılıyor..."))
+        btn_m.setEnabled(False)
+        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        QtGui.QApplication.processEvents()                # basılı/pasif görünüm hemen çizilsin
+        try:
+            open_surface(on_change=lambda: state.__setitem__("scene", None), is_busy=lambda: state["busy"])
+        finally:
+            QtGui.QApplication.restoreOverrideCursor()
+            btn_m.setText(txt)
+            btn_m.setEnabled(True)
     btn_m.clicked.connect(open_mats)
 
     def on_preview_click(u, v, ctrl):
