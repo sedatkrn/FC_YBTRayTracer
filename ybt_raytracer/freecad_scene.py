@@ -46,6 +46,77 @@ def _sane_bbox(shp):
         return False
 
 
+def _is_mesh(x):
+    """Mesh::Feature mi? (Mesh tezgâhı nesnesi: STL/OBJ içe aktarma, Shape -> Mesh dönüşümü ...)"""
+    try:
+        return bool(x.isDerivedFrom("Mesh::Feature"))
+    except Exception:
+        return False
+
+
+class _MeshGeom(object):
+    """Mesh::Feature üçgenlerini (dünya koordinatında) Part şekli gibi gösteren hafif sarmalayıcı.
+    _gather'ın geri kalanı yalnız BoundBox / Faces / isNull() ister; üçgenleme gerekmez,
+    collect_scene `tri` dizisini (n, 3, 3) doğrudan kullanır."""
+    is_mesh = True
+    Faces = (None,)                    # tek, bölünmemiş yüzey: renk/saydamlık nesne başına
+
+    def __init__(self, tri):
+        import FreeCAD
+        self.tri = tri
+        flat = tri.reshape(-1, 3)
+        lo, hi = flat.min(0), flat.max(0)
+        self.BoundBox = FreeCAD.BoundBox(float(lo[0]), float(lo[1]), float(lo[2]),
+                                         float(hi[0]), float(hi[1]), float(hi[2]))
+
+    def isNull(self):
+        return False
+
+
+def _matrix4(m):
+    """FreeCAD Placement/Matrix -> 4x4 numpy dizisi."""
+    try:
+        m = m.toMatrix()
+    except Exception:
+        pass
+    try:
+        return np.array(m.A, dtype=np.float64).reshape(4, 4)
+    except Exception:
+        return np.array([[getattr(m, "A%d%d" % (i, j)) for j in (1, 2, 3, 4)] for i in (1, 2, 3, 4)],
+                        dtype=np.float64)
+
+
+def _mesh_geom(root, subname, obj, tgt, known):
+    """Mesh::Feature -> _MeshGeom (dünya koordinatı) ya da None (boş mesh).
+    Mesh.Topology noktaları nesnenin KENDİ Placement'ını içerir, üst kapsayıcıların (App::Part, Link ...) dönüşümünü
+    içermez: dünya = G * P^-1 * nokta (G = dünya yerleşimi, P = mesh nesnesinin kendi Placement'ı).
+    Link'te LinkTransform kapalıyken bağlı nesnenin yerleşimi yok sayılır (G zaten yalnız link yolunu içerir);
+    açıkken G * P * P^-1 = G olduğundan yalnız G uygulanır."""
+    pts, facets = tgt.Mesh.Topology
+    if not facets:
+        return None
+    P = tgt.Placement
+    G = None
+    if known is not None and obj is tgt and hasattr(obj, "getGlobalPlacement"):
+        G = obj.getGlobalPlacement()                      # Arch kapsayıcılarında yol çözümlemesinden güvenilir
+    else:
+        try:
+            G = root.getSubObject(subname, retType=3)     # köke göre dünya yerleşimi (kökün kendi yerleşimi dahil)
+        except Exception:
+            G = None
+    if G is None or not hasattr(G, "inverse"):
+        G = obj.Placement
+    if obj is not tgt and bool(getattr(obj, "LinkTransform", False)):
+        M = G
+    else:
+        M = G * P.inverse()
+    Mx = _matrix4(M)
+    V = np.array([(p.x, p.y, p.z) for p in pts], dtype=np.float64)
+    F = np.array(facets, dtype=np.int64)
+    V = V @ Mx[:3, :3].T + Mx[:3, 3]
+    return _MeshGeom(V[F])
+
+
 def _rgb(c):
     """FreeCAD renk değerini (tuple, Base.Color, ...) (r, g, b) float üçlüsüne çevir."""
     try:
@@ -229,7 +300,7 @@ def _gather(doc, log, status=_nostatus):
                 for g in grp:
                     rec(root, subname + g.Name + ".", depth + 1, known=g)
                 return
-            elif not (obj is tgt and hasattr(tgt, "Shape")):
+            elif not (obj is tgt and (hasattr(tgt, "Shape") or _is_mesh(tgt))):
                 try:
                     subs = tgt.getSubObjects()
                 except Exception:
@@ -238,10 +309,14 @@ def _gather(doc, log, status=_nostatus):
                 for s in subs:
                     rec(root, subname + s, depth + 1)
                 return
-        if not (hasattr(tgt, "Shape") or obj is not tgt):
+        if not (hasattr(tgt, "Shape") or _is_mesh(tgt) or obj is not tgt):
             return                                        # şekli olmayan nesne (Origin, Joint, ...)
         try:
-            if known is not None and obj is tgt and hasattr(obj, "Shape") and hasattr(obj, "getGlobalPlacement"):
+            if _is_mesh(tgt):
+                shp = _mesh_geom(root, subname, obj, tgt, known)
+                if shp is None:
+                    return                                # boş mesh
+            elif known is not None and obj is tgt and hasattr(obj, "Shape") and hasattr(obj, "getGlobalPlacement"):
                 shp = obj.Shape
                 if shp.isNull() or not shp.Faces:
                     return
@@ -266,7 +341,7 @@ def _gather(doc, log, status=_nostatus):
 
     # Yedek: yukarıdaki gezintide hiç uğranmayan görünür nesneler (gruba bağlı olmayanlar)
     for o in doc.Objects:
-        if o.Name in seen or not hasattr(o, "Shape"):
+        if o.Name in seen or not (hasattr(o, "Shape") or _is_mesh(o)):
             continue
         status(T("yedek tarama... %d nesne") % len(items))
         try:
@@ -283,12 +358,17 @@ def _gather(doc, log, status=_nostatus):
             grp = getattr(o, "Group", None)
             if not _is_body(o) and isinstance(grp, (list, tuple)) and any(hasattr(g, "Shape") for g in grp):
                 continue                                  # Assembly/Arch kapsayıcısı: kendi birleşik şekli çocuklarının kopyası
-            shp = o.Shape
-            if shp.isNull() or not shp.Faces or not _sane_bbox(shp):
-                continue
-            shp = shp.copy()
-            if hasattr(o, "getGlobalPlacement"):
-                shp.Placement = o.getGlobalPlacement()
+            if _is_mesh(o):
+                shp = _mesh_geom(o, "", o, o, o)
+                if shp is None or not _sane_bbox(shp):
+                    continue
+            else:
+                shp = o.Shape
+                if shp.isNull() or not shp.Faces or not _sane_bbox(shp):
+                    continue
+                shp = shp.copy()
+                if hasattr(o, "getGlobalPlacement"):
+                    shp.Placement = o.getGlobalPlacement()
         except Exception as ex:
             log("! %s: yedek tarama hatası (%s)" % (o.Name, ex))
             continue
@@ -353,6 +433,22 @@ def collect_scene(doc, status=_nostatus):
             diag_left[0] -= 1
             for line in _color_props(o, tgt):
                 log("[renk özellikleri] " + name + " -> " + line)
+        if getattr(shp, "is_mesh", False):              # mesh nesnesi: üçgenler hazır, tessellate gerekmez
+            tri = shp.tri
+            tris.append(tri)
+            ntri += len(tri)
+            cols.append(np.tile(np.array(base, dtype=np.float64), (len(tri), 1)))
+            alps.append(np.full(len(tri), abase))
+            mids.append(np.full(len(tri), mi, dtype=np.int32))
+            status(T("üçgenleniyor %d/%d: %s (%d üçgen)") % (k + 1, len(items), name[:24], ntri),
+                   frac=(k + 1) / float(len(items)))
+            if S.DEBUG:
+                b = shp.BoundBox
+                FreeCAD.Console.PrintMessage(
+                    "  %-30s MESH       üçgen:%6d renk:(%.2f %.2f %.2f) opak:%.2f x[%.0f..%.0f] y[%.0f..%.0f] z[%.0f..%.0f]\n"
+                    % (name[:30], len(tri), base[0], base[1], base[2], abase,
+                       b.XMin, b.XMax, b.YMin, b.YMax, b.ZMin, b.ZMax))
+            continue
         # Tek renkli/tek saydamlıklı nesne: tüm şekil tek çağrıyla üçgenlenir (yüz yüz çağırmaktan ~2 kat hızlı)
         uniform = ((dc is None or all(tuple(c) == tuple(dc[0]) for c in dc)) and
                    (ad is None or all(a == ad[0] for a in ad)))
