@@ -11,6 +11,7 @@ from .output import pick_out_path, write_png
 from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 from . import materials as _mats
 from . import theme as _theme
+from . import lightpresets as _lp
 from . import __version__ as _VER
 
 
@@ -151,12 +152,42 @@ def main(lang=None):
                 paint()
         bt.clicked.connect(pick)
         paint()
+        bt._paint = paint
+        bt._key = key
+        bt._after = []
+        _orig = pick
+
+        def pick2(*_a):
+            _orig()
+            for f in bt._after:
+                f()
+        bt.clicked.disconnect(pick)
+        bt.clicked.connect(pick2)
         return bt
 
     ck_fc = QtGui.QCheckBox(T("FreeCAD ışık ayarlarını kullan"))
     ck_fc.setChecked(bool(getattr(S, "USE_FC_LIGHTS", False)))
     ck_fc.setToolTip(T("İşaretliyse Tercihler > Display > Light Sources ayarları kullanılır; aşağıdaki ayarlar devre dışı kalır"))
     lvb.addWidget(ck_fc)
+    cb_pre = QtGui.QComboBox()
+    for p in _lp.PRESETS:
+        cb_pre.addItem(T(p[1]))
+        cb_pre.setItemData(cb_pre.count() - 1, T(p[5]), QtCore.Qt.ToolTipRole)
+    cb_pre.addItem(T("Özel"))
+    cb_pre.setToolTip(T("Hazır aydınlatma düzenleri (stüdyo ve ürün çekimi). Ayrıntıları değiştirirseniz düzen 'Özel' olur."))
+    prow = QtGui.QHBoxLayout()
+    prow.addWidget(QtGui.QLabel(T("Aydınlatma")))
+    prow.addWidget(cb_pre, 1)
+    bt_cust = QtGui.QPushButton(T("Özel ayarlar") + " \u25b8")
+    bt_cust.setCheckable(True)
+    bt_cust.setToolTip(T("Üç ışığın açı, renk, güç ve gölge ayarlarını göster / gizle"))
+    prow.addWidget(bt_cust)
+    lvb.addLayout(prow)
+    cust = QtGui.QWidget()
+    cust_l = QtGui.QVBoxLayout(cust)
+    cust_l.setContentsMargins(0, 0, 0, 0)
+    lvb.addWidget(cust)
+    cust.setVisible(False)
     lrows = []
     names = (T("Ana ışık"), T("Dolgu ışığı"), T("Arka ışık"))
     for i in range(3):
@@ -185,7 +216,7 @@ def main(lang=None):
         fg.addWidget(QtGui.QLabel(T("Dikey")), 1, 2)
         fg.addWidget(sv, 1, 3)
         fg.addWidget(cs, 2, 0, 1, 4)
-        lvb.addWidget(frame)
+        cust_l.addWidget(frame)
         lrows.append((ck, sh, sv, cbn, sp_, cs))
     arow = QtGui.QHBoxLayout()
     arow.addWidget(QtGui.QLabel(T("Ortam ışığı")))
@@ -195,6 +226,67 @@ def main(lang=None):
     arow.addWidget(sp_amb)
     lvb.addLayout(arow)
     ck_ao = QtGui.QCheckBox(T("Ortam tıkanıklığı (AO)"))
+    _pre_busy = [False]
+
+    def to_custom(*_a):
+        if not _pre_busy[0] and cb_pre.currentIndex() != len(_lp.PRESETS):
+            cb_pre.blockSignals(True)
+            cb_pre.setCurrentIndex(len(_lp.PRESETS))
+            cb_pre.blockSignals(False)
+            if not bt_cust.isChecked():
+                pass
+
+    def on_cust(on):
+        cust.setVisible(on)
+        bt_cust.setText(T("Özel ayarlar") + (" \u25be" if on else " \u25b8"))
+        QtCore.QTimer.singleShot(0, fix_left_height)
+    bt_cust.toggled.connect(on_cust)
+
+    def set_color(key, rgb, btn):
+        colors[key] = tuple(rgb)
+        btn._paint()
+
+    def apply_preset(i):
+        if i >= len(_lp.PRESETS):
+            bt_cust.setChecked(True)
+            return
+        _k, _n, lts, amb, ambc, _d = _lp.get(i)
+        _pre_busy[0] = True
+        try:
+            for j, r in enumerate(lrows):
+                lt = lts[j]
+                r[0].setChecked(bool(lt["on"]))
+                r[1].setValue(lt["h"])
+                r[2].setValue(lt["v"])
+                set_color("l%d" % j, lt["color"], r[3])
+                r[4].setValue(int(round(lt["power"] * 100)))
+                r[5].setChecked(bool(lt["shadow"]))
+            sp_amb.setValue(int(round(amb * 100)))
+            set_color("amb", ambc, cb_amb)
+        finally:
+            _pre_busy[0] = False
+    cb_pre.currentIndexChanged.connect(apply_preset)
+    for r in lrows:
+        r[0].toggled.connect(to_custom)
+        for wd in (r[1], r[2], r[4]):
+            wd.valueChanged.connect(to_custom)
+        r[5].toggled.connect(to_custom)
+        r[3]._after.append(to_custom)
+    sp_amb.valueChanged.connect(to_custom)
+    cb_amb._after.append(to_custom)
+    # başlangıç: ayarlar hangi düzene uyuyorsa onu seç, hiçbirine uymuyorsa 'Özel'
+    _cur = None
+    for _i, _p in enumerate(_lp.PRESETS):
+        _same = abs(_p[3] - S.AMBIENT) < 1e-6 and all(
+            _p[2][j]["on"] == bool(S.LIGHTS[j]["on"]) and abs(_p[2][j]["power"] - S.LIGHTS[j]["power"]) < 1e-6
+            and abs(_p[2][j]["h"] - S.LIGHTS[j]["h"]) < 1e-6 and abs(_p[2][j]["v"] - S.LIGHTS[j]["v"]) < 1e-6
+            for j in range(min(3, len(S.LIGHTS))))
+        if _same:
+            _cur = _i
+            break
+    cb_pre.blockSignals(True)
+    cb_pre.setCurrentIndex(_cur if _cur is not None else len(_lp.PRESETS))
+    cb_pre.blockSignals(False)
     ck_ao.setChecked(bool(S.AO))
     ck_ao.setToolTip(T("Köşeler, girintiler ve nesnelerin zemine değdiği yerler ortam ışığını daha az alır (temas gölgesi). "
                        "Gerçekçilik katar; süreyi artırır. Ortam ışığı çok düşükse etkisi az görünür."))
@@ -222,7 +314,7 @@ def main(lang=None):
     ck_ao.toggled.connect(sync_ao)
     sync_ao()
     lv.addWidget(lbox)
-    light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb]
+    light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb, cb_pre, bt_cust]
 
     # ---- Sanal Zemin ----
     fbox = QtGui.QGroupBox(T("Sanal Zemin"))
@@ -704,7 +796,7 @@ def main(lang=None):
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao, cb_pre, bt_cust]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:

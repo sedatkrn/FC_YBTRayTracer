@@ -22,6 +22,7 @@
       <file>ybt_raytracer/output.py</file>
       <file>ybt_raytracer/freecad_scene.py</file>
       <file>ybt_raytracer/ui.py</file>
+      <file>ybt_raytracer/lightpresets.py</file>
       <file>ybt_raytracer/i18n.py</file>
       <file>ybt_raytracer/materials.py</file>
       <file>ybt_raytracer/surface_ui.py</file>
