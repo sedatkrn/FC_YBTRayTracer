@@ -117,6 +117,46 @@ def _mesh_geom(root, subname, obj, tgt, known):
     return _MeshGeom(V[F])
 
 
+def _tess_entry(cache, tgt, shp, tol):
+    """Üçgenleme önbelleğindeki nesne kaydı (yoksa / yüz sayısı ya da tolerans değiştiyse yenisi).
+    Önbellek SÖZLEŞMESİ: önbellek verildiyse nesnelerin ŞEKLİ değişmez, yalnız yerleşimleri (Placement) değişir;
+    şekil parametreleri değiştiyse çağıran yeni bir önbellek (boş sözlük) vermelidir."""
+    ents = cache.setdefault("ent", {})
+    nf = len(shp.Faces)
+    e = ents.get(tgt.Name)
+    if e is None or e["tol"] != tol or e["nf"] != nf:
+        e = {"tol": tol, "nf": nf, "data": {}}
+        ents[tgt.Name] = e
+    return e
+
+
+def _tessellate(ent, key, geom, shp, tol):
+    """geom (şekil ya da yüz) üçgenlenir. Döner (V dünya (n,3), F (m,3)) ya da None (üçgen yok).
+    ent (önbellek kaydı) verilmişse sonuç şeklin YEREL çerçevesinde saklanır; sonraki çağrıda yalnız şeklin güncel
+    yerleşimi (shp.Placement) uygulanır: nesne hareket etse de yeniden üçgenlenmez. Dönüştürülmüş noktalar şeklin
+    sınır kutusuna sığmıyorsa (yerleşim varsayımı bozuldu) kayıt atılıp yeniden üçgenlenir."""
+    if ent is not None and key in ent["data"]:
+        Vc, F = ent["data"][key]
+        M = _matrix4(shp.Placement)
+        V = Vc @ M[:3, :3].T + M[:3, 3]
+        b = shp.BoundBox
+        m = 0.02 * b.DiagonalLength + 4.0 * tol
+        lo, hi = V.min(0), V.max(0)
+        if (lo[0] >= b.XMin - m and lo[1] >= b.YMin - m and lo[2] >= b.ZMin - m and
+                hi[0] <= b.XMax + m and hi[1] <= b.YMax + m and hi[2] <= b.ZMax + m):
+            return V, F
+        ent["data"].clear()
+    verts, facets = geom.tessellate(tol)
+    if not facets:
+        return None
+    V = np.array([(p.x, p.y, p.z) for p in verts], dtype=np.float64)
+    F = np.array(facets, dtype=np.int64)
+    if ent is not None:
+        M = _matrix4(shp.Placement)
+        ent["data"][key] = ((V - M[:3, 3]) @ np.linalg.inv(M[:3, :3]).T, F)
+    return V, F
+
+
 def _rgb(c):
     """FreeCAD renk değerini (tuple, Base.Color, ...) (r, g, b) float üçlüsüne çevir."""
     try:
@@ -378,8 +418,10 @@ def _gather(doc, log, status=_nostatus):
     return items
 
 
-def collect_scene(doc, status=_nostatus):
-    """Görünür nesneleri üçgenlere çevirir. Döner: Scene, nesne sayısı."""
+def collect_scene(doc, status=_nostatus, tess_cache=None):
+    """Görünür nesneleri üçgenlere çevirir. Döner: Scene, nesne sayısı.
+    tess_cache: boş sözlük verilirse üçgenleme nesne başına yerel çerçevede saklanır ve sonraki çağrılarda yeniden
+    kullanılır (animasyon: nesneler hareket eder, şekilleri değişmez). Sahne boyutu değişse de tolerans sabit tutulur."""
     import FreeCAD
 
     if S.DEBUG:
@@ -400,6 +442,13 @@ def collect_scene(doc, status=_nostatus):
     t1 = time.time()
 
     tol = max(bb.DiagonalLength * S.TESS_FACTOR, 1e-6)
+    if tess_cache is not None:
+        t_old = tess_cache.get("tol")
+        if t_old is not None and tess_cache.get("factor") == S.TESS_FACTOR and 0.67 < tol / t_old < 1.5:
+            tol = t_old                   # hareketli sahnede köşegen biraz değişir: aynı toleransla aynı üçgenleme kullanılsın
+        else:
+            tess_cache.clear()
+        tess_cache["tol"], tess_cache["factor"] = tol, S.TESS_FACTOR
     if S.DEBUG:
         FreeCAD.Console.PrintMessage(
             T("RayTrace: %d nesne bulundu (%.1f sn), sahne köşegeni %.1f mm, tessellate toleransı %.3f mm\n")
@@ -452,12 +501,12 @@ def collect_scene(doc, status=_nostatus):
         # Tek renkli/tek saydamlıklı nesne: tüm şekil tek çağrıyla üçgenlenir (yüz yüz çağırmaktan ~2 kat hızlı)
         uniform = ((dc is None or all(tuple(c) == tuple(dc[0]) for c in dc)) and
                    (ad is None or all(a == ad[0] for a in ad)))
+        ent = _tess_entry(tess_cache, tgt, shp, tol) if tess_cache is not None else None
         if uniform and len(shp.Faces) > 1:
             try:
-                verts, facets = shp.tessellate(tol)
-                if facets:
-                    V = np.array([(p.x, p.y, p.z) for p in verts], dtype=np.float64)
-                    F = np.array(facets, dtype=np.int64)
+                got = _tessellate(ent, "all", shp, shp, tol)
+                if got is not None:
+                    V, F = got
                     tris.append(V[F])
                     ntri += len(F)
                     c = dc[0] if dc is not None else base
@@ -476,13 +525,12 @@ def collect_scene(doc, status=_nostatus):
                 status(T("üçgenleniyor %d/%d: %s (%d üçgen)") % (k + 1, len(items), name[:24], ntri),
                        frac=(k + i / float(max(len(shp.Faces), 1))) / float(len(items)))
             try:
-                verts, facets = face.tessellate(tol)
+                got = _tessellate(ent, i, face, shp, tol)
             except Exception:
                 continue
-            if not facets:
+            if got is None:
                 continue
-            V = np.array([(p.x, p.y, p.z) for p in verts], dtype=np.float64)
-            F = np.array(facets, dtype=np.int64)
+            V, F = got
             tris.append(V[F])
             ntri += len(F)
             c = dc[i] if dc is not None else base

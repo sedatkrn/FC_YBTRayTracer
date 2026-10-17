@@ -1,0 +1,126 @@
+# -*- coding: utf-8 -*-
+"""
+FC_ybt_turntable.FCMacro -- örnek: arayüzsüz API ile animasyon karesi üretme (FC YBT Raytracer >= 1.3).
+
+İki kip:
+  MODE = "turntable"  kamera sahnenin çevresinde döner (sahne bir kez hazırlanır, çok hızlı)
+  MODE = "parca"      seçili nesne bir eksen çevresinde döner, kamera sabit (üçgenleme önbelleği kullanılır)
+
+Çıktı: <OUT_DIR>/kare_0001.png ... Videoya çevirmek için (ffmpeg kuruluysa), makro bitince Report View'a yazılan
+komutu çalıştırın.
+
+Kurulum: bu dosya, `ybt_raytracer/` klasörünün bulunduğu yerde (Macro klasörü) ya da onun bir alt klasöründe durabilir.
+"""
+import os
+import sys
+import time
+import FreeCAD as App
+
+# ----------------------------- AYARLAR -----------------------------
+MODE = "turntable"       # "turntable" | "parca"
+FRAMES = 72              # kare sayısı (72 kare, 30 fps = 2,4 sn)
+WIDTH = 960              # piksel; yükseklik 16:9'dan gelir
+ELEVATION = 20.0         # turntable: kamera yükseklik açısı (derece)
+OUT_DIR = ""             # boş = belgenin yanında "animasyon" klasörü (belge kayıtlı değilse ~/Pictures/animasyon)
+OBJ_NAME = ""            # "parca" kipi: nesne adı; boşsa 3B görünümde seçili ilk nesne
+AXIS = (0, 0, 1)         # "parca" kipi: dönme ekseni
+TURNS = 1.0              # "parca" kipi: kareler boyunca kaç tam tur
+RENDER = dict(           # render ayarları (settings.py'deki adlar, küçük harfle)
+    floor=True,
+    shadows=True,
+    aa=2,
+)
+# -------------------------------------------------------------------
+
+
+def _find_package():
+    here = []
+    try:
+        here.append(os.path.dirname(os.path.abspath(__file__)))
+    except NameError:
+        pass
+    cands = []
+    for h in here:
+        cands += [h, os.path.dirname(h)]
+    cands.append(App.getUserMacroDir(True))
+    for c in cands:
+        if c and os.path.isdir(os.path.join(c, "ybt_raytracer")):
+            return c
+    raise RuntimeError("ybt_raytracer/ klasörü bulunamadı. Denenen: %s" % cands)
+
+
+def _out_dir(doc):
+    if OUT_DIR:
+        return OUT_DIR
+    if doc.FileName:
+        return os.path.join(os.path.dirname(doc.FileName), "animasyon")
+    return os.path.join(os.path.expanduser("~"), "Pictures", "animasyon")
+
+
+def _pick_object(doc):
+    if OBJ_NAME:
+        return doc.getObject(OBJ_NAME)
+    try:
+        import FreeCADGui as Gui
+        sel = Gui.Selection.getSelection()
+        if sel:
+            return sel[0]
+    except Exception:
+        pass
+    return None
+
+
+def main():
+    root = _find_package()
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    for m in [m for m in list(sys.modules) if m == "ybt_raytracer" or m.startswith("ybt_raytracer.")]:
+        del sys.modules[m]
+    from ybt_raytracer import api
+
+    doc = App.ActiveDocument
+    if doc is None:
+        raise RuntimeError("Açık belge yok.")
+    out = _out_dir(doc)
+    os.makedirs(out, exist_ok=True)
+    t0 = time.time()
+
+    def log(i, n):
+        App.Console.PrintMessage("kare %d/%d  (%.0f sn)\n" % (i, n, time.time() - t0))
+
+    if MODE == "turntable":
+        paths = api.turntable(doc, out, frames=FRAMES, width=WIDTH, elevation=ELEVATION, name="kare",
+                              on_frame=lambda i, n, p: log(i, n), **RENDER)
+    elif MODE == "parca":
+        obj = _pick_object(doc)
+        if obj is None:
+            raise RuntimeError("Döndürülecek nesne yok: OBJ_NAME yazın ya da 3B görünümde bir nesne seçin.")
+        orig = App.Placement(obj.Placement)
+        ctr = obj.Shape.BoundBox.Center if hasattr(obj, "Shape") else orig.Base
+        cache = {}                                  # üçgenleme önbelleği: şekil değişmez, yalnız yerleşim değişir
+        paths = []
+        cam = None
+        try:
+            for i in range(FRAMES):
+                ang = 360.0 * TURNS * i / FRAMES
+                obj.Placement = App.Placement(App.Vector(0, 0, 0), App.Rotation(App.Vector(*AXIS), ang), ctr) * orig
+                doc.recompute()
+                path = os.path.join(out, "kare_%04d.png" % (i + 1))
+                scene = api.prepare_scene(doc, tess_cache=cache)
+                if cam is None:
+                    cam = api.fit_camera(scene)    # kamera ilk karede sabitlenir
+                api.render_scene(scene, cam, width=WIDTH, out_path=path, **RENDER)
+                paths.append(path)
+                log(i + 1, FRAMES)
+        finally:
+            obj.Placement = orig                    # nesneyi eski yerine koy
+            doc.recompute()
+    else:
+        raise RuntimeError("MODE 'turntable' ya da 'parca' olmalı.")
+
+    App.Console.PrintMessage("Bitti: %d kare -> %s\n" % (len(paths), out))
+    App.Console.PrintMessage("Video için: ffmpeg -framerate 30 -i \"%s\" -pix_fmt yuv420p animasyon.mp4\n"
+                             % os.path.join(out, "kare_%04d.png"))
+
+
+main()
