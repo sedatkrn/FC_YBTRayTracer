@@ -110,6 +110,75 @@ BUILTIN = {
     "LED (beyaz)":      _m(color=(1.00, 1.00, 1.00), spec=0.0, lum=1.0),
     "LED (kırmızı)":    _m(color=(1.00, 0.15, 0.10), spec=0.0, lum=1.0),
     "LED (yeşil)":      _m(color=(0.20, 1.00, 0.30), spec=0.0, lum=1.0),
+    # --- Mimari (dokulu)
+    "Granit (gri)": _m(color=(0.88, 0.88, 0.88), spec=0.30, gloss=0.40, metal=0.00, refl=0.04, tex="mimari_granit1"),
+    "Granit (bej)": _m(color=(0.88, 0.88, 0.88), spec=0.30, gloss=0.40, metal=0.00, refl=0.04, tex="mimari_granit2"),
+    "Granit (mavi inci)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.55, metal=0.00, refl=0.06, tex="mimari_granit_mavi"),
+    "Granit (siyah)": _m(color=(0.88, 0.88, 0.88), spec=0.50, gloss=0.60, metal=0.00, refl=0.07, tex="mimari_granit_siyah"),
+    "Granit (kırmızı)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.55, metal=0.00, refl=0.06, tex="mimari_granit_kirmizi"),
+    "Granit (yeşil)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.55, metal=0.00, refl=0.06, tex="mimari_granit_yesil"),
+    "Mermer (Carrara)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.55, metal=0.00, refl=0.06, tex="mimari_mermer_carrara"),
+    "Mermer (Botticino)": _m(color=(0.88, 0.88, 0.88), spec=0.40, gloss=0.50, metal=0.00, refl=0.05, tex="mimari_mermer_botticino"),
+    "Mermer (krem)": _m(color=(0.88, 0.88, 0.88), spec=0.40, gloss=0.50, metal=0.00, refl=0.05, tex="mimari_mermer_krem"),
+    "Mermer (gri)": _m(color=(0.88, 0.88, 0.88), spec=0.40, gloss=0.50, metal=0.00, refl=0.05, tex="mimari_mermer_gri"),
+    "Mermer (rosso)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.55, metal=0.00, refl=0.06, tex="mimari_mermer_kirmizi"),
+    "Mermer (yeşil)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.55, metal=0.00, refl=0.06, tex="mimari_mermer_yesil"),
+    "Kalker": _m(color=(0.88, 0.88, 0.88), spec=0.06, gloss=0.12, metal=0.00, refl=0.00, tex="mimari_kalker"),
+    "Kumtaşı": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.10, metal=0.00, refl=0.00, tex="mimari_kumtasi"),
+    "Travertin (gümüş)": _m(color=(0.88, 0.88, 0.88), spec=0.18, gloss=0.30, metal=0.00, refl=0.02, tex="mimari_travertin_gri"),
+    "Kaba taş (kale)": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.10, metal=0.00, refl=0.00, tex="mimari_kale_tasi"),
+    "Kesme taş": _m(color=(0.88, 0.88, 0.88), spec=0.06, gloss=0.12, metal=0.00, refl=0.00, tex="mimari_kesme_tas"),
+    "Dere taşı": _m(color=(0.88, 0.88, 0.88), spec=0.10, gloss=0.18, metal=0.00, refl=0.00, tex="mimari_dere_tasi"),
+    "Taş (düz)": _m(color=(0.88, 0.88, 0.88), spec=0.06, gloss=0.12, metal=0.00, refl=0.00, tex="mimari_tas4"),
+    "Tuğla (eski)": _m(color=(0.88, 0.88, 0.88), spec=0.04, gloss=0.08, metal=0.00, refl=0.00, tex="mimari_tugla_eski"),
+    "Tuğla (yeni)": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.10, metal=0.00, refl=0.00, tex="mimari_tugla_yeni"),
+    "Tuğla (beyaz)": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.10, metal=0.00, refl=0.00, tex="mimari_tugla_beyaz"),
+    "Beton (düz)": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.12, metal=0.00, refl=0.00, tex="mimari_beton_duz"),
+    "Beton (dökme)": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.12, metal=0.00, refl=0.00, tex="mimari_beton_dokme"),
+    "Beton (açık gri)": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.12, metal=0.00, refl=0.00, tex="mimari_beton_dokme2"),
+    "Sıva (kırmızı)": _m(color=(0.88, 0.88, 0.88), spec=0.03, gloss=0.08, metal=0.00, refl=0.00, tex="mimari_siva_kirmizi"),
+    "Sıva (sarı)": _m(color=(0.88, 0.88, 0.88), spec=0.03, gloss=0.08, metal=0.00, refl=0.00, tex="mimari_siva_sari"),
+    "Sıva (güneybatı)": _m(color=(0.88, 0.88, 0.88), spec=0.03, gloss=0.08, metal=0.00, refl=0.00, tex="mimari_siva_guney"),
+    "Stuko": _m(color=(0.88, 0.88, 0.88), spec=0.03, gloss=0.08, metal=0.00, refl=0.00, tex="mimari_stuko"),
+    "Sıva (dokulu beyaz)": _m(color=(0.88, 0.88, 0.88), spec=0.03, gloss=0.08, metal=0.00, refl=0.00, tex="mimari_siva_beyaz"),
+    "Cephe kaplama (sedir)": _m(color=(0.88, 0.88, 0.88), spec=0.10, gloss=0.20, metal=0.00, refl=0.00, tex="mimari_kaplama_sedir"),
+    "Cephe kaplama (koyu)": _m(color=(0.88, 0.88, 0.88), spec=0.10, gloss=0.20, metal=0.00, refl=0.00, tex="mimari_kaplama_koyu"),
+    "Cephe kaplama (açık)": _m(color=(0.88, 0.88, 0.88), spec=0.10, gloss=0.20, metal=0.00, refl=0.00, tex="mimari_kaplama_acik"),
+    "Kütük duvar": _m(color=(0.88, 0.88, 0.88), spec=0.08, gloss=0.15, metal=0.00, refl=0.00, tex="mimari_kutuk_duvar"),
+    "Ahşap (dişbudak)": _m(color=(0.88, 0.88, 0.88), spec=0.15, gloss=0.30, metal=0.00, refl=0.01, tex="mimari_ahsap_dis"),
+    "Ahşap (maun)": _m(color=(0.88, 0.88, 0.88), spec=0.20, gloss=0.35, metal=0.00, refl=0.02, tex="mimari_ahsap_maun"),
+    "Ahşap (akçaağaç)": _m(color=(0.88, 0.88, 0.88), spec=0.15, gloss=0.30, metal=0.00, refl=0.01, tex="mimari_ahsap_akcaagac"),
+    "Ahşap (meşe, koyu)": _m(color=(0.88, 0.88, 0.88), spec=0.15, gloss=0.30, metal=0.00, refl=0.01, tex="mimari_ahsap_mese_koyu"),
+    "Ahşap (meşe, açık)": _m(color=(0.88, 0.88, 0.88), spec=0.15, gloss=0.30, metal=0.00, refl=0.01, tex="mimari_ahsap_mese_acik"),
+    "Ahşap (çam)": _m(color=(0.88, 0.88, 0.88), spec=0.12, gloss=0.25, metal=0.00, refl=0.00, tex="mimari_ahsap_cam"),
+    "Ahşap (ceviz)": _m(color=(0.88, 0.88, 0.88), spec=0.20, gloss=0.35, metal=0.00, refl=0.02, tex="mimari_ahsap_ceviz"),
+    "Ahşap (karaağaç)": _m(color=(0.88, 0.88, 0.88), spec=0.20, gloss=0.35, metal=0.00, refl=0.02, tex="mimari_ahsap_karaagac"),
+    "Parke (1)": _m(color=(0.88, 0.88, 0.88), spec=0.18, gloss=0.30, metal=0.00, refl=0.02, tex="mimari_parke4"),
+    "Parke (2)": _m(color=(0.88, 0.88, 0.88), spec=0.18, gloss=0.30, metal=0.00, refl=0.02, tex="mimari_parke5"),
+    "Tahta döşeme": _m(color=(0.88, 0.88, 0.88), spec=0.12, gloss=0.25, metal=0.00, refl=0.00, tex="mimari_tahta_doseme"),
+    "Seramik karo": _m(color=(0.88, 0.88, 0.88), spec=0.40, gloss=0.55, metal=0.00, refl=0.08, tex="mimari_seramik3"),
+    "Karo (gri)": _m(color=(0.88, 0.88, 0.88), spec=0.35, gloss=0.50, metal=0.00, refl=0.06, tex="mimari_karo_gri"),
+    "Karo (açık kahve)": _m(color=(0.88, 0.88, 0.88), spec=0.35, gloss=0.50, metal=0.00, refl=0.06, tex="mimari_karo_kahve"),
+    "Karo (kırmızı)": _m(color=(0.88, 0.88, 0.88), spec=0.35, gloss=0.50, metal=0.00, refl=0.06, tex="mimari_karo_kirmizi"),
+    "Mozaik": _m(color=(0.88, 0.88, 0.88), spec=0.40, gloss=0.55, metal=0.00, refl=0.06, tex="mimari_mozaik"),
+    "Karo (beyaz)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.60, metal=0.00, refl=0.08, tex="mimari_karo_beyaz"),
+    "Karo (mavi)": _m(color=(0.88, 0.88, 0.88), spec=0.45, gloss=0.60, metal=0.00, refl=0.08, tex="mimari_karo_mavi"),
+    "Kiremit": _m(color=(0.88, 0.88, 0.88), spec=0.08, gloss=0.15, metal=0.00, refl=0.00, tex="mimari_kiremit"),
+    "Çatı kaplama (kiremit 2)": _m(color=(0.88, 0.88, 0.88), spec=0.08, gloss=0.15, metal=0.00, refl=0.00, tex="mimari_cati1"),
+    "Çatı kaplama (gri)": _m(color=(0.88, 0.88, 0.88), spec=0.08, gloss=0.15, metal=0.00, refl=0.00, tex="mimari_cati_gri"),
+    "Çatı (sedir tahta)": _m(color=(0.88, 0.88, 0.88), spec=0.08, gloss=0.15, metal=0.00, refl=0.00, tex="mimari_cati_sedir"),
+    "Çatı (terrakota)": _m(color=(0.88, 0.88, 0.88), spec=0.10, gloss=0.18, metal=0.00, refl=0.00, tex="mimari_cati_terrakota"),
+    "Bakır sac (eskimiş)": _m(color=(0.88, 0.88, 0.88), spec=0.50, gloss=0.50, metal=0.70, refl=0.12, tex="mimari_bakir_eski"),
+    "Çinko sac": _m(color=(0.88, 0.88, 0.88), spec=0.55, gloss=0.50, metal=0.80, refl=0.15, tex="mimari_cinko"),
+    "Oluklu sac": _m(color=(0.88, 0.88, 0.88), spec=0.55, gloss=0.45, metal=0.80, refl=0.12, tex="mimari_oluklu_sac"),
+    "Asfalt": _m(color=(0.88, 0.88, 0.88), spec=0.04, gloss=0.08, metal=0.00, refl=0.00, tex="mimari_asfalt"),
+    "Toprak": _m(color=(0.88, 0.88, 0.88), spec=0.02, gloss=0.05, metal=0.00, refl=0.00, tex="mimari_toprak"),
+    "Kesme taş kaldırım": _m(color=(0.88, 0.88, 0.88), spec=0.06, gloss=0.12, metal=0.00, refl=0.00, tex="mimari_kaldirim"),
+    "Tuğla yaya yolu": _m(color=(0.88, 0.88, 0.88), spec=0.05, gloss=0.10, metal=0.00, refl=0.00, tex="mimari_tugla_yol"),
+    "Halı (gri)": _m(color=(0.88, 0.88, 0.88), spec=0.02, gloss=0.05, metal=0.00, refl=0.00, tex="mimari_hali_gri"),
+    "Deri (kahverengi)": _m(color=(0.88, 0.88, 0.88), spec=0.30, gloss=0.35, metal=0.00, refl=0.02, tex="mimari_deri3"),
+    "Kumaş": _m(color=(0.88, 0.88, 0.88), spec=0.03, gloss=0.06, metal=0.00, refl=0.00, tex="mimari_kumas1"),
+    "Çim": _m(color=(0.88, 0.88, 0.88), spec=0.02, gloss=0.05, metal=0.00, refl=0.00, tex="mimari_cim"),
 }
 
 CATEGORIES = [
@@ -122,9 +191,24 @@ CATEGORIES = [
     ("Cam / sıvı", ["Cam", "Cam (yeşilimsi)", "Cam (füme)", "Cam (mavi)", "Buzlu cam", "Akrilik (şeffaf)", "Su", "Elmas"]),
     ("Doğal / yapı", ["Ahşap (cilalı)", "Ahşap (dokulu)", "Mermer (dokulu)", "Travertin", "Beton", "Tuğla", "Taş kaplama",
                       "Terrakota", "Sıva", "Çakıl", "Seramik", "Porselen"]),
+    ("Mimari", ['Granit (gri)', 'Granit (bej)', 'Granit (mavi inci)', 'Granit (siyah)', 'Granit (kırmızı)', 'Granit (yeşil)', 'Mermer (Carrara)', 'Mermer (Botticino)', 'Mermer (krem)', 'Mermer (gri)', 'Mermer (rosso)', 'Mermer (yeşil)', 'Kalker', 'Kumtaşı', 'Travertin (gümüş)', 'Kaba taş (kale)', 'Kesme taş', 'Dere taşı', 'Taş (düz)', 'Tuğla (eski)', 'Tuğla (yeni)', 'Tuğla (beyaz)', 'Beton (düz)', 'Beton (dökme)', 'Beton (açık gri)', 'Sıva (kırmızı)', 'Sıva (sarı)', 'Sıva (güneybatı)', 'Stuko', 'Sıva (dokulu beyaz)', 'Cephe kaplama (sedir)', 'Cephe kaplama (koyu)', 'Cephe kaplama (açık)', 'Kütük duvar', 'Ahşap (dişbudak)', 'Ahşap (maun)', 'Ahşap (akçaağaç)', 'Ahşap (meşe, koyu)', 'Ahşap (meşe, açık)', 'Ahşap (çam)', 'Ahşap (ceviz)', 'Ahşap (karaağaç)', 'Parke (1)', 'Parke (2)', 'Tahta döşeme', 'Seramik karo', 'Karo (gri)', 'Karo (açık kahve)', 'Karo (kırmızı)', 'Mozaik', 'Karo (beyaz)', 'Karo (mavi)', 'Kiremit', 'Çatı kaplama (kiremit 2)', 'Çatı kaplama (gri)', 'Çatı (sedir tahta)', 'Çatı (terrakota)', 'Bakır sac (eskimiş)', 'Çinko sac', 'Oluklu sac', 'Asfalt', 'Toprak', 'Kesme taş kaldırım', 'Tuğla yaya yolu', 'Halı (gri)', 'Deri (kahverengi)', 'Kumaş', 'Çim']),
     ("Deri / karbon", ["Deri (dokulu)", "Karbon fiber"]),
     ("Işık", ["Parlayan (ışık)", "LED (beyaz)", "LED (kırmızı)", "LED (yeşil)"]),
 ]
+
+
+def _drop_missing_textures():
+    """Dosyası bulunmayan 'mimari_*' dokulu hazır malzemeleri (ve boşalan kategorileri) listeden çıkarır."""
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "textures")
+    gone = [n for n, m in BUILTIN.items()
+            if str(m.get("tex", "")).startswith("mimari_") and not os.path.isfile(os.path.join(d, str(m["tex"]).replace("mimari_", "mimari_") + ".png"))]
+    for n in gone:
+        del BUILTIN[n]
+    CATEGORIES[:] = [(c, [n for n in ns if n in BUILTIN]) for c, ns in CATEGORIES]
+    CATEGORIES[:] = [(c, ns) for c, ns in CATEGORIES if ns]
+
+
+_drop_missing_textures()
 
 
 def category_of(name):

@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 *.FCBak
 *.FCStd1
+ybt_raytracer/textures/mimari_*.png
