@@ -3,7 +3,7 @@ import numpy as np
 import time
 from . import settings as S
 from .i18n import T
-from .core import Scene
+from .core import Scene, camera_basis
 from . import materials as _mats
 
 
@@ -418,10 +418,46 @@ def _gather(doc, log, status=_nostatus):
     return items
 
 
-def collect_scene(doc, status=_nostatus, tess_cache=None):
+def _offscreen_filter(items, cam, aspect, margin):
+    """Kadraj (görüş piramidi / ortografik prizma, kenarlarda `margin` oranında genişletilmiş) dışında kalan nesneleri
+    eler: sınır kutusunun 8 köşesi aynı kenar düzleminin dışındaysa nesne görünmez. Muhafazakârdır: kutusu kadraja
+    değen (ya da kadrajı kaplayan) nesne her zaman kalır. Döner (kalanlar, atılan sayısı)."""
+    pos = np.asarray(cam["pos"], dtype=np.float64)
+    right, up, fwd = camera_basis(np.asarray(cam["fwd"], dtype=np.float64), np.asarray(cam["up"], dtype=np.float64))
+    persp = bool(cam["persp"])
+    size = float(cam["size"])
+    base = np.tan(size / 2.0) if persp else size / 2.0
+    aspect = float(aspect) if aspect else 1.0
+    if aspect >= 1.0:                                  # render ile aynı kural: açı/yükseklik küçük kenara uygulanır
+        hy, hx = base, base * aspect
+    else:
+        hx, hy = base, base / aspect
+    hx *= 1.0 + float(margin)
+    hy *= 1.0 + float(margin)
+    keep, dropped = [], 0
+    for it in items:
+        b = it[2].BoundBox
+        c = np.array([(x, y, z) for x in (b.XMin, b.XMax) for y in (b.YMin, b.YMax) for z in (b.ZMin, b.ZMax)])
+        v = c - pos
+        x, y, z = v @ right, v @ up, v @ fwd
+        if persp:                                      # piramit: |x| <= hx*z, |y| <= hy*z (z > 0)
+            out = ((z <= 0).all() or (x + hx * z < 0).all() or (-x + hx * z < 0).all() or
+                   (y + hy * z < 0).all() or (-y + hy * z < 0).all())
+        else:                                          # ortografik: arkadakiler de görünür (render ışını geri çeker)
+            out = ((x < -hx).all() or (x > hx).all() or (y < -hy).all() or (y > hy).all())
+        if out:
+            dropped += 1
+        else:
+            keep.append(it)
+    return keep, dropped
+
+
+def collect_scene(doc, status=_nostatus, tess_cache=None, camera=None, aspect=None):
     """Görünür nesneleri üçgenlere çevirir. Döner: Scene, nesne sayısı.
     tess_cache: boş sözlük verilirse üçgenleme nesne başına yerel çerçevede saklanır ve sonraki çağrılarda yeniden
-    kullanılır (animasyon: nesneler hareket eder, şekilleri değişmez). Sahne boyutu değişse de tolerans sabit tutulur."""
+    kullanılır (animasyon: nesneler hareket eder, şekilleri değişmez). Sahne boyutu değişse de tolerans sabit tutulur.
+    'Render'a dahil et' işareti kaldırılmış nesneler (materials.included) alınmaz. camera/aspect verilir ve
+    settings.CULL_OFFSCREEN açıksa kadraj dışındaki nesneler de alınmaz."""
     import FreeCAD
 
     if S.DEBUG:
@@ -436,6 +472,18 @@ def collect_scene(doc, status=_nostatus, tess_cache=None):
     items = _gather(doc, log, status)
     if not items:
         raise RuntimeError(T("Görünür, yüzeyi olan nesne bulunamadı."))
+    n_all = len(items)
+    items = [it for it in items if _mats.included(it[0])]
+    n_excl = n_all - len(items)
+    if not items:
+        raise RuntimeError(T("Render'a dahil edilen nesne yok (hepsi hariç tutulmuş)."))
+    n_cull = 0
+    if S.CULL_OFFSCREEN and camera is not None:
+        items, n_cull = _offscreen_filter(items, camera, aspect, S.CULL_MARGIN)
+        if not items:
+            raise RuntimeError(T("Kadrajda hiç nesne yok (kadraj dışındakileri atla açık)."))
+    if n_excl or n_cull:
+        FreeCAD.Console.PrintMessage(T("RayTrace: %d nesne hariç tutuldu, %d nesne kadraj dışı atlandı.\n") % (n_excl, n_cull))
     bb = FreeCAD.BoundBox()
     for it in items:
         bb.add(it[2].BoundBox)

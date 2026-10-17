@@ -45,6 +45,9 @@ FLOOR_SKY_REFL = 0.35  # zeminin gökyüzü yansımasının gücü (1 = tam)
 FLOOR_HAZE = 12.0       # ufka doğru sis uzunluğu (sahne köşegeni x bu sayı)
 FLOOR_RADIUS = 25.0    # zemin yarıçapı = sahne köşegeni x bu sayı (ufuk çizgisine kadar)
 THREADS = 0            # render iş parçacığı sayısı; 0 = otomatik (işlemci çekirdek sayısı, en çok 8)
+CULL_OFFSCREEN = False  # True: kadraj dışında kalan nesneler sahneye hiç alınmaz (üçgenlenmez; sahne boyutuna, gölgeye,
+                        # yansımaya ve sanal zemin yüksekliğine katılmaz). Kapalı = eski davranış (tüm görünür nesneler)
+CULL_MARGIN = 0.1      # kadraj her kenarda bu oranda genişletilir; yalnız bunun da dışındaki nesneler atılır
 DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz
 OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazsa ~/Pictures, sonra ~)
 # -----------------------------------------------------------------------

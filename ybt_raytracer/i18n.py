@@ -233,4 +233,27 @@ EN = {
     "Seramik": "Ceramic", "Ahşap (cilalı)": "Wood (polished)", "Krom": "Chrome", "Çelik (fırçalı)": "Steel (brushed)",
     "Alüminyum": "Aluminium", "Altın": "Gold", "Bakır": "Copper", "Cam": "Glass", "Su": "Water", "Buzlu cam": "Frosted glass",
     "Parlayan (ışık)": "Emissive (light)",
+    # v1.3: render'a dahil et, kadraj dışı atla
+    "Kadraj dışındaki nesneleri atla": "Skip objects outside the frame",
+    "Kadrajın dışında kalan nesneler sahneye hiç alınmaz: üçgenlenmez, gölge/yansıma vermez, "
+    "sahne boyutuna ve sanal zemin yüksekliğine katılmaz. Büyük modellerde kadraj yakınken hızlandırır. "
+    "Kamera değişince sahne yeniden okunur.":
+        "Objects outside the frame are left out of the scene entirely: not tessellated, no shadows or reflections, "
+        "not counted in the scene size or the virtual floor height. Speeds up large models when the view is zoomed in. "
+        "The scene is re-read when the camera changes.",
+    "Render'a dahil edilen nesne yok (hepsi hariç tutulmuş).": "No object is included in the render (all are excluded).",
+    "Kadrajda hiç nesne yok (kadraj dışındakileri atla açık).": "No object is inside the frame ('Skip objects outside the frame' is on).",
+    "RayTrace: %d nesne hariç tutuldu, %d nesne kadraj dışı atlandı.\n":
+        "RayTrace: %d object(s) excluded, %d object(s) skipped as outside the frame.\n",
+    "İşaretli nesneler render'a dahil edilir; işareti kaldırılanlar sahneye hiç alınmaz":
+        "Checked objects are included in the render; unchecked ones are left out of the scene entirely",
+    "Seçilileri dahil et": "Include selected", "Seçilileri hariç tut": "Exclude selected",
+    "Seçili nesnelerin kutusunu işaretler: render'a girerler": "Checks the selected objects: they are rendered",
+    "Seçili nesnelerin işaretini kaldırır: render'a girmezler (gölge ve yansıma da vermezler)":
+        "Unchecks the selected objects: they are not rendered (they cast no shadows or reflections either)",
+    "Kutusu işaretli olmayan nesneler render'a girmez.": "Objects with an unchecked box are not rendered.",
+    "Render'a dahil: %s": "Included in render: %s",
+    "Render'dan hariç tutuldu: %s": "Excluded from render: %s",
+    "%d nesne render'a dahil edildi.": "%d object(s) included in the render.",
+    "%d nesne render'dan hariç tutuldu.": "%d object(s) excluded from the render.",
 }

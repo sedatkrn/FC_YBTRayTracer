@@ -1,6 +1,14 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğrudan sahneye alınır; App::Part / Link (LinkTransform dahil) içinde doğru konumlanır;
+          malzeme atanabilir, Malzemeler penceresindeki listede görünür.
+        * Arayüzsüz API (ybt_raytracer.api): render_document, render_scene, prepare_scene; kamera yardımcıları (make_camera, fit_camera, orbit_cameras);
+          turntable(); ayarlar anahtar sözcükle (yalnız o çağrı için). Hareketli parça animasyonu için tess_cache (şekil bir kez üçgenlenir, her karede yalnız yerleşim).
+          Örnek makro: examples/FC_ybt_turntable.FCMacro (kamera turntable'ı / dönen parça).
+        * "Render'a dahil et": Malzemeler penceresinde nesne başına onay kutusu + Seçilileri dahil et / hariç tut düğmeleri (nesnenin YBTInclude özelliği).
+        * "Kadraj dışındaki nesneleri atla" seçeneği (CULL_OFFSCREEN): kadraj dışı nesneler üçgenlenmez, sahne boyutuna/gölgeye/zemine katılmaz.
+        * Malzemesiz Part sahnesinde v1.2.2 ile piksel piksel aynı çıktı (regresyon testi).
 v1.2.2: * Malzeme penceresinde nesne listesi artık yalnızca render edilen gerçek katı/yüzeyleri gösterir (düzlem, eksen, joint, kapsayıcı yok); arama kutusu ve Yenile düğmesi eklendi.
 v1.2.1: * Kalite ayarlarında "Cam yansıması / Yüzey yansıması / Kırılma (IOR)" alanları kaldırıldı; yerine "Yansımalar" ve "Kırılma" açma-kapama kutuları
           (değerler artık malzemeden gelir). Malzemesiz saydam nesneler cam (IOR 1.5) sayılır.

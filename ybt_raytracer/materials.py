@@ -12,11 +12,13 @@ Bir malzeme sözlüğü:
   ior     1..3   kırılma indisi (yalnız saydam malzemede etkili; 1 = düz geçiş)
   lum     0..1   kendi ışığı (parlama, ışıktan bağımsız)
 Atama nesnenin 'YBTMaterial' (metin) özelliğinde saklanır; belgeyle birlikte kaydolur.
+"Render'a dahil et" işareti nesnenin 'YBTInclude' (mantıksal) özelliğinde saklanır; özellik yoksa nesne dahildir.
 """
 import json
 import os
 
 PROP = "YBTMaterial"
+INC_PROP = "YBTInclude"
 
 DEFAULT = dict(color=None, diffuse=1.0, spec=0.30, gloss=0.28, metal=0.0, refl=0.0, transp=0.0, ior=1.0, lum=0.0)
 KEYS = tuple(DEFAULT.keys())
@@ -121,6 +123,35 @@ def assigned(obj):
         if v:
             return str(v)
     return ""
+
+
+def _own(obj, prop):
+    """Özellik nesnenin KENDİNDE mi? (App::Link, bağlı nesnenin özelliklerini de yansıtır; hasattr/getattr yanıltır.)"""
+    try:
+        return prop in obj.PropertiesList
+    except Exception:
+        return False
+
+
+def included(obj):
+    """Nesne render'a dahil mi? Özellik yoksa (hiç hariç tutulmamışsa) dahildir. Yalnız nesnenin kendi işareti geçerlidir:
+    bir parça hariç tutulunca ona bağlı Link'ler (ve tersi) etkilenmez."""
+    if not _own(obj, INC_PROP):
+        return True
+    try:
+        return bool(getattr(obj, INC_PROP))
+    except Exception:
+        return True
+
+
+def set_included(obj, flag):
+    """Dahil et işaretini yaz. Özellik yalnızca ilk kez hariç tutulurken eklenir (belgeyle kaydolur)."""
+    if not _own(obj, INC_PROP):
+        if flag:
+            return
+        obj.addProperty("App::PropertyBool", INC_PROP, "YBT RayTracer", "Include this object in raytracer renders")
+    if bool(getattr(obj, INC_PROP)) != bool(flag):
+        setattr(obj, INC_PROP, bool(flag))
 
 
 def assign(obj, name):

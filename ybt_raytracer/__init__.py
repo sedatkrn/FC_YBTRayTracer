@@ -12,4 +12,4 @@ Modüller:
   ui             ayar paneli ve önizleme penceresi
   api            arayüzsüz API: render_document, prepare_scene, orbit_cameras, turntable (animasyon)
 """
-__version__ = "1.2.2"
+__version__ = "1.3.0"

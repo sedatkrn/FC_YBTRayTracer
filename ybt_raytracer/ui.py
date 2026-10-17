@@ -9,6 +9,7 @@ from .parallel import _Cancelled
 from .render import render
 from .output import pick_out_path, write_png
 from .freecad_scene import collect_scene, read_camera, read_freecad_lights
+from . import materials as _mats
 
 
 _QUALITY = [("Low", 0.012), ("Hızlı", 0.004), ("Normal", 0.0015), ("İnce", 0.0008)]   # Low: çok büyük montajlar için
@@ -94,6 +95,11 @@ def main(lang=None):
     ck_sm = QtGui.QCheckBox(T("Yumuşak yüzeyler"))
     ck_sm.setChecked(bool(S.SMOOTH))
     ck_sm.setToolTip(T("Eğri yüzeyleri (küre, simit, silindir) pürüzsüz gölgeler; keskin kenarlar (küp, plaka) korunur. Kapalıysa üçgenler görünür."))
+    ck_cull = QtGui.QCheckBox(T("Kadraj dışındaki nesneleri atla"))
+    ck_cull.setChecked(bool(S.CULL_OFFSCREEN))
+    ck_cull.setToolTip(T("Kadrajın dışında kalan nesneler sahneye hiç alınmaz: üçgenlenmez, gölge/yansıma vermez, "
+                         "sahne boyutuna ve sanal zemin yüksekliğine katılmaz. Büyük modellerde kadraj yakınken hızlandırır. "
+                         "Kamera değişince sahne yeniden okunur."))
     ck_sv = QtGui.QCheckBox(T("Bitince otomatik kaydet"))
     ck_sv.setChecked(True)
     sp_w.setToolTip(T("Çıktı genişliği; yükseklik 3B görünümün oranından gelir"))
@@ -116,7 +122,8 @@ def main(lang=None):
     qg.addWidget(ck_rf, 9, 0)
     qg.addWidget(ck_rr, 9, 1)
     qg.addWidget(ck_sm, 10, 0, 1, 2)
-    qg.addWidget(ck_sv, 11, 0, 1, 2)
+    qg.addWidget(ck_cull, 11, 0, 1, 2)
+    qg.addWidget(ck_sv, 12, 0, 1, 2)
     lv.addWidget(qbox)
 
     # ---- Işık Ayarları: ortam + en çok 3 ışık ----
@@ -470,7 +477,7 @@ def main(lang=None):
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, sp_bn, cb_th, ck_sv]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -485,6 +492,7 @@ def main(lang=None):
         g["SHADOWS"] = ck_sh.isChecked()
         g["GLASS"] = ck_gl.isChecked()
         g["SMOOTH"] = ck_sm.isChecked()
+        g["CULL_OFFSCREEN"] = ck_cull.isChecked()
         g["REFLECTIONS"] = ck_rf.isChecked()
         g["REFRACTION"] = ck_rr.isChecked()
         g["BOUNCES"] = sp_bn.value()
@@ -539,9 +547,13 @@ def main(lang=None):
             g["USE_FC_LIGHTS"] = ck_fc.isChecked()
             w = int(S.WIDTH)
             h = max(1, int(round(w / aspect)))
-            key = (d.Name, len(d.Objects), S.TESS_FACTOR)
+            key = (d.Name, len(d.Objects), S.TESS_FACTOR, bool(S.CULL_OFFSCREEN),
+                   tuple(sorted(o.Name for o in d.Objects if not _mats.included(o))))   # hariç tutulanlar (elle değişse de yakalanır)
+            if S.CULL_OFFSCREEN:                          # kadraj dışı atma kameraya bağlıdır: kamera değişince sahne yenilenir
+                key += (tuple(np.round(cam["pos"], 3)), tuple(np.round(cam["fwd"], 4)), tuple(np.round(cam["up"], 4)),
+                        bool(cam["persp"]), round(float(cam["size"]), 5), round(float(aspect), 4))
             if state["scene"] is None or state["key"] != key:
-                state["scene"], nobj = collect_scene(d, status)
+                state["scene"], nobj = collect_scene(d, status, camera=cam, aspect=aspect)
                 state["key"] = key
                 FreeCAD.Console.PrintMessage(T("RayTrace: %d nesne, %d üçgen (hazırlık %.1f sn)\n")
                                              % (nobj, state["scene"].count, time.time() - t0))
@@ -618,6 +630,6 @@ def main(lang=None):
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
-    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, reflections=ck_rf,
+    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
                                                             refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)

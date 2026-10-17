@@ -1,4 +1,4 @@
-# Geliştirme notları / Development handoff (v1.2.2)
+# Geliştirme notları / Development handoff (v1.3.0)
 
 Yeni bir oturumda devam etmek için bu dosyayı oku. / Read this first when continuing in a new session.
 
@@ -11,9 +11,12 @@ Kullanıcı: Sedat (Türkçe konuşur; Manjaro/KDE Wayland; FreeCAD 1.1.4; YouTu
 - `core.py` Scene (üçgenler, renk, alpha, `mid`/`mtable` = malzeme), ışın-üçgen, smooth_normals.
 - `accel.py` ekran karoları, ışık-uzayı ızgarası, Morton küme hızlandırıcı (`_closest_general`).
 - `render.py` ana izleyici (Whitted: gölge, yansıma, Snell kırılma, zemin, doku, malzeme tabloları), fork tabanlı çok süreç.
-- `freecad_scene.py` `_gather` (görünür nesneleri toplar: Link/Assembly/Part/Body), `collect_scene` (tessellate + malzeme).
-- `materials.py` malzeme sözlüğü, 15 hazır malzeme, kullanıcı JSON kütüphanesi (`<UserAppData>/YBTRayTracer/materials.json`), atama = nesnenin `YBTMaterial` özelliği.
+- `freecad_scene.py` `_gather` (görünür nesneleri toplar: Link/Assembly/Part/Body/Mesh), `collect_scene` (tessellate + malzeme; `tess_cache`, `camera/aspect` ile kadraj dışı atma, "dahil et" süzgeci).
+  Mesh: `_is_mesh`, `_MeshGeom` (Part şekli gibi davranan sarmalayıcı), `_mesh_geom` (dünya = G·P⁻¹·Topology; Link'te LinkTransform açıksa yalnız G).
+- `materials.py` malzeme sözlüğü, 15 hazır malzeme, kullanıcı JSON kütüphanesi (`<UserAppData>/YBTRayTracer/materials.json`), atama = nesnenin `YBTMaterial` özelliği;
+  "render'a dahil et" = nesnenin `YBTInclude` (bool) özelliği, yalnız hariç tutulunca eklenir; `included/set_included` YALNIZ nesnenin kendi özelliğine bakar (`PropertiesList`; App::Link bağlı nesnenin özelliğini yansıtır, hasattr/getattr yanıltır).
 - `surface_ui.py` Malzeme/Surface penceresi (nesne listesi = `_gather` ile aynı kaynak, kütüphane, parametreler, canlı önizleme küresi).
+- `api.py` arayüzsüz API: `render_document/render_scene/prepare_scene`, `make_camera/fit_camera/orbit_cameras/camera_from_view`, `turntable`; ayarlar kw ile `_Override` (çağrı sonunda geri yazılır). Örnek: `examples/FC_ybt_turntable.FCMacro`.
 - `ui.py` ana panel; `i18n.py` TR/EN (`T("Türkçe metin")`, kaynak metin Türkçe, EN sözlüğü `EN`); `textures.py` zemin dokuları.
 - Başlatıcı: `FC_ybt_raytracer.FCMacro` (paketi bulur, `ybt_raytracer.ui.main()` çağırır).
 
@@ -24,20 +27,21 @@ Kullanıcı: Sedat (Türkçe konuşur; Manjaro/KDE Wayland; FreeCAD 1.1.4; YouTu
 - GitHub: bu ortamda main'e push çalışır; etiket/release oluşturma 403 -> kullanıcı elle yapar (zip verilir).
 
 ## Yapılanlar
-v1.0 ilk sürüm -> v1.1 TR/EN + ikon -> v1.2 malzeme sistemi/Surface penceresi -> v1.2.1 yansıma/kırılma kutuları -> v1.2.2 liste yalnız gerçek nesneler + arama/yenile.
+v1.0 ilk sürüm -> v1.1 TR/EN + ikon -> v1.2 malzeme sistemi/Surface penceresi -> v1.2.1 yansıma/kırılma kutuları -> v1.2.2 liste yalnız gerçek nesneler + arama/yenile -> v1.3.0 mesh nesneleri + arayüzsüz API/animasyon + "render'a dahil et" kutusu + kadraj dışı atma.
 
-## Bekleyen işler (Reddit geri bildirimi + plan), önerilen sıra
-1. **Mesh nesneleri** (`Mesh::Feature`): `_gather` yalnız Part şekilleri okuyor; mesh üçgenlerini doğrudan kullan (tessellate gerekmez), malzeme atanabilsin.
-2. **Arayüzsüz API + animasyon**: `ybt_raytracer.api.render_document(doc, out_path, width=..., camera=..., **ayarlar)`; turntable/kare dizisi örnek makrosu. Sahne önbelleği (`_cache`) ve tessellation tekrar kullanımı.
-3. **Nesne başına "Render'a dahil et"** kutusu (Surface listesinde) + "kadraj dışı nesneleri sahne boyutuna katma" seçeneği. Kullanıcı "ekranda olmayan geometri de işleniyor" dedi; neyi kastettiği belirsiz (kadraj dışı mı, gizli mi).
-4. **Performans profili**: 300k üçgen, 1920 px, sanal zemin, varsayılanlar ≈ 2 dk (Reddit kullanıcısı). Pompa/buggy ölçümümüz: 634k üçgen 1080 px ≈ 20 sn.
-5. Metal yansıma rengi (şu an yalnız specular boyanıyor), nesne dokuları (projeksiyon), kullanılan malzemeleri belgeye gömme.
-6. Addon Manager listesi (FreeCAD addon index PR, kullanıcının hesabından); klasör-makro kurulumu Addon Manager'da doğrulanmadı.
+## Bekleyen işler, önerilen sıra
+1. **Performans profili**: 300k üçgen, 1920 px, sanal zemin, varsayılanlar ≈ 2 dk (Reddit kullanıcısı). Pompa/buggy ölçümümüz: 634k üçgen 1080 px ≈ 20 sn. Sahne hazırlığı tek çekirdekte (Scene.__init__, smooth_normals); animasyonda kare başına tekrar ediyor.
+2. Metal yansıma rengi (şu an yalnız specular boyanıyor), nesne dokuları (projeksiyon), kullanılan malzemeleri belgeye gömme. Mesh köşe renkleri (vertex colors) kullanılmıyor.
+3. Addon Manager listesi (FreeCAD addon index PR, kullanıcının hesabından); klasör-makro kurulumu Addon Manager'da doğrulanmadı. package.xml'e `examples/` makrosu eklenmedi.
+4. Animasyon: kare başına `_gather` taraması + `Scene` ön hesapları tekrarlanıyor; çok nesneli montajda sahne güncellemesi (yalnız yerleşimi değişenleri dönüştürme) yapılabilir. `tess_cache` sözleşmesi: şekil parametreleri değişirse çağıran yeni sözlük vermeli (geçerlilik denetimi yalnız yüz sayısı + sınır kutusu).
+5. Kullanıcı "ekranda olmayan geometri de işleniyor" demişti; "kadraj dışı atla" (CULL_OFFSCREEN, varsayılan kapalı) ve "dahil et" kutusu ikisini de karşılıyor, gizli nesneler zaten taranmıyor. Kullanıcı neyi kastettiğini doğrulamadı.
 
 ## Bilinen sınırlar
 Işık kırınımında kaydırma açılarında nadir siyah noktalar (hapsolmuş tam iç yansıma); gölgeler camdan renksiz geçer, kostik yok; metal yansıması renklenmiyor.
 
 ## Test
+- v1.3.0 geliştirmesi kullanıcının AÇIK FreeCAD'ine (FreeCAD MCP: `execute_code`) karşı yapıldı: kod `/home/sedat/claude-projeler/FC_ybt_raytracer/` klasörüne yazılıp `sys.path.insert(0, klasör)` ile içe aktarıldı (sys.modules'daki `ybt_raytracer*` silinerek yeniden yüklenir). Ekran görüntüsü için pencerede `grab().save(...)`.
+- Regresyon (v1.3.0'da yapıldı): eski `freecad_scene.py` (git `fa98d55`) bir modül olarak yüklenip yeni `collect_scene` ile aynı belgede karşılaştırıldı: Scene dizileri birebir aynı, render farkı 0.
 - FreeCAD 1.0.2 AppImage ile başsız GUI testi: `xvfb-run -a <AppRun/usr/bin/freecad> betik.py` (`HOME` ayrı bir klasör). Betik `FreeCAD._raytrace_dlg._raytrace_api` ile pencereyi sürer. (Önceki oturumda `/tmp/fcdl` altındaydı; yeni oturumda yeniden indirmek gerekebilir.)
 - Regresyon: malzemesiz sahnede eski/yeni render farkı 0.0 olmalı.
 - Büyük sahnede (300k+ üçgen) brute-force doğrulama çalıştırma (zaman aşımı).

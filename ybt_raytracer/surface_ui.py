@@ -133,7 +133,19 @@ def open_surface(on_change=None, is_busy=None):
     tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
     tree.setRootIsDecorated(False)
     tree.setMinimumWidth(300)
+    tree.headerItem().setToolTip(0, T("İşaretli nesneler render'a dahil edilir; işareti kaldırılanlar sahneye hiç alınmaz"))
     left.addWidget(tree, 3)
+    inc_row = QtGui.QHBoxLayout()
+    btn_inc = QtGui.QPushButton(T("Seçilileri dahil et"))
+    btn_exc = QtGui.QPushButton(T("Seçilileri hariç tut"))
+    btn_inc.setToolTip(T("Seçili nesnelerin kutusunu işaretler: render'a girerler"))
+    btn_exc.setToolTip(T("Seçili nesnelerin işaretini kaldırır: render'a girmezler (gölge ve yansıma da vermezler)"))
+    inc_row.addWidget(btn_inc)
+    inc_row.addWidget(btn_exc)
+    left.addLayout(inc_row)
+    hint = QtGui.QLabel(T("Kutusu işaretli olmayan nesneler render'a girmez."))
+    hint.setStyleSheet("color: gray;")
+    left.addWidget(hint)
     left.addWidget(QtGui.QLabel("<b>%s</b>" % T("Malzeme kütüphanesi")))
     lst = QtGui.QListWidget()
     left.addWidget(lst, 3)
@@ -289,21 +301,38 @@ def open_surface(on_change=None, is_busy=None):
             st["items"] = []
             msg("tarama: %s" % ex)
 
+    def style_item(it, inc):
+        """Hariç tutulan nesne soluk gösterilir."""
+        try:
+            brush = QtGui.QBrush(QtGui.QColor(128, 128, 128)) if not inc else QtGui.QBrush()
+            for c in (0, 1):
+                it.setForeground(c, brush)
+        except Exception:
+            pass
+
     def refresh_tree():
         sel = {it.data(0, QtCore.Qt.UserRole) for it in tree.selectedItems()}
         flt = ed_filter.text().strip().lower()
-        tree.clear()
-        for o, tgt in st["items"]:
-            label = o.Label
-            if flt and flt not in label.lower() and flt not in M.assigned(o).lower():
-                continue
-            mn = M.assigned(o)
-            it = QtGui.QTreeWidgetItem([label, display_name(mn) if mn else "—"])
-            it.setData(0, QtCore.Qt.UserRole, o.Name)
-            tree.addTopLevelItem(it)
-            if o.Name in sel:
-                it.setSelected(True)
-        tree.resizeColumnToContents(0)
+        st["tlock"] = True                          # onay kutusu değişim sinyali yeniden doldururken çalışmasın
+        try:
+            tree.clear()
+            for o, tgt in st["items"]:
+                label = o.Label
+                if flt and flt not in label.lower() and flt not in M.assigned(o).lower():
+                    continue
+                mn = M.assigned(o)
+                it = QtGui.QTreeWidgetItem([label, display_name(mn) if mn else "—"])
+                it.setData(0, QtCore.Qt.UserRole, o.Name)
+                it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+                inc = M.included(o)
+                it.setCheckState(0, QtCore.Qt.Checked if inc else QtCore.Qt.Unchecked)
+                style_item(it, inc)
+                tree.addTopLevelItem(it)
+                if o.Name in sel:
+                    it.setSelected(True)
+            tree.resizeColumnToContents(0)
+        finally:
+            st["tlock"] = False
 
     def refresh_lib(select=None):
         lst.clear()
@@ -364,6 +393,38 @@ def open_surface(on_change=None, is_busy=None):
         changed()
         msg(T("%d nesnenin ataması kaldırıldı.") % len(objs))
 
+    def on_item_changed(it, col):
+        """Onay kutusu: nesneyi render'a dahil et / hariç tut."""
+        if st.get("tlock") or col != 0:
+            return
+        o = doc.getObject(it.data(0, QtCore.Qt.UserRole))
+        if o is None:
+            return
+        flag = it.checkState(0) == QtCore.Qt.Checked
+        try:
+            M.set_included(o, flag)
+        except Exception as ex:
+            msg("%s" % ex)
+            return
+        st["tlock"] = True                          # soluk renk ataması da itemChanged tetikler: yeniden girmesin
+        try:
+            style_item(it, flag)
+        finally:
+            st["tlock"] = False
+        if on_change is not None:
+            on_change()
+        msg((T("Render'a dahil: %s") if flag else T("Render'dan hariç tutuldu: %s")) % o.Label)
+
+    def set_selected_included(flag):
+        objs = sel_objects()
+        if not objs:
+            msg(T("Önce soldaki listeden nesne seçin."))
+            return
+        for o in objs:
+            M.set_included(o, flag)
+        changed()
+        msg((T("%d nesne render'a dahil edildi.") if flag else T("%d nesne render'dan hariç tutuldu.")) % len(objs))
+
     def do_save():
         n = commit_current()
         if n:
@@ -400,6 +461,9 @@ def open_surface(on_change=None, is_busy=None):
 
     btn_assign.clicked.connect(do_assign)
     btn_clear.clicked.connect(do_clear)
+    btn_inc.clicked.connect(lambda *_a: set_selected_included(True))
+    btn_exc.clicked.connect(lambda *_a: set_selected_included(False))
+    tree.itemChanged.connect(on_item_changed)
     btn_save.clicked.connect(do_save)
     btn_del.clicked.connect(do_del)
     lst.itemClicked.connect(on_lib_click)
@@ -416,7 +480,8 @@ def open_surface(on_change=None, is_busy=None):
     dlg.resize(760, 640)
     FreeCAD._ybt_surface_dlg = dlg
     dlg._ybt_api = dict(tree=tree, lib=lst, name=ed_name, widgets=widgets, state=st, assign=do_assign, clear=do_clear,
-                        save=do_save, preview=do_preview, fill=fill_editor, refresh=refresh_tree, msg=lbl_msg, prev=prev)
+                        save=do_save, preview=do_preview, fill=fill_editor, refresh=refresh_tree, msg=lbl_msg, prev=prev,
+                        include=set_selected_included)
     dlg.show()
     do_preview()
     return dlg

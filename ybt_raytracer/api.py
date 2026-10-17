@@ -146,15 +146,22 @@ def camera_from_view(view=None):
 
 
 # ------------------------------------------------------------------ sahne
-def prepare_scene(doc=None, tess_cache=None, status=None, **settings):
+_PREP_KEYS = ("tess_factor", "cull_offscreen", "cull_margin", "invisible_alpha")    # sahne hazırlığını etkileyen ayarlar
+
+
+def prepare_scene(doc=None, tess_cache=None, status=None, camera=None, aspect=None, **settings):
     """Belgenin görünür nesnelerini Scene'e çevirir (üçgenleme + ön hesaplar). Aynı sahneyle birçok kare
     alınacaksa (yalnız kamera/ışık/kalite değişiyor) bir kez hazırlayıp `scene=` ile geri verin.
+    "Render'a dahil et" işareti kaldırılmış nesneler (Surface penceresi) sahneye girmez.
     tess_cache: boş sözlük -> hareketli parça animasyonu için üçgenleme önbelleği (modül açıklamasına bakın).
-    settings: tess_factor gibi hazırlığı etkileyen ayarlar."""
+    camera/aspect + cull_offscreen=True: kadraj dışındaki nesneler sahneye alınmaz (sahne yalnız bu kamera için geçerlidir).
+    settings: tess_factor, cull_offscreen, cull_margin gibi hazırlığı etkileyen ayarlar."""
     from .freecad_scene import collect_scene
     doc = _doc(doc)
+    cam = _as_camera(camera) if camera is not None else None
     with _Override(settings):
-        scene, nobj = collect_scene(doc, status or (lambda *a, **k: None), tess_cache=tess_cache)
+        scene, nobj = collect_scene(doc, status or (lambda *a, **k: None), tess_cache=tess_cache,
+                                    camera=cam, aspect=aspect or 16.0 / 9.0)
     scene.nobj = nobj
     return scene
 
@@ -215,24 +222,23 @@ def render_document(doc=None, out_path=None, width=None, height=None, camera=Non
     doc = _doc(doc)
     values = dict(settings or {})
     values.update(kw)
-    if scene is None:
-        # yalnız hazırlığı etkileyen ayarlar burada geçerli; kalanı render_scene'de uygulanır
-        scene = prepare_scene(doc, tess_cache=tess_cache, status=status,
-                              **{k: v for k, v in values.items() if str(k).lower() == "tess_factor"})
-    if camera is None:
-        cam, asp = None, aspect
+    if camera is None:                                      # arayüzlü FreeCAD: aktif görünümün kamerası
         try:
             import FreeCADGui as Gui
             gd = Gui.ActiveDocument
             if gd is not None and gd.Document.Name == doc.Name and gd.ActiveView is not None:
-                cam, a0 = camera_from_view(gd.ActiveView)
-                asp = asp or a0
+                camera, a0 = camera_from_view(gd.ActiveView)
+                aspect = aspect or (float(width) / float(height) if (width and height) else a0)
         except Exception:
-            cam = None
-        if cam is None:
-            cam = fit_camera(scene)
-        camera = cam
-        aspect = asp
+            camera = None
+    if aspect is None and width and height:
+        aspect = float(width) / float(height)
+    if scene is None:
+        # yalnız hazırlığı etkileyen ayarlar burada geçerli (kamera biliniyorsa kadraj dışı atma da); kalanı render_scene'de
+        scene = prepare_scene(doc, tess_cache=tess_cache, status=status, camera=camera, aspect=aspect,
+                              **{k: v for k, v in values.items() if str(k).lower() in _PREP_KEYS})
+    if camera is None:                                      # arayüzsüz: sahneyi sığdıran izometrik kamera
+        camera = fit_camera(scene)
     return render_scene(scene, camera, width=width, height=height, aspect=aspect, out_path=out_path,
                         settings=values, fc_lights=fc_lights, progress=progress, tick=tick, stage=stage)
 
