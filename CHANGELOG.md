@@ -15,6 +15,11 @@ v1.3.0: * Mesh nesneleri (Mesh::Feature): üçgenler üçgenleme gerekmeden doğ
         * Benzer nesneler: şekil imzası (yüz/kenar sayısı, alan, hacim; konum/dönmeden bağımsız) aynı olan nesneler (kopyalar, Link'ler)
           listede "Benzer ×N" olarak gösterilir; "Benzerleri birlikte seç", "Benzerleri yan yana diz" ve "Benzerlerini seç" ile toplu işlem.
         * api.pick_object(scene, camera, w, h, x, y).
+        * HIZ (2,79 M üçgenli motor sahnesi, 960x540: önceki sürümde >10 dk -> ~41 sn; 1920x1080 ~83 sn): (1) birincil ışınlar görünürlük
+          tamponuyla (accel.raster_rows; her üçgen yalnız ekran kutusundaki piksellere uygulanır, piksel başına tüm üçgenler taranmaz; sonuç eskiyle
+          piksel piksel aynı), kenar yumuşatma örnekleri de aynı tampondan; (2) gölge ızgarası çok seviyeli (üçgen boyutuna göre ince/kaba seviye)
+          + "kesin aydınlık" erken çıkışı + vektörel çift testi (_LightGrid); (3) cam/yansıma yolundaki ön ışınlar için ön-arka sıralı erken çıkış
+          (core._closest_sorted). Ekran karoları yalnız cam/yansıma sahnelerinde hesaplanır.
         * Yeni görünüm: koyu gri renk paleti (theme.py + icons/; iki pencerede de); "Önizleme ve Seçim Ekranı": çerçeveli, fare tekerleğiyle
           yakınlaştırma/uzaklaştırma (imleç altında sabit), sürükleyerek kaydırma, "Otomatik ortala" ve "1:1" düğmeleri, çift tıklama = sığdır,
           yakınlaşınca pikseller yumuşatılmadan gösterilir. Kalite / Sanal Zemin / Işık bölümleri başlığa tıklayınca açılır-kapanır

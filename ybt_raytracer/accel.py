@@ -42,14 +42,12 @@ def _bin(x0, x1, y0, y1, valid, nx, ny):
     return offs, ids, always
 
 
-def _screen_bins(sc, pos, right, up, fwd, persp, half_x, half_y, w, h, tile):
+def _screen_boxes(sc, pos, right, up, fwd, persp, half_x, half_y, w, h):
     """
     Her üçgenin ekranda kapladığı karoları bulur.
     Perspektifte: tamamen kameranın arkasındaki üçgenler elenir; yakın düzlemi (z=eps) kesenler
     kırpılmış çokgenin sınır kutusuyla karolara yazılır (eskisi hepsini tüm ekrana yazıyordu).
     """
-    nx = (w + tile - 1) // tile
-    ny = (h + tile - 1) // tile
     d = sc.tri - pos
     xc, yc, zc = d @ right, d @ up, d @ fwd                 # (T,3)
     if persp:
@@ -86,6 +84,14 @@ def _screen_bins(sc, pos, right, up, fwd, persp, half_x, half_y, w, h, tile):
     m = 1.5
     bx0, bx1, by0, by1 = lox - m, hix + m, loy - m, hiy + m
     valid = keep & (bx1 >= 0) & (bx0 <= w) & (by1 >= 0) & (by0 <= h)
+    return bx0, bx1, by0, by1, valid
+
+
+def _screen_bins(sc, pos, right, up, fwd, persp, half_x, half_y, w, h, tile):
+    """Her üçgenin ekranda kapladığı karoları bulur (kutular için _screen_boxes)."""
+    nx = (w + tile - 1) // tile
+    ny = (h + tile - 1) // tile
+    bx0, bx1, by0, by1, valid = _screen_boxes(sc, pos, right, up, fwd, persp, half_x, half_y, w, h)
     lim_x, lim_y = w - 1e-6, h - 1e-6
 
     def tcell(v, lim):
@@ -96,18 +102,130 @@ def _screen_bins(sc, pos, right, up, fwd, persp, half_x, half_y, w, h, tile):
     return nx, ny, offs, ids, always
 
 
+def _mask_sat(mask):
+    """Toplam-alan tablosu (integral image): (h+1, w+1) int32."""
+    h, w = mask.shape
+    sat = np.zeros((h + 1, w + 1), dtype=np.int32)
+    np.cumsum(np.cumsum(mask, axis=0, dtype=np.int32), axis=1, out=sat[1:, 1:])
+    return sat
+
+
+def raster_rows(sc, boxes, r0, r1, w, sx, sy, rays, mask=None, chunk=1500000):
+    """
+    Görünürlük tamponu: r0..r1-1 satırlarındaki piksellerin (piksel içi konum sx, sy) birincil ışınlarının
+    ilk çarptığı üçgen. _closest ile AYNI sonucu verir (aynı kesişim sınaması, aynı eşitlik kuralı) ama
+    her üçgeni yalnız ekran kutusundaki piksellere uygular; piksel başına tüm üçgenleri taramaz.
+    boxes: _screen_boxes çıktısı. rays(px, py, sx, sy) -> (O, D): O (n,3) ya da (3,), D (n,3).
+    mask: (h, w) bool; verilirse yalnız True piksellere bakılır.
+    Döner (t, id): (r1-r0, w) dizileri; isabet yoksa t=inf, id=-1.
+    """
+    bx0, bx1, by0, by1, valid = boxes
+    nrow = r1 - r0
+    out_t = np.full(nrow * w, np.inf)
+    out_i = np.full(nrow * w, -1, dtype=np.int64)
+    sel = np.nonzero(valid & (by1 >= r0 + sy) & (by0 <= r1 - 1 + sy) & (bx1 >= sx) & (bx0 <= w - 1 + sx))[0]
+    if len(sel) == 0:
+        return out_t.reshape(nrow, w), out_i.reshape(nrow, w)
+    ix0 = np.maximum(np.ceil(bx0[sel] - sx), 0).astype(np.int64)
+    ix1 = np.minimum(np.floor(bx1[sel] - sx), w - 1).astype(np.int64)
+    iy0 = np.maximum(np.ceil(by0[sel] - sy), r0).astype(np.int64)
+    iy1 = np.minimum(np.floor(by1[sel] - sy), r1 - 1).astype(np.int64)
+    nxp, nyp = ix1 - ix0 + 1, iy1 - iy0 + 1
+    ok = (nxp > 0) & (nyp > 0)
+    if mask is not None and ok.any():                      # kutusunda hiç istenen piksel olmayan üçgenleri baştan ele
+        sat = _mask_sat(mask)
+        jx0, jy0 = np.where(ok, ix0, 0), np.where(ok, iy0, 0)
+        jx1, jy1 = np.where(ok, ix1, 0), np.where(ok, iy1, 0)
+        n_in = sat[jy1 + 1, jx1 + 1] - sat[jy0, jx1 + 1] - sat[jy1 + 1, jx0] + sat[jy0, jx0]
+        ok &= n_in > 0
+    sel, ix0, iy0, nxp, nyp = sel[ok], ix0[ok], iy0[ok], nxp[ok], nyp[ok]
+    cnt = nxp * nyp
+    if len(sel) == 0:
+        return out_t.reshape(nrow, w), out_i.reshape(nrow, w)
+    cum = np.cumsum(cnt)
+    tol = sc.diag * S.TIE_TOL
+    P_, T_, I_ = [], [], []
+    a = 0
+    while a < len(sel):
+        base = cum[a - 1] if a else 0
+        b = int(np.searchsorted(cum, base + chunk, side="right"))
+        b = max(b, a + 1)
+        c = cnt[a:b]
+        tot = int(c.sum())
+        tri = np.repeat(sel[a:b], c)
+        st = np.cumsum(c) - c
+        loc = np.arange(tot) - np.repeat(st, c)
+        nxr = np.repeat(nxp[a:b], c)
+        px = np.repeat(ix0[a:b], c) + loc % nxr
+        py = np.repeat(iy0[a:b], c) + loc // nxr
+        if mask is not None:
+            m = mask[py, px]
+            tri, px, py = tri[m], px[m], py[m]
+        if len(tri):
+            O, D = rays(px, py, sx, sy)
+            Nn = sc.N[tri]
+            Dn = (D * Nn).sum(1)
+            On = (O * Nn).sum(1) if O.ndim == 2 else Nn @ O
+            with np.errstate(divide="ignore", invalid="ignore"):
+                t = (sc.v0N[tri] - On) / Dn
+                Aa, Bb = sc.A[tri], sc.B[tri]
+                if O.ndim == 2:
+                    u = (O * Aa).sum(1) - sc.v0A[tri] + t * (D * Aa).sum(1)
+                    v = (O * Bb).sum(1) - sc.v0B[tri] + t * (D * Bb).sum(1)
+                else:
+                    u = Aa @ O - sc.v0A[tri] + t * (D * Aa).sum(1)
+                    v = Bb @ O - sc.v0B[tri] + t * (D * Bb).sum(1)
+                hit = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
+            if hit.any():
+                P_.append(((py[hit] - r0) * w + px[hit]).astype(np.int64))
+                T_.append(t[hit])
+                I_.append(tri[hit])
+        a = b
+    if not P_:
+        return out_t.reshape(nrow, w), out_i.reshape(nrow, w)
+    P_, T_, I_ = np.concatenate(P_), np.concatenate(T_), np.concatenate(I_)
+    order = np.lexsort((T_, P_))
+    P_, T_, I_ = P_[order], T_[order], I_[order]
+    starts = np.nonzero(np.concatenate(([True], P_[1:] != P_[:-1])))[0]
+    gid = np.cumsum(np.concatenate(([False], P_[1:] != P_[:-1])))
+    tmin = T_[starts]
+    near = T_ <= tmin[gid] + tol
+    big = np.iinfo(np.int64).max
+    rank = I_ if not S.TIE_LAST else -I_
+    key = np.where(near, rank, big)
+    best = np.minimum.reduceat(key, starts)
+    chosen = best if not S.TIE_LAST else -best
+    tsel = np.minimum.reduceat(np.where(near & (I_ == chosen[gid]), T_, np.inf), starts)
+    pix = P_[starts]
+    out_t[pix] = tsel
+    out_i[pix] = chosen
+    return out_t.reshape(nrow, w), out_i.reshape(nrow, w)
+
+
 class _LightGrid(object):
-    """Yönlü ışık için: ışık yönüne dik düzleme izdüşüm ızgarası. Gölge ışını = tek nokta."""
+    """
+    Yönlü ışık için gölge hızlandırıcısı: ışık yönüne dik düzleme izdüşüm ızgarası, ÇOK SEVİYELİ.
+    Her üçgen, ayak izi en çok 4 hücre olan en ince seviyeye konur (küçük üçgenler ince ızgaraya, büyükler kaba
+    ızgaraya); böylece toplam kayıt sayısı üçgen sayısının ~4 katıyla sınırlı kalır ve bir hücrede hep birkaç üçgen
+    bulunur (eski tek ızgarada büyük üçgenler 'always' listesine düşüp her ışına test ediliyordu).
+    Her hücrede ayrıca üçgenlerin ışık yönündeki en yüksek konumu (lmax) tutulur: yüzey noktası hücredeki hiçbir
+    üçgenin üstünde değilse ışın hiçbir şeye çarpamaz -> üçgen testi yapılmadan 'aydınlık' denir (kesin, yaklaşık değil).
+    Gölge ışını = tek nokta; çarpışma testi eskisiyle aynıdır.
+    """
+    FOOT = 4          # bir üçgenin bir seviyedeki en çok hücre sayısı
+    STEP = 3          # seviyeler arası ızgara küçülmesi: 2**STEP
 
     def __init__(self, sc, L, G, subset=None):
         helper = np.array([1.0, 0, 0]) if abs(L[0]) < 0.9 else np.array([0, 1.0, 0])
         a = _norm(np.cross(L, helper))
         b = np.cross(L, a)
         tri = sc.tri if subset is None else sc.tri[subset]
-        sa, sb = tri @ a, tri @ b
-        self.a, self.b, self.G = a, b, G
+        sa, sb, sl = tri @ a, tri @ b, tri @ L
+        self.a, self.b, self.L, self.diag = a, b, np.asarray(L, dtype=np.float64), sc.diag
         self.amin, self.bmin = sa.min(), sb.min()
         ext = max(sa.max() - self.amin, sb.max() - self.bmin, 1e-9)
+        G = int(G)
+        self.G = G
         self.scale = G / ext
         mg = 1e-6 * ext
         lim = G - 1e-9
@@ -120,10 +238,48 @@ class _LightGrid(object):
         y0 = cell(sb.min(1) - mg, self.bmin)
         y1 = cell(sb.max(1) + mg, self.bmin)
         self._cell = cell
-        self.offs, self.ids, self.always = _bin(x0, x1, y0, y1, np.ones(len(x0), dtype=bool), G, G)
-        if subset is not None:                               # yerel indeksleri küresel üçgen indekslerine çevir
-            self.ids = subset[self.ids]
-            self.always = subset[self.always]
+        lmax = sl.max(1)
+        T = len(x0)
+        # seviye ata: ayak izi FOOT hücreyi aşmayan ilk (en ince) seviye; kaba uç: ızgara >= 4 hücre
+        lvl = np.zeros(T, dtype=np.int64)
+        undone = np.ones(T, dtype=bool)
+        shifts = []
+        k = 0
+        while True:
+            sh = k * self.STEP
+            Gk = max(G >> sh, 1)
+            shifts.append((sh, Gk))
+            cnt = ((x1 >> sh) - (x0 >> sh) + 1) * ((y1 >> sh) - (y0 >> sh) + 1)
+            fit = undone & (cnt <= self.FOOT)
+            lvl[fit] = k
+            undone &= ~fit
+            if not undone.any() or Gk <= 4:
+                lvl[undone] = k
+                break
+            k += 1
+        self.levels = []
+        for k, (sh, Gk) in enumerate(shifts):
+            idx = np.nonzero(lvl == k)[0]
+            if len(idx) == 0:
+                continue
+            cx0, cx1, cy0, cy1 = x0[idx] >> sh, x1[idx] >> sh, y0[idx] >> sh, y1[idx] >> sh
+            wx, wy = cx1 - cx0 + 1, cy1 - cy0 + 1
+            cnt = wx * wy
+            tot = int(cnt.sum())
+            ti = np.repeat(np.arange(len(idx)), cnt)
+            st = np.cumsum(cnt) - cnt
+            loc = np.arange(tot) - np.repeat(st, cnt)
+            wxr = np.repeat(wx, cnt)
+            cell_id = (np.repeat(cy0, cnt) + loc // wxr) * Gk + (np.repeat(cx0, cnt) + loc % wxr)
+            order = np.argsort(cell_id, kind="stable")
+            ids_l = idx[ti[order]]
+            counts = np.bincount(cell_id, minlength=Gk * Gk)
+            offs = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+            cmax = np.full(Gk * Gk, -np.inf)
+            ne = np.nonzero(counts > 0)[0]
+            cmax[ne] = np.maximum.reduceat(lmax[ids_l], offs[ne])
+            ids_g = (subset[ids_l] if subset is not None else ids_l).astype(np.int64)
+            self.levels.append((sh, Gk, offs, ids_g, cmax))
 
     def shadowed(self, sc, P, L, tk=None):
         """P: (n,3) yüzeyden hafif ofsetli noktalar. Döner bool (n,) — ışığa giden yol kapalı mı."""
@@ -131,29 +287,60 @@ class _LightGrid(object):
         occ = np.zeros(n, dtype=bool)
         if n == 0:
             return occ
+        L = np.asarray(L, dtype=np.float64)
+        lP = P @ L - 1e-9 * self.diag                         # bu yüksekliğin altında kalan üçgenler ışını kesemez
         cx = self._cell(P @ self.a, self.amin)
         cy = self._cell(P @ self.b, self.bmin)
-        cell = cy * self.G + cx
-        if len(self.always):
-            cand = np.arange(n)                              # her noktayı büyük üçgenlerle de sına
-        else:
-            cand = np.nonzero(self.offs[cell + 1] - self.offs[cell] > 0)[0]
-        if len(cand) == 0:
-            return occ
-        order = cand[np.argsort(cell[cand], kind="stable")]
-        cuts = np.nonzero(np.diff(cell[order]))[0] + 1
-        for grp in np.split(order, cuts):
+        cells = []
+        need = np.zeros(n, dtype=bool)
+        for sh, Gk, offs, ids, cmax in self.levels:
+            c = (cy >> sh) * Gk + (cx >> sh)
+            cells.append(c)
+            need |= cmax[c] > lP
+        cand = np.nonzero(need)[0]
+        for (sh, Gk, offs, ids, cmax), c in zip(self.levels, cells):
+            if len(cand) == 0:
+                break
+            cc = c[cand]
+            cnt = offs[cc + 1] - offs[cc]
+            keep = (cnt > 0) & (cmax[cc] > lP[cand])
+            if not keep.any():
+                continue
+            sub = cand[keep]
+            cnt = cnt[keep]
+            start = offs[cc[keep]]
+            occ[sub] |= self._pairs(sc, P, L, sub, start, cnt, ids, tk)
+            cand = cand[~occ[cand]]
+        return occ
+
+    @staticmethod
+    def _pairs(sc, P, L, sub, start, cnt, ids, tk, chunk=1500000):
+        """(nokta, üçgen) çiftlerini vektörel sınar; her nokta için en az bir çarpışma var mı."""
+        res = np.zeros(len(sub), dtype=bool)
+        cum = np.cumsum(cnt)
+        a = 0
+        while a < len(sub):
             if tk is not None:
                 tk()
-            c = cell[grp[0]]
-            ids = self.ids[self.offs[c]:self.offs[c + 1]]
-            if len(self.always):
-                ids = np.concatenate((self.always, ids))
-            if len(ids) == 0:
-                continue
-            Dg = np.broadcast_to(L, (len(grp), 3))
-            occ[grp] = _any(sc, P[grp], Dg, ids)
-        return occ
+            base = cum[a - 1] if a else 0
+            e = max(int(np.searchsorted(cum, base + chunk, side="right")), a + 1)
+            c = cnt[a:e]
+            tot = int(c.sum())
+            pl = np.repeat(np.arange(a, e), c)
+            st = np.cumsum(c) - c
+            tri = ids[np.repeat(start[a:e], c) + (np.arange(tot) - np.repeat(st, c))]
+            Pp = P[sub[pl]]
+            Nn = sc.N[tri]
+            Aa, Bb = sc.A[tri], sc.B[tri]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                t = (sc.v0N[tri] - (Pp * Nn).sum(1)) / (Nn @ L)
+                u = (Pp * Aa).sum(1) - sc.v0A[tri] + t * (Aa @ L)
+                v = (Pp * Bb).sum(1) - sc.v0B[tri] + t * (Bb @ L)
+                hit = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
+            if hit.any():
+                res[np.unique(pl[hit])] = True
+            a = e
+        return res
 
 
 class _Clusters(object):

@@ -11,7 +11,7 @@ from .i18n import T
 from .textures import load as load_texture
 from .core import _any, _closest, _closest_sorted, _norm, camera_basis
 from .parallel import _Ticker, _limit_blas
-from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins
+from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins, _screen_boxes, raster_rows
 
 
 def _acc(acc, idx, vals):
@@ -131,34 +131,47 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         vn = zc2[vkey]
 
     say(T("üçgenler ekran karolarına dağıtılıyor (%d üçgen)...") % scene.count)
-    # Kamera/ışık aynı kaldıysa önceki render'ın ön hesapları (ekran karoları, gölge ızgarası, küme ağacı)
-    # sahne nesnesinde saklanır ve yeniden kullanılır; yalnız ışık/kalite ayarı değişince hesap tekrarlanmaz.
     cache = scene.__dict__.setdefault("_cache", {})
     bkey = ("bins", pos.tobytes(), right.tobytes(), up.tobytes(), fwd.tobytes(), persp,
             float(half_x), float(half_y), int(w), int(h), int(tile))
-    if cache.get("bins_key") == bkey:
-        nx, ny, offs, sids, always = cache["bins"]
+    nx = (w + tile - 1) // tile
+    ny = (h + tile - 1) // tile
+    raster = not brute                                     # birincil ışınlar: görünürlük tamponu (z-buffer benzeri), tüm üçgenleri taramaz
+    if raster:
+        if cache.get("box_key") != bkey:
+            cache.pop("boxes", None)
+            cache["boxes"] = _screen_boxes(scene, pos, right, up, fwd, persp, half_x, half_y, w, h)
+            cache["box_key"] = bkey
+        boxes = cache["boxes"]
+    # Kamera/ışık aynı kaldıysa önceki render'ın ön hesapları (ekran karoları, gölge ızgarası, küme ağacı)
+    # sahne nesnesinde saklanır ve yeniden kullanılır; yalnız ışık/kalite ayarı değişince hesap tekrarlanmaz.
+    # Ekran karoları yalnız cam/yansıma ışınlarının "birincil doğrultuda" ilerleyen kolları için gerekir.
+    if secondary or brute:
+        if cache.get("bins_key") == bkey:
+            nx, ny, offs, sids, always = cache["bins"]
+        else:
+            cache.pop("bins", None)
+            nx, ny, offs, sids, always = _screen_bins(scene, pos, right, up, fwd, persp,
+                                                      half_x, half_y, w, h, tile)
+            cache["bins_key"], cache["bins"] = bkey, (nx, ny, offs, sids, always)
     else:
-        cache.pop("bins", None)
-        nx, ny, offs, sids, always = _screen_bins(scene, pos, right, up, fwd, persp,
-                                                  half_x, half_y, w, h, tile)
-        cache["bins_key"], cache["bins"] = bkey, (nx, ny, offs, sids, always)
+        offs = sids = always = None
     tk()
     allids = np.arange(scene.count)
     # ön ışınlar için üçgen başına kamera derinliği alt sınırı (ön-arka sıralı erken çıkış)
     scene._sort_ctx = (pos, fwd)
-    if cache.get("smin_key") != bkey[:5]:
+    if (secondary or brute) and cache.get("smin_key") != bkey[:5]:
         cache["smin"] = ((scene.tri - pos) @ fwd).min(1)
         cache["smin_key"] = bkey[:5]
-    smin = cache["smin"]
+    smin = cache.get("smin")
     grids = {}
     if shadows and not brute and any(lt[3] for lt in lights):
         say(T("gölge ızgaraları hazırlanıyor..."))
         op_ids = np.nonzero(alpha_t >= 0.5)[0]
         gl_ids = np.nonzero(alpha_t < 0.5)[0]
         G_sh = int(S.SHADOW_GRID)
-        if G_sh <= 0:       # üçgen sayısı arttıkça hücre başına üçgen sayısı sabit kalsın (ölçüm: 2,5 M üçgende G=256, G=64'ten 7 kat hızlı)
-            G_sh = int(min(256, max(64, 2 ** round(np.log2(max(np.sqrt(scene.count) / 6.0, 1.0))))))
+        if G_sh <= 0:       # çok seviyeli ızgara: en ince seviye üçgen boyutuna yakın olsun (2,8 M üçgende 2048)
+            G_sh = int(min(2048, max(64, 2 ** round(np.log2(max(np.sqrt(scene.count) * 1.5, 1.0))))))
         gcache = cache.setdefault("grids", {})
         if len(gcache) > 6:
             gcache.clear()
@@ -196,6 +209,30 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     xs = ((np.arange(w) + 0.5) / w * 2.0 - 1.0) * half_x
     top_l, bot_l = top ** 2.2, bot ** 2.2
 
+    def prim_rays(px, py, sx, sy):
+        """Birincil ışınlar: piksel (px,py) içindeki (sx,sy) konumundan. Döner O ((3,) ya da (n,3)), D (n,3)."""
+        X = (((px + sx) / w) * 2.0 - 1.0)[:, None] * half_x
+        Y = (1.0 - ((py + sy) / h) * 2.0)[:, None] * half_y
+        if persp:
+            return pos, _norm(fwd + right * X + up * Y)
+        return o_ortho + right * X + up * Y, np.tile(fwd, (len(px), 1))
+
+    def mkbuf(dtype, fill):
+        """(h, w) tampon; fork kullanılacaksa süreçler arası ortak bellekte."""
+        if use_proc:
+            import mmap
+            b_ = mmap.mmap(-1, h * w * np.dtype(dtype).itemsize)
+            a_ = np.frombuffer(b_, dtype=dtype).reshape(h, w)
+            a_[:] = fill
+            bufs_keep.append(b_)
+            return a_
+        return np.full((h, w), fill, dtype=dtype)
+
+    bufs_keep = []
+    vis = {}                                                   # (sx, sy) -> (t tamponu, üçgen tamponu)
+    if raster:
+        vis[(0.5, 0.5)] = (mkbuf(np.float64, np.inf), mkbuf(np.int64, -1))
+
     def lights_blocked(Pl, li):
         """Yüzey noktalarından li. ışığa giden yol: 0 = açık, 1 = opak engel, 2 = cam engel."""
         Ld = lights[li][0]
@@ -222,14 +259,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     def trace(px, py, sx, sy):
         """px,py: piksel koordinatları (n,), sx,sy: piksel içi konum (0..1). Döner doğrusal renk (n,3)."""
         n = len(px)
-        X = (((px + sx) / w) * 2.0 - 1.0)[:, None] * half_x
-        Y = (1.0 - ((py + sy) / h) * 2.0)[:, None] * half_y
-        if persp:
-            D0 = _norm(fwd + right * X + up * Y)
-            O0 = np.tile(pos, (n, 1))
-        else:
-            D0 = np.tile(fwd, (n, 1))
-            O0 = o_ortho + right * X + up * Y
+        O0, D0 = prim_rays(px, py, sx, sy)
+        O0 = np.tile(O0, (n, 1)) if O0.ndim == 1 else O0
+        vb = vis.get((sx, sy))
         tv = (((py + sy) / h))[:, None]
         bg_lin = (top * (1 - tv) + bot * tv) ** 2.2
         cid = (py // tile) * nx + (px // tile)                 # her ışının ekran karosu
@@ -249,32 +281,36 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 break
             tb = np.full(m, np.inf)
             ti = np.full(m, -1, dtype=np.int64)
-            pm = np.nonzero(RP)[0]
-            if len(pm):
-                cs = cid[pix[pm]]
-                order = np.argsort(cs, kind="stable")
-                pm, cs = pm[order], cs[order]
-                cuts = np.nonzero(np.diff(cs))[0] + 1
-                for sel in np.split(pm, cuts):
-                    tk()
+            if depth == 0 and vb is not None:                  # birincil ışınlar: görünürlük tamponundan
+                tb = vb[0][py, px].copy()
+                ti = vb[1][py, px].copy()
+            else:
+                pm = np.nonzero(RP)[0]
+                if len(pm):
+                    cs = cid[pix[pm]]
+                    order = np.argsort(cs, kind="stable")
+                    pm, cs = pm[order], cs[order]
+                    cuts = np.nonzero(np.diff(cs))[0] + 1
+                    for sel in np.split(pm, cuts):
+                        tk()
+                        if brute:
+                            ids = allids
+                        else:
+                            c = int(cid[pix[sel[0]]])
+                            ids = sids[offs[c]:offs[c + 1]]
+                            if len(always):
+                                ids = np.concatenate((always, ids))
+                            if len(ids) == 0:
+                                continue
+                        t_, i_ = _closest_sorted(scene, RO[sel], RD[sel], ids, smin)
+                        tb[sel], ti[sel] = t_, i_
+                gm = np.nonzero(~RP)[0]
+                if len(gm):
                     if brute:
-                        ids = allids
+                        t_, i_ = _closest(scene, RO[gm], RD[gm], allids)
                     else:
-                        c = int(cid[pix[sel[0]]])
-                        ids = sids[offs[c]:offs[c + 1]]
-                        if len(always):
-                            ids = np.concatenate((always, ids))
-                        if len(ids) == 0:
-                            continue
-                    t_, i_ = _closest_sorted(scene, RO[sel], RD[sel], ids, smin)
-                    tb[sel], ti[sel] = t_, i_
-            gm = np.nonzero(~RP)[0]
-            if len(gm):
-                if brute:
-                    t_, i_ = _closest(scene, RO[gm], RD[gm], allids)
-                else:
-                    t_, i_ = _closest_general(scene, clusters, RO[gm], RD[gm], tk)
-                tb[gm], ti[gm] = t_, i_
+                        t_, i_ = _closest_general(scene, clusters, RO[gm], RD[gm], tk)
+                    tb[gm], ti[gm] = t_, i_
 
             if f_on:                                           # analitik zemin düzlemi: nesnelerden yakınsa onun yerine
                 dzz = RD[:, 2]
@@ -574,6 +610,10 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         nrow = r1 - r0
         px = np.tile(np.arange(w), nrow)
         py = np.repeat(np.arange(r0, r1), w)
+        if raster:
+            vt_, vi_ = raster_rows(scene, boxes, r0, r1, w, 0.5, 0.5, prim_rays)
+            vis[(0.5, 0.5)][0][r0:r1] = vt_
+            vis[(0.5, 0.5)][1][r0:r1] = vi_
         img[r0:r1] = to_srgb(trace(px, py, 0.5, 0.5)).reshape(nrow, w, 3)
 
     def band_done(n):
@@ -601,6 +641,23 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         offs_s = (np.arange(k) + 0.5) / k
         chunk = 3000 if nthr > 1 else 6000
         starts = list(range(0, ne, chunk))
+        if raster and ne:
+            emask = np.zeros((h, w), dtype=bool)
+            emask[ey, ex_] = True
+            for oy in offs_s:
+                for ox in offs_s:
+                    vis[(ox, oy)] = (mkbuf(np.float64, np.inf), mkbuf(np.int64, -1))
+
+            def aa_vis(ty):
+                r0, r1 = ty * tile, min(ty * tile + tile, h)
+                for (ox, oy), (bt, bi) in vis.items():
+                    vt_, vi_ = raster_rows(scene, boxes, r0, r1, w, ox, oy, prim_rays, mask=emask)
+                    bt[r0:r1] = vt_
+                    bi[r0:r1] = vi_
+
+            if run_parallel(list(range(ny)), aa_vis, lambda n_: True) is False:
+                return None
+
         # AA, 1. geçişin görüntüsünü okur; yazılan pikseller ayrık olduğundan kopya gerekmez
         # (kenar tespiti yukarıda bitti)
 
