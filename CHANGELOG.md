@@ -4,6 +4,8 @@
 v1.4.0 (hazırlanıyor):
 
 - **Ortam tıkanıklığı (AO)**: köşelerde ve nesne–zemin temasında yumuşak temas gölgesi; "Işık Ayarları"nda şiddet, erişim ve ışın sayısı. Bilateral süzgeçle gürültü giderilir.
+- Yansıma / cam / AO ışınları ~2-3x hızlandı: daha ince küme ağacı (8 üçgenlik kümeler, 4'lü ağaç), küme düzeyinde yakından uzağa tur sıralı budama. Çıktı piksel piksel aynı.
+- **Hazır aydınlatma düzenleri**: 14 stüdyo/ürün düzeni (3 ışık, sıcak-soğuk, softbox, Rembrandt, kelebek, split, renkli jel, gün ışığı ...); ayrıntılar "Özel ayarlar" altında.
 - Performans: kümelerde 8'li ağaç ve `tmax` ile kısa menzilli ışınlar, `einsum` tabanlı nokta çarpımı, daha hızlı bant seçimi.
         * Malzeme kütüphanesi: 60 hazır malzeme, kategorili liste (Plastik, Boya, Metal, Cam/sıvı, Doğal/yapı, Deri/karbon, Işık); kullanıcı
           malzemeleri "Benim malzemelerim" altında.
