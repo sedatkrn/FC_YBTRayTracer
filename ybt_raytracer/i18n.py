@@ -471,4 +471,5 @@ EN = {
     'Kaydedilemedi: ': 'Could not save: ',
     'Seçili kayıt varsayılan yapıldı (açılışta yüklenir).': 'Selected save is now the default (loaded at startup).',
     'Kayıtlı varsayılan kapatıldı; sonraki açılışta fabrika ayarları kullanılır.': 'Saved default disabled; factory settings will be used next time.',
+    'Henüz kayıt yok. Panelde ayarları yapıp yukarıdaki düğmeyle ilk kaydı oluştur.': 'No saves yet. Adjust the panel, then use the button above to create the first save.',
 }

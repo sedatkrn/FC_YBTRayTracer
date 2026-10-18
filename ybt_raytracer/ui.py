@@ -592,9 +592,13 @@ def main(lang=None):
                                            (("   –   " + h["name"]) if h.get("name") else ""))
                 it.setData(QtCore.Qt.UserRole, i)
                 lst.addItem(it)
-            if lst.count():
-                lst.setCurrentRow(0)
             has = lst.count() > 0
+            if has:
+                lst.setCurrentRow(0)
+            else:
+                it = QtGui.QListWidgetItem(T("Henüz kayıt yok. Panelde ayarları yapıp yukarıdaki düğmeyle ilk kaydı oluştur."))
+                it.setFlags(QtCore.Qt.NoItemFlags)
+                lst.addItem(it)
             for b in (b_load, b_def, b_del):
                 b.setEnabled(has)
             b_off.setEnabled(d.get("current", -1) >= 0)
