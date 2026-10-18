@@ -1,8 +1,12 @@
 # Değişiklik geçmişi / Changelog
 
 ```
-v1.4.0 (hazırlanıyor):
+v1.4.0:
 
+- **Varsayılanlar menüsü**: panelin en üstünde "⚙ Varsayılanlar…" düğmesi. Mevcut ayarlar düzenlenebilir tabloda görünür; varsayılan olarak kaydedilir (FreeCAD açılışında yüklenir), son 10 kayıtlık geçmişten geri dönülür, fabrika ayarları panele yüklenebilir (ybt_raytracer/userdefaults.py, `ybt_raytracer_defaults.json`).
+- **Hızlı yumuşak gölge düzeltmeleri**: hesaplanan gölge tamponu artık gölgelendirmede gerçekten kullanılıyor; üst üste binen yumuşak gölgeler bloklu/çizgili değil düzgün karışıyor (iki geçişli, kesirli yarıçaplı süzgeç, yarıçap alanı yumuşatma).
+- **Parlama (specular) ışık görünürlüğüyle ölçeklenir**: gölge kenarında basamak / "patlama" giderildi; AO olmadan da yumuşak gölgeli sonuç alınır.
+- **Kenar yumuşatma**: düşük kontrastlı siluetler (nesne/arka plan sınırı) artık yakalanıyor; alt örneklerde gölge tamponu doğrulanıyor.
 - **Ortam tıkanıklığı (AO)**: köşelerde ve nesne–zemin temasında yumuşak temas gölgesi; "Işık Ayarları"nda şiddet, erişim ve ışın sayısı. Bilateral süzgeçle gürültü giderilir.
 - Yansıma / cam / AO ışınları ~2-3x hızlandı: daha ince küme ağacı (8 üçgenlik kümeler, 4'lü ağaç), küme düzeyinde yakından uzağa tur sıralı budama. Çıktı piksel piksel aynı.
 - **Yumuşak gölge** (alan ışığı; ışık yarıçapı derece cinsinden), **ton eşleme** (Reinhard / ACES + pozlama) ve opak parlak malzemelerde **Fresnel** yansıması. Varsayılan ayarlarda çıktı öncekiyle piksel piksel aynı (Fresnel kapalıyken).

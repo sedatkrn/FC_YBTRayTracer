@@ -1,4 +1,4 @@
-# Geliştirme notları / Development handoff (v1.3.0)
+# Geliştirme notları / Development handoff (v1.4.0)
 
 Yeni bir oturumda devam etmek için bu dosyayı oku. / Read this first when continuing in a new session.
 
