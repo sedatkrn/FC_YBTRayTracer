@@ -49,7 +49,7 @@ def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
 def _soft_blur(v0, Tb, valid, oid, foot, ndl, tan_t, rmax=48):
     """Hızlı yumuşak gölge: sert gölge maskesi (v0: 1 aydınlık, 0 gölge, 0.55 cam) her piksel için kendi yarı gölge genişliğinde
     (engel mesafesi x ışık yarıçapı) kutu süzgeçten geçer; her nesne ayrı (gölge nesne kenarından başka yüzeye sızmaz), süzgeç
-    toplam-alan tablosuyla (SAT) O(1)/piksel. Kenar çizgisinde kutu ortalaması doğrusal bir geçiştir; smoothstep ile S eğrisine çevrilir."""
+    toplam-alan tablosuyla (SAT) O(1)/piksel. Yarıçap kesirlidir (doğrusal ara değer) ve alan olarak süzgeçlenir; iki geçişli kutu süzgeç çan benzeri, kare izsiz bir geçiş verir."""
     out = v0.copy()
     cand = valid & (v0 < 1.0)
     if not cand.any():
@@ -76,14 +76,29 @@ def _soft_blur(v0, Tb, valid, oid, foot, ndl, tan_t, rmax=48):
             ya, yb = np.clip(yy - r, 0, Hh), np.clip(yy + r + 1, 0, Hh)
             xa, xb = np.clip(xx - r, 0, Ww), np.clip(xx + r + 1, 0, Ww)
             return S[yb, xb] - S[ya, xb] - S[yb, xa] + S[ya, xa]
+
+        def boxf(S, rf):                                  # kesirli yarıçap: iki komşu tam sayı yarıçap arasında doğrusal (basamaklanma yok)
+            r0 = np.floor(rf).astype(np.int64)
+            fr = rf - r0
+            return (1.0 - fr) * box(S, r0) + fr * box(S, r0 + 1)
         rs = np.full(len(yy), Rs)
         cnt, sT = box(S_c, rs), box(S_t, rs)
         has = cnt > 0.5
         Tavg = np.where(has, sT / np.maximum(cnt, 1.0), 0.0)
         stretch = 1.0 / np.sqrt(np.maximum(nd[yy, xx], 0.3))
-        rp = np.clip(np.rint(Tavg * tan_t * stretch / np.maximum(f[yy, xx], 1e-12)).astype(np.int64), 0, Rs)
-        mean = box(S_v, rp) / np.maximum(box(S_m, rp), 1.0)
-        res = np.where(has, mean * mean * (3.0 - 2.0 * mean), v[yy, xx])
+        rpf = np.clip(Tavg * tan_t * stretch / np.maximum(f[yy, xx], 1e-12), 0.0, float(Rs))
+        # yarıçap alanı: komşu piksellerde birbirinden kopuk (farklı engel mesafeli gölgeler) olmasın diye süzgeçlenir
+        Rg = max(1, Rs // 4)
+        img_r, img_h = np.zeros((Hh, Ww)), np.zeros((Hh, Ww))
+        img_r[yy, xx], img_h[yy, xx] = rpf * has, has.astype(np.float64)
+        S_r, S_h = sat(img_r), sat(img_h)
+        rpf = np.where(has, box(S_r, np.full(len(yy), Rg)) / np.maximum(box(S_h, np.full(len(yy), Rg)), 1e-9), 0.0)
+        rpp = rpf * 0.75                                  # iki geçiş: toplam yayılım tek kutu süzgece yakın, profil çan benzeri (kare iz yok)
+        den = np.maximum(boxf(S_m, rpp), 1.0)
+        m1 = boxf(S_v, rpp) / den
+        P1 = np.where(m, v, 0.0)
+        P1[yy[has], xx[has]] = m1[has]
+        res = np.where(has, boxf(sat(P1), rpp) / den, v[yy, xx])
         sub = out[y0:y1, x0:x1]
         sub[yy, xx] = res
     return out
