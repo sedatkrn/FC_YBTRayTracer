@@ -558,7 +558,19 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if cast:
                     lit_idx = np.nonzero(ndl > 0)[0]
                     if len(lit_idx):
-                        ndl[lit_idx] *= light_vis(Psh[lit_idx] + ngeo[lit_idx] * eps, li)
+                        vis_l = None
+                        if ss_on and depth == 0 and li in ss_buf:      # hızlı yumuşak gölge: birincil isabetlerde hazır tampon
+                            hq = hi[lit_idx]
+                            qx, qy = px[pix[hq]], py[pix[hq]]
+                            okq = (ss_oid[qy, qx] == oid_ext[tid[lit_idx]]) & (ss_N[li][qy, qx] > 0)
+                            vis_l = np.empty(len(lit_idx))
+                            vis_l[okq] = ss_buf[li][qy[okq], qx[okq]]
+                            if (~okq).any():                           # tampon uyuşmuyorsa (AA kenarı vb.) sert gölge ışını
+                                nq = np.nonzero(~okq)[0]
+                                vis_l[nq] = light_vis(Psh[lit_idx[nq]] + ngeo[lit_idx[nq]] * eps, li)
+                        else:
+                            vis_l = light_vis(Psh[lit_idx] + ngeo[lit_idx] * eps, li)
+                        ndl[lit_idx] *= vis_l
                 lit += (power * ndl)[:, None] * lcol
                 Hh = _norm(Ld - Dh)
                 sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * (ndl > 0)
