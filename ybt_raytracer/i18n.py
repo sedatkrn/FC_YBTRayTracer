@@ -334,6 +334,7 @@ EN = {
     "ortam tıkanıklığı hesaplanıyor...": "computing ambient occlusion...",
     "gölge tamponu hazırlanıyor...": "preparing shadow buffer...",
     "gölge tamponu": "shadow buffer",
+    "Yarı gölge genişlik çarpanı: 100 % = ışık açısına göre, 300 % = 3 kat daha geniş (daha büyük ışık kaynağı görünümü)": "Penumbra width multiplier: 100 % = from the light angle, 300 % = 3x wider (looks like a larger light source)",
     "görünürlük": "visibility",
     "ortam tıkanıklığı": "ambient occlusion",
     'Aydınlatma': 'Lighting',

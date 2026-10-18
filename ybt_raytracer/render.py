@@ -137,7 +137,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             sample_dirs[li_] = [Ld_]
             continue
         K_ = max(4, min(48, int(S.SOFT_SAMPLES)))
-        tn_ = np.tan(np.radians(min(soft_r, 30.0)))
+        tn_ = np.tan(np.radians(min(soft_r, 30.0))) * max(0.1, float(S.SOFT_SCALE))
         u_ = np.cross(Ld_, np.array([0.0, 0.0, 1.0]) if abs(Ld_[2]) < 0.9 else np.array([1.0, 0.0, 0.0]))
         u_ = u_ / np.linalg.norm(u_)
         v_ = np.cross(Ld_, u_)
@@ -827,7 +827,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             return None
 
         if ss_on:
-            tan_soft = float(np.tan(np.radians(min(float(S.SOFT_SHADOW), 30.0))))
+            tan_soft = float(np.tan(np.radians(min(float(S.SOFT_SHADOW), 30.0)))) * max(0.1, float(S.SOFT_SCALE))
 
             def ss_band(ty):
                 r0, r1 = ty * tile, min(ty * tile + tile, h)
@@ -874,7 +874,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 valid_a = (oid_a != -3) & (nd_a > 0)
                 v0_a = np.array(ss_v0[li_])
                 v0_a = np.where(oid_a == -3, 1.0, v0_a)
-                ss_buf[li_][:] = _soft_blur(v0_a, np.array(ss_T[li_]), valid_a, oid_a, foot_a, nd_a, tan_soft)
+                ss_buf[li_][:] = _soft_blur(v0_a, np.array(ss_T[li_]), valid_a, oid_a, foot_a, nd_a, tan_soft, max(48, int(0.12 * w)))
 
         def ao_band(ty):
             r0, r1 = ty * tile, min(ty * tile + tile, h)

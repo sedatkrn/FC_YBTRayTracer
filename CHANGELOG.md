@@ -6,6 +6,7 @@ v1.4.0 (hazırlanıyor):
 - **Ortam tıkanıklığı (AO)**: köşelerde ve nesne–zemin temasında yumuşak temas gölgesi; "Işık Ayarları"nda şiddet, erişim ve ışın sayısı. Bilateral süzgeçle gürültü giderilir.
 - Yansıma / cam / AO ışınları ~2-3x hızlandı: daha ince küme ağacı (8 üçgenlik kümeler, 4'lü ağaç), küme düzeyinde yakından uzağa tur sıralı budama. Çıktı piksel piksel aynı.
 - **Yumuşak gölge** (alan ışığı; ışık yarıçapı derece cinsinden), **ton eşleme** (Reinhard / ACES + pozlama) ve opak parlak malzemelerde **Fresnel** yansıması. Varsayılan ayarlarda çıktı öncekiyle piksel piksel aynı (Fresnel kapalıyken).
+- Yumuşak gölge **genişlik çarpanı** (`SOFT_SCALE`, arayüzde % olarak) ve çözünürlükle orantılı azami yarı gölge yarıçapı.
 - **Hızlı yumuşak gölge** (varsayılan, `SOFT_METHOD="fast"`): piksel başına tek gölge ışını + engel mesafesinden yarı gölge genişliği, nesne bazlı toplam-alan tablosuyla süzgeç. Eski çok örnekli yöntem `"sampled"` olarak duruyor; demo sahnede süre ~27 sn → ~14 sn.
 - **Hazır aydınlatma düzenleri**: 14 stüdyo/ürün düzeni (3 ışık, sıcak-soğuk, softbox, Rembrandt, kelebek, split, renkli jel, gün ışığı ...); ayrıntılar "Özel ayarlar" altında.
 - Performans: kümelerde 8'li ağaç ve `tmax` ile kısa menzilli ışınlar, `einsum` tabanlı nokta çarpımı, daha hızlı bant seçimi.

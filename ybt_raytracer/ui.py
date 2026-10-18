@@ -322,10 +322,14 @@ def main(lang=None):
     srow.addWidget(ck_soft)
     srow.addStretch(1)
     srow.addWidget(sp_softr)
+    sp_softk = spin(10, 1000, int(round(float(S.SOFT_SCALE) * 100)), 10, " %")
+    sp_softk.setToolTip(T("Yarı gölge genişlik çarpanı: 100 % = ışık açısına göre, 300 % = 3 kat daha geniş (daha büyük ışık kaynağı görünümü)"))
+    srow.addWidget(sp_softk)
     lvb.addLayout(srow)
 
     def sync_soft(*_a):
         sp_softr.setEnabled(ck_soft.isChecked())
+        sp_softk.setEnabled(ck_soft.isChecked())
     ck_soft.toggled.connect(sync_soft)
     sync_soft()
     cb_tm = QtGui.QComboBox()
@@ -828,7 +832,7 @@ def main(lang=None):
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao, cb_pre, bt_cust, ck_soft, sp_softr, cb_tm, sp_exp, ck_fr]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao, cb_pre, bt_cust, ck_soft, sp_softr, sp_softk, cb_tm, sp_exp, ck_fr]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -845,6 +849,7 @@ def main(lang=None):
         g["SMOOTH"] = ck_sm.isChecked()
         g["CULL_OFFSCREEN"] = ck_cull.isChecked()
         g["SOFT_SHADOW"] = float(sp_softr.value()) if ck_soft.isChecked() else 0.0
+        g["SOFT_SCALE"] = sp_softk.value() / 100.0
         g["TONEMAP"] = ("none", "soft", "aces")[cb_tm.currentIndex()]
         g["EXPOSURE"] = sp_exp.value() / 100.0
         g["FRESNEL"] = ck_fr.isChecked()
@@ -1045,6 +1050,6 @@ def main(lang=None):
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
-    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
+    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, soft_scale=sp_softk, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
                                                             refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)
