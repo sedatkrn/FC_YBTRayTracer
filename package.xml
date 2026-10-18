@@ -44,6 +44,75 @@
       <file>ybt_raytracer/textures/travertin.png</file>
       <file>ybt_raytracer/textures/beton.png</file>
       <file>ybt_raytracer/textures/karbon.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_akcaagac.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_cam.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_ceviz.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_dis.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_karaagac.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_maun.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_mese_acik.png</file>
+      <file>ybt_raytracer/textures/mimari_ahsap_mese_koyu.png</file>
+      <file>ybt_raytracer/textures/mimari_asfalt.png</file>
+      <file>ybt_raytracer/textures/mimari_bakir_eski.png</file>
+      <file>ybt_raytracer/textures/mimari_beton_dokme.png</file>
+      <file>ybt_raytracer/textures/mimari_beton_dokme2.png</file>
+      <file>ybt_raytracer/textures/mimari_beton_duz.png</file>
+      <file>ybt_raytracer/textures/mimari_cati1.png</file>
+      <file>ybt_raytracer/textures/mimari_cati_gri.png</file>
+      <file>ybt_raytracer/textures/mimari_cati_sedir.png</file>
+      <file>ybt_raytracer/textures/mimari_cati_terrakota.png</file>
+      <file>ybt_raytracer/textures/mimari_cim.png</file>
+      <file>ybt_raytracer/textures/mimari_cinko.png</file>
+      <file>ybt_raytracer/textures/mimari_dere_tasi.png</file>
+      <file>ybt_raytracer/textures/mimari_deri3.png</file>
+      <file>ybt_raytracer/textures/mimari_granit1.png</file>
+      <file>ybt_raytracer/textures/mimari_granit2.png</file>
+      <file>ybt_raytracer/textures/mimari_granit_kirmizi.png</file>
+      <file>ybt_raytracer/textures/mimari_granit_mavi.png</file>
+      <file>ybt_raytracer/textures/mimari_granit_siyah.png</file>
+      <file>ybt_raytracer/textures/mimari_granit_yesil.png</file>
+      <file>ybt_raytracer/textures/mimari_hali_gri.png</file>
+      <file>ybt_raytracer/textures/mimari_kaldirim.png</file>
+      <file>ybt_raytracer/textures/mimari_kale_tasi.png</file>
+      <file>ybt_raytracer/textures/mimari_kalker.png</file>
+      <file>ybt_raytracer/textures/mimari_kaplama_acik.png</file>
+      <file>ybt_raytracer/textures/mimari_kaplama_koyu.png</file>
+      <file>ybt_raytracer/textures/mimari_kaplama_sedir.png</file>
+      <file>ybt_raytracer/textures/mimari_karo_beyaz.png</file>
+      <file>ybt_raytracer/textures/mimari_karo_gri.png</file>
+      <file>ybt_raytracer/textures/mimari_karo_kahve.png</file>
+      <file>ybt_raytracer/textures/mimari_karo_kirmizi.png</file>
+      <file>ybt_raytracer/textures/mimari_karo_mavi.png</file>
+      <file>ybt_raytracer/textures/mimari_kesme_tas.png</file>
+      <file>ybt_raytracer/textures/mimari_kiremit.png</file>
+      <file>ybt_raytracer/textures/mimari_kumas1.png</file>
+      <file>ybt_raytracer/textures/mimari_kumtasi.png</file>
+      <file>ybt_raytracer/textures/mimari_kutuk_duvar.png</file>
+      <file>ybt_raytracer/textures/mimari_mermer_botticino.png</file>
+      <file>ybt_raytracer/textures/mimari_mermer_carrara.png</file>
+      <file>ybt_raytracer/textures/mimari_mermer_gri.png</file>
+      <file>ybt_raytracer/textures/mimari_mermer_kirmizi.png</file>
+      <file>ybt_raytracer/textures/mimari_mermer_krem.png</file>
+      <file>ybt_raytracer/textures/mimari_mermer_yesil.png</file>
+      <file>ybt_raytracer/textures/mimari_mozaik.png</file>
+      <file>ybt_raytracer/textures/mimari_oluklu_sac.png</file>
+      <file>ybt_raytracer/textures/mimari_parke4.png</file>
+      <file>ybt_raytracer/textures/mimari_parke5.png</file>
+      <file>ybt_raytracer/textures/mimari_seramik3.png</file>
+      <file>ybt_raytracer/textures/mimari_siva_beyaz.png</file>
+      <file>ybt_raytracer/textures/mimari_siva_guney.png</file>
+      <file>ybt_raytracer/textures/mimari_siva_kirmizi.png</file>
+      <file>ybt_raytracer/textures/mimari_siva_sari.png</file>
+      <file>ybt_raytracer/textures/mimari_stuko.png</file>
+      <file>ybt_raytracer/textures/mimari_tahta_doseme.png</file>
+      <file>ybt_raytracer/textures/mimari_tas4.png</file>
+      <file>ybt_raytracer/textures/mimari_toprak.png</file>
+      <file>ybt_raytracer/textures/mimari_travertin_gri.png</file>
+      <file>ybt_raytracer/textures/mimari_tugla_beyaz.png</file>
+      <file>ybt_raytracer/textures/mimari_tugla_eski.png</file>
+      <file>ybt_raytracer/textures/mimari_tugla_yeni.png</file>
+      <file>ybt_raytracer/textures/mimari_tugla_yol.png</file>
+      <file>ybt_raytracer/textures/LICENSE-TEXTURES.txt</file>
       <file>ybt_raytracer/textures/tugla.png</file>
       <file>ybt_raytracer/textures/deri.png</file>
       <file>ybt_raytracer/textures/celik_firca.png</file>

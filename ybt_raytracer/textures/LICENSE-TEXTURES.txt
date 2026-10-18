@@ -1,0 +1,12 @@
+Textures: mimari_*.png
+Source: "[TImg] Textures 15" texture library, owner: Sedat Kuran (FC YBT Raytracer).
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+         https://creativecommons.org/licenses/by/4.0/
+Changes made: images were resized (longest side <= 384 px) and converted to PNG.
+Terms: attribution required; the raw images may not be resold or redistributed as a standalone texture pack.
+They are bundled here only as part of the FC YBT Raytracer macro.
+
+Dokular: mimari_*.png
+Kaynak: "[TImg] Textures 15" doku kitaplığı, sahibi: Sedat Kuran (FC YBT Raytracer).
+Lisans: CC BY 4.0. Değişiklik: boyut küçültüldü (en uzun kenar <= 384 px), PNG'ye çevrildi.
+Ham görseller tek başına doku paketi olarak satılamaz/dağıtılamaz; yalnızca bu makronun parçası olarak sunulur.

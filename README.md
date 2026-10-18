@@ -198,3 +198,7 @@ examples/
   FC_ybt_turntable.FCMacro   animasyon örneği / animation example
 CHANGELOG.md
 ```
+
+## Doku lisansı / Texture licence
+
+`ybt_raytracer/textures/mimari_*.png` (mimari malzemeler): CC BY 4.0, ayrıntı `ybt_raytracer/textures/LICENSE-TEXTURES.txt`.
