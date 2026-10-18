@@ -85,24 +85,28 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
                        bool(lt.get("shadow", False)) and shadows))
     soft_r = float(S.SOFT_SHADOW)
-    if soft_r > 0.0 and shadows and scene.count <= int(S.SOFT_MAX_TRIS) and any(lt[3] for lt in lights):
-        # yumuşak gölge: gölge düşüren her ışık, ışık diski üzerine dağıtılmış K alt ışığa bölünür (gücü K'ya bölünür)
-        K_ = max(2, min(32, int(S.SOFT_SAMPLES)))
-        rad = np.radians(min(soft_r, 30.0))
-        exp_l = []
-        for li_, (Ld_, lc_, pw_, cs_) in enumerate(lights):
-            if not cs_:
-                exp_l.append((Ld_, lc_, pw_, cs_))
-                continue
-            u_ = np.cross(Ld_, np.array([0.0, 0.0, 1.0]) if abs(Ld_[2]) < 0.9 else np.array([1.0, 0.0, 0.0]))
-            u_ = u_ / np.linalg.norm(u_)
-            v_ = np.cross(Ld_, u_)
-            ph_ = 0.7 * (li_ + 1)
-            for i_ in range(K_):
-                rr_ = np.tan(rad) * np.sqrt((i_ + 0.5) / K_)
-                th_ = i_ * 2.399963 + ph_                    # Vogel (altın açı) deseni: disk eşit örneklenir
-                exp_l.append((_norm(Ld_ + u_ * rr_ * np.cos(th_) + v_ * rr_ * np.sin(th_)), lc_, pw_ / K_, True))
-        lights = exp_l
+    soft_on = soft_r > 0.0 and shadows and scene.count <= int(S.SOFT_MAX_TRIS) and any(lt[3] for lt in lights)
+    sample_dirs = {}                                         # ışık -> gölge örnek yönleri (0 = merkez); yumuşak gölgede ışık diski üzerinde
+    for li_, lt_ in enumerate(lights):
+        Ld_ = lt_[0]
+        if not (soft_on and lt_[3]):
+            sample_dirs[li_] = [Ld_]
+            continue
+        K_ = max(4, min(48, int(S.SOFT_SAMPLES)))
+        tn_ = np.tan(np.radians(min(soft_r, 30.0)))
+        u_ = np.cross(Ld_, np.array([0.0, 0.0, 1.0]) if abs(Ld_[2]) < 0.9 else np.array([1.0, 0.0, 0.0]))
+        u_ = u_ / np.linalg.norm(u_)
+        v_ = np.cross(Ld_, u_)
+        ph_ = 0.7 * (li_ + 1)
+        ds_ = [Ld_]
+        for i_ in range(8):                                  # 8 sınır örneği: önce bunlar sınanır (hepsi aynıysa piksel yarı gölgede değildir)
+            th_ = 2 * np.pi * i_ / 8.0 + ph_
+            ds_.append(_norm(Ld_ + u_ * tn_ * np.cos(th_) + v_ * tn_ * np.sin(th_)))
+        for i_ in range(max(0, K_ - 9)):                     # kalanı: Vogel (altın açı) deseniyle diskin içi
+            rr_ = tn_ * np.sqrt((i_ + 0.5) / max(K_ - 9, 1)) * 0.92
+            th_ = i_ * 2.399963 + ph_
+            ds_.append(_norm(Ld_ + u_ * rr_ * np.cos(th_) + v_ * rr_ * np.sin(th_)))
+        sample_dirs[li_] = ds_
     amb = float(S.AMBIENT) * np.array(S.AMBIENT_COLOR, dtype=np.float64) ** 2.2
     eps = scene.diag * 1e-5
 
@@ -230,15 +234,16 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         if G_sh <= 0:       # çok seviyeli ızgara: en ince seviye üçgen boyutuna yakın olsun (2,8 M üçgende 2048)
             G_sh = int(min(2048, max(64, 2 ** round(np.log2(max(np.sqrt(scene.count) * 1.5, 1.0))))))
         gcache = cache.setdefault("grids", {})
-        if len(gcache) > 48:
+        if len(gcache) > 160:
             gcache.clear()
         for li, lt in enumerate(lights):
             if lt[3]:
-                gk = (lt[0].tobytes(), bool(S.GLASS), G_sh)
-                if gk not in gcache:
-                    gcache[gk] = (_LightGrid(scene, lt[0], G_sh, op_ids) if len(op_ids) else None,
-                                  _LightGrid(scene, lt[0], G_sh, gl_ids) if len(gl_ids) else None)
-                grids[li] = gcache[gk]
+                for si, dsi in enumerate(sample_dirs[li]):
+                    gk = (dsi.tobytes(), bool(S.GLASS), G_sh)
+                    if gk not in gcache:
+                        gcache[gk] = (_LightGrid(scene, dsi, G_sh, op_ids) if len(op_ids) else None,
+                                      _LightGrid(scene, dsi, G_sh, gl_ids) if len(gl_ids) else None)
+                    grids[(li, si)] = gcache[gk]
     clusters = None
     ao_on = bool(S.AO) and not brute and scene.count > 0 and int(S.AO_SAMPLES) > 0 and float(S.AO_STRENGTH) > 0.0
     if (secondary or ao_on) and not brute:
@@ -295,9 +300,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     ao_have = mkbuf(np.float64, 0.0) if ao_on else None        # AO ışını atılan pikseller (kalanlar süzgeçle doldurulur)
     ao_step = max(1, int(S.AO_STEP))
 
-    def lights_blocked(Pl, li):
-        """Yüzey noktalarından li. ışığa giden yol: 0 = açık, 1 = opak engel, 2 = cam engel."""
-        Ld = lights[li][0]
+    def lights_blocked(Pl, li, si=0):
+        """Yüzey noktalarından li. ışığın si. örnek yönüne giden yol: 0 = açık, 1 = opak engel, 2 = cam engel."""
+        Ld = sample_dirs[li][si]
         out = np.zeros(len(Pl), dtype=np.int8)
         Dg = np.broadcast_to(Ld, (len(Pl), 3))
         if brute:
@@ -311,7 +316,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             if len(oi):
                 out[_any(scene, Pl, Dg, oi)] = 1
             return out
-        gop, ggl = grids.get(li, (None, None))
+        gop, ggl = grids.get((li, si), (None, None))
         if ggl is not None:
             out[ggl.shadowed(scene, Pl, Ld, tk)] = 2
         if gop is not None:
@@ -485,9 +490,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if cast:
                     lit_idx = np.nonzero(ndl > 0)[0]
                     if len(lit_idx):
-                        blk = lights_blocked(Psh[lit_idx] + ngeo[lit_idx] * eps, li)
-                        ndl[lit_idx[blk == 1]] = 0.0
-                        ndl[lit_idx[blk == 2]] *= 0.55            # camdan geçen ışık: yarı gölge
+                        ndl[lit_idx] *= light_vis(Psh[lit_idx] + ngeo[lit_idx] * eps, li)
                 lit += (power * ndl)[:, None] * lcol
                 Hh = _norm(Ld - Dh)
                 sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * (ndl > 0)
@@ -580,6 +583,37 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         return acc
 
     fresnel_on = bool(S.FRESNEL)
+
+    def _vis_of(blk):                                          # engel kodu -> ışık geçirgenliği (cam: yarı gölge)
+        return np.where(blk == 1, 0.0, np.where(blk == 2, 0.55, 1.0))
+
+    def light_vis(Pq, li):
+        """Noktanın li. ışığı görme oranı (0..1). Yumuşak gölgede ışık diskinin örneklerinden; yalnız yarı gölge pikselleri tüm örneklerle."""
+        dirs = sample_dirs[li]
+        n = len(dirs)
+        v0 = _vis_of(lights_blocked(Pq, li, 0))
+        if n == 1:
+            return v0
+        npr = min(9, n)
+        acc, vmin, vmax = v0.copy(), v0.copy(), v0.copy()
+        for si in range(1, npr):
+            v = _vis_of(lights_blocked(Pq, li, si))
+            acc += v
+            vmin = np.minimum(vmin, v)
+            vmax = np.maximum(vmax, v)
+        res = acc / npr
+        need = np.nonzero(vmax - vmin > 1e-9)[0]
+        if len(need):
+            Pn = Pq[need]
+            an = acc[need]
+            for si in range(npr, n):
+                an += _vis_of(lights_blocked(Pn, li, si))
+            vn = an / n
+            # basamak genişliğinde konuma bağlı ince titreşim: katmanlar (banding) yerine görünmeyen ince doku
+            hsh = np.sin(Pn @ np.array([12.9898, 78.233, 37.719]) / max(scene.diag, 1e-9) * 1000.0) * 43758.5453
+            vn = vn + (hsh - np.floor(hsh) - 0.5) / n
+            res[need] = np.clip(vn, 0.0, 1.0)
+        return res
     tm_mode = str(S.TONEMAP)
     exposure = float(S.EXPOSURE)
 

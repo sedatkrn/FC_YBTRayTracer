@@ -15,7 +15,7 @@ AO_RADIUS = 0.06        # AO erişimi (sahne köşegeninin oranı)
 AO_STRENGTH = 0.3       # 0..1: ortam ışığının AO ile ne kadar kısılacağı
 AO_STEP = 2             # AO ışınları her AO_STEP pikselde bir atılır (2 = dörtte biri), aradaki pikseller bilateral süzgeçle doldurulur
 SOFT_SHADOW = 0.0       # yumuşak gölge: ışığın görünür yarıçapı (derece); 0 = keskin gölge (güneş ~0,27°, softbox ~5-15°)
-SOFT_SAMPLES = 8        # yumuşak gölge için ışık başına örnek (her örnek ayrı bir gölge ızgarası = sahne büyüdükçe pahalı)
+SOFT_SAMPLES = 24       # yumuşak gölge için ışık başına örnek (her örnek ayrı bir gölge ızgarası = sahne büyüdükçe pahalı)
 SOFT_MAX_TRIS = 1500000 # bu sayıdan çok üçgenli sahnede yumuşak gölge atlanır (ızgara kurma süresi)
 TONEMAP = "none"        # ton eşleme: "none" (kırp), "soft" (Reinhard, beyaz noktalı), "aces" (filmik)
 EXPOSURE = 1.0          # pozlama çarpanı (1 = değişiklik yok)
