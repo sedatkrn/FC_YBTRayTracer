@@ -543,20 +543,94 @@ def main(lang=None):
         dd = QtGui.QDialog(dlg)
         dd.setWindowTitle(T("Varsayılan ayarlar"))
         _theme.apply(dd)
-        dd.setMinimumWidth(460)
+        dd.setMinimumWidth(520)
         vl = QtGui.QVBoxLayout(dd)
         info = QtGui.QLabel(T("Panelin şu anki değerlerini varsayılan olarak kaydedebilir, önceki kayıtlara dönebilirsiniz. "
                               "● işaretli kayıt, FreeCAD her açıldığında yüklenen varsayılandır."))
         info.setWordWrap(True)
         vl.addWidget(info)
+        vl.addWidget(QtGui.QLabel(T("Mevcut ayarlar (değer sütununu düzenleyebilirsin):")))
+        tbl = QtGui.QTableWidget()
+        tbl.setColumnCount(2)
+        tbl.setHorizontalHeaderLabels([T("Ayar"), T("Değer")])
+        tbl.verticalHeader().setVisible(False)
+        tbl.horizontalHeader().setStretchLastSection(True)
+        tbl.setMinimumHeight(230)
+        trows = []                                    # (anahtar, öğe, orijinal metin)
+        _keys = [k for k in _ud._keys() if k != "LIGHTS"]
+        tbl.setRowCount(len(_keys) + 1)
+
+        def _fmt(v):
+            if isinstance(v, tuple):
+                return ", ".join("%g" % x for x in v)
+            return str(v)
+
+        def fill_table():
+            trows.clear()
+            tbl.blockSignals(True)
+            for r, k in enumerate(_keys):
+                v = g[k]
+                a = QtGui.QTableWidgetItem(k)
+                a.setFlags(QtCore.Qt.ItemIsEnabled)
+                tbl.setItem(r, 0, a)
+                b = QtGui.QTableWidgetItem()
+                if isinstance(v, bool):
+                    b.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable)
+                    b.setCheckState(QtCore.Qt.Checked if v else QtCore.Qt.Unchecked)
+                else:
+                    b.setText(_fmt(v))
+                tbl.setItem(r, 1, b)
+                trows.append((k, b, _fmt(v)))
+            r = len(_keys)
+            a = QtGui.QTableWidgetItem("LIGHTS")
+            a.setFlags(QtCore.Qt.ItemIsEnabled)
+            tbl.setItem(r, 0, a)
+            b = QtGui.QTableWidgetItem(T("%d ışık (Işık Ayarları bölümünden)") % len(g["LIGHTS"]))
+            b.setFlags(QtCore.Qt.ItemIsEnabled)
+            tbl.setItem(r, 1, b)
+            tbl.blockSignals(False)
+            tbl.resizeColumnToContents(0)
+
+        def read_table():
+            """Tabloda değiştirilen değerleri döndürür (geçersiz girişler atlanır)."""
+            out = {}
+            for k, it, orig in trows:
+                cur = g[k]
+                try:
+                    if isinstance(cur, bool):
+                        nv = it.checkState() == QtCore.Qt.Checked
+                    else:
+                        t = it.text().strip()
+                        if t == orig:
+                            continue
+                        if isinstance(cur, int):
+                            nv = int(float(t))
+                        elif isinstance(cur, float):
+                            nv = float(t)
+                        elif isinstance(cur, tuple):
+                            nv = tuple(float(x) for x in t.replace(";", ",").split(","))
+                            if len(nv) != len(cur):
+                                continue
+                        else:
+                            nv = t
+                    if nv != cur:
+                        out[k] = nv
+                except Exception:
+                    continue
+            return out
+        fill_table()
+        vl.addWidget(tbl)
         row = QtGui.QHBoxLayout()
         ed = QtGui.QLineEdit()
         ed.setPlaceholderText(T("Kayıt adı (isteğe bağlı)"))
         b_save = QtGui.QPushButton(T("Şu anki ayarları varsayılan olarak kaydet"))
         b_save.setStyleSheet("font-weight: bold;")
+        b_app = QtGui.QPushButton(T("Tablodaki değişiklikleri panele uygula"))
+        b_app.setToolTip(T("Kaydetmeden, tabloda düzenlenen değerleri panele aktarır"))
         row.addWidget(ed, 1)
         row.addWidget(b_save)
         vl.addLayout(row)
+        vl.addWidget(b_app)
         vl.addWidget(QtGui.QLabel(T("Geçmiş (en yeni üstte, son %d kayıt):") % _ud.MAX_HIST))
         lst = QtGui.QListWidget()
         lst.setMinimumHeight(190)
@@ -609,6 +683,9 @@ def main(lang=None):
 
         def do_save_def():
             try:
+                ch = read_table()
+                if ch:
+                    _ud.apply(ch)
                 _ud.save_current(ed.text())
                 ed.clear()
                 st.setText(T("Kaydedildi: ") + _ud.path())
@@ -646,6 +723,15 @@ def main(lang=None):
             _ud.clear_default()
             st.setText(T("Kayıtlı varsayılan kapatıldı; sonraki açılışta fabrika ayarları kullanılır."))
             refill()
+        def do_apply_tbl():
+            ch = read_table()
+            if not ch:
+                st.setText(T("Tabloda değişiklik yok."))
+                return
+            _ud.apply(ch)
+            dd.accept()
+            rebuild()
+        b_app.clicked.connect(do_apply_tbl)
         b_save.clicked.connect(do_save_def)
         b_load.clicked.connect(do_load)
         b_def.clicked.connect(do_make)

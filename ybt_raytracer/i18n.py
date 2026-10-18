@@ -472,4 +472,11 @@ EN = {
     'Seçili kayıt varsayılan yapıldı (açılışta yüklenir).': 'Selected save is now the default (loaded at startup).',
     'Kayıtlı varsayılan kapatıldı; sonraki açılışta fabrika ayarları kullanılır.': 'Saved default disabled; factory settings will be used next time.',
     'Henüz kayıt yok. Panelde ayarları yapıp yukarıdaki düğmeyle ilk kaydı oluştur.': 'No saves yet. Adjust the panel, then use the button above to create the first save.',
+    'Mevcut ayarlar (değer sütununu düzenleyebilirsin):': 'Current settings (you can edit the value column):',
+    'Ayar': 'Setting',
+    'Değer': 'Value',
+    '%d ışık (Işık Ayarları bölümünden)': '%d lights (from the Light Settings section)',
+    'Tablodaki değişiklikleri panele uygula': 'Apply table changes to panel',
+    'Kaydetmeden, tabloda düzenlenen değerleri panele aktarır': 'Transfers the values edited in the table to the panel without saving',
+    'Tabloda değişiklik yok.': 'No changes in the table.',
 }
