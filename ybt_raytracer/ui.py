@@ -313,6 +313,38 @@ def main(lang=None):
             wd.setEnabled(ck_ao.isChecked())
     ck_ao.toggled.connect(sync_ao)
     sync_ao()
+    ck_soft = QtGui.QCheckBox(T("Yumuşak gölge"))
+    ck_soft.setChecked(float(S.SOFT_SHADOW) > 0.0)
+    ck_soft.setToolTip(T("Gölge kenarları yumuşar (alan ışığı). Gölgeli her ışık için birkaç gölge ızgarası kurulur; küçük ve orta sahnelerde ucuzdur, çok büyük modelde atlanır."))
+    sp_softr = spin(1, 30, S.SOFT_SHADOW if S.SOFT_SHADOW > 0 else 4, 1, " °")
+    sp_softr.setToolTip(T("Işığın görünür boyutu (derece): güneş ~0,3°, softbox 5-15°. Büyük = daha geniş yarı gölge"))
+    srow = QtGui.QHBoxLayout()
+    srow.addWidget(ck_soft)
+    srow.addStretch(1)
+    srow.addWidget(sp_softr)
+    lvb.addLayout(srow)
+
+    def sync_soft(*_a):
+        sp_softr.setEnabled(ck_soft.isChecked())
+    ck_soft.toggled.connect(sync_soft)
+    sync_soft()
+    cb_tm = QtGui.QComboBox()
+    for _t in (T("Yok (kırp)"), T("Yumuşak (Reinhard)"), T("Filmik (ACES)")):
+        cb_tm.addItem(_t)
+    cb_tm.setCurrentIndex({"none": 0, "soft": 1, "aces": 2}.get(str(S.TONEMAP), 0))
+    cb_tm.setToolTip(T("Ton eşleme: çok parlak alanlar patlamak yerine yumuşakça sıkışır. Pozlamayı artırıp ton eşleme açmak daha sinematik görünüm verir."))
+    sp_exp = spin(25, 400, S.EXPOSURE * 100, 5, " %")
+    sp_exp.setToolTip(T("Pozlama: 100 % = değişiklik yok"))
+    trow = QtGui.QHBoxLayout()
+    trow.addWidget(QtGui.QLabel(T("Ton eşleme")))
+    trow.addWidget(cb_tm, 1)
+    trow.addWidget(QtGui.QLabel(T("Pozlama")))
+    trow.addWidget(sp_exp)
+    lvb.addLayout(trow)
+    ck_fr = QtGui.QCheckBox(T("Fresnel yansıması"))
+    ck_fr.setChecked(bool(S.FRESNEL))
+    ck_fr.setToolTip(T("Parlak opak yüzeylerde (boya, plastik, seramik) yansıma, yüzeye eğik bakıldıkça güçlenir"))
+    lvb.addWidget(ck_fr)
     lv.addWidget(lbox)
     light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb, cb_pre, bt_cust]
 
@@ -796,7 +828,7 @@ def main(lang=None):
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao, cb_pre, bt_cust]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao, cb_pre, bt_cust, ck_soft, sp_softr, cb_tm, sp_exp, ck_fr]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -812,6 +844,10 @@ def main(lang=None):
         g["GLASS"] = ck_gl.isChecked()
         g["SMOOTH"] = ck_sm.isChecked()
         g["CULL_OFFSCREEN"] = ck_cull.isChecked()
+        g["SOFT_SHADOW"] = float(sp_softr.value()) if ck_soft.isChecked() else 0.0
+        g["TONEMAP"] = ("none", "soft", "aces")[cb_tm.currentIndex()]
+        g["EXPOSURE"] = sp_exp.value() / 100.0
+        g["FRESNEL"] = ck_fr.isChecked()
         g["AO"] = ck_ao.isChecked()
         g["AO_STRENGTH"] = sp_aos.value() / 100.0
         g["AO_RADIUS"] = sp_aor.value() / 100.0
@@ -1009,6 +1045,6 @@ def main(lang=None):
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
-    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
+    dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
                                                             refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
                              status=lbl_st, bar=bar, pct=pct, state=state)

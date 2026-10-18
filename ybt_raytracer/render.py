@@ -84,6 +84,25 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             Ld = _norm(-fwd * (np.cos(vv) * np.cos(hh)) + right * (np.cos(vv) * np.sin(hh)) + up * np.sin(vv))
         lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
                        bool(lt.get("shadow", False)) and shadows))
+    soft_r = float(S.SOFT_SHADOW)
+    if soft_r > 0.0 and shadows and scene.count <= int(S.SOFT_MAX_TRIS) and any(lt[3] for lt in lights):
+        # yumuşak gölge: gölge düşüren her ışık, ışık diski üzerine dağıtılmış K alt ışığa bölünür (gücü K'ya bölünür)
+        K_ = max(2, min(32, int(S.SOFT_SAMPLES)))
+        rad = np.radians(min(soft_r, 30.0))
+        exp_l = []
+        for li_, (Ld_, lc_, pw_, cs_) in enumerate(lights):
+            if not cs_:
+                exp_l.append((Ld_, lc_, pw_, cs_))
+                continue
+            u_ = np.cross(Ld_, np.array([0.0, 0.0, 1.0]) if abs(Ld_[2]) < 0.9 else np.array([1.0, 0.0, 0.0]))
+            u_ = u_ / np.linalg.norm(u_)
+            v_ = np.cross(Ld_, u_)
+            ph_ = 0.7 * (li_ + 1)
+            for i_ in range(K_):
+                rr_ = np.tan(rad) * np.sqrt((i_ + 0.5) / K_)
+                th_ = i_ * 2.399963 + ph_                    # Vogel (altın açı) deseni: disk eşit örneklenir
+                exp_l.append((_norm(Ld_ + u_ * rr_ * np.cos(th_) + v_ * rr_ * np.sin(th_)), lc_, pw_ / K_, True))
+        lights = exp_l
     amb = float(S.AMBIENT) * np.array(S.AMBIENT_COLOR, dtype=np.float64) ** 2.2
     eps = scene.diag * 1e-5
 
@@ -211,7 +230,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         if G_sh <= 0:       # çok seviyeli ızgara: en ince seviye üçgen boyutuna yakın olsun (2,8 M üçgende 2048)
             G_sh = int(min(2048, max(64, 2 ** round(np.log2(max(np.sqrt(scene.count) * 1.5, 1.0))))))
         gcache = cache.setdefault("grids", {})
-        if len(gcache) > 6:
+        if len(gcache) > 48:
             gcache.clear()
         for li, lt in enumerate(lights):
             if lt[3]:
@@ -490,7 +509,10 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             glass = a < 0.999
             cosv = np.clip(-_dot(nrm, Dh), 0, 1)
             rg_k = np.where(mt > 0, refl_tab[mt], r_glass) if has_mat else r_glass
-            R = np.where(glass, np.clip(rg_k * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), refl_tab[mt] if has_mat else r_surf)
+            r_op = refl_tab[mt] if has_mat else r_surf
+            if fresnel_on:                                      # opak parlak yüzey: yansıma kaydırma açısında artar (Schlick, F0 = malzeme yansıması)
+                r_op = np.where(r_op > 0.0, np.clip(r_op + (1.0 - r_op) * (1 - cosv) ** 5, 0, 0.95), r_op)
+            R = np.where(glass, np.clip(rg_k * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), r_op)
             if f_on:
                 f0 = 0.03 + 0.35 * f_refl                         # cilalı zemin: dik bakışta %4, kaydırıcı arttıkça aynaya yaklaşır
                 R = np.where(tid == fid, np.clip(f0 + (1.0 - f0) * (1 - cosv) ** 5, 0, 0.95) if f_refl > 0 else 0.0, R)
@@ -557,7 +579,17 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             RF = np.concatenate([q[6] for q in nxt])
         return acc
 
+    fresnel_on = bool(S.FRESNEL)
+    tm_mode = str(S.TONEMAP)
+    exposure = float(S.EXPOSURE)
+
     def to_srgb(lin):
+        if exposure != 1.0:
+            lin = lin * exposure
+        if tm_mode == "soft":                      # Reinhard (beyaz nokta 2): parlak yerler yumuşakça sıkışır
+            lin = lin * (1.0 + lin * 0.25) / (1.0 + lin)
+        elif tm_mode == "aces":                    # ACES filmik (Narkowicz)
+            lin = (lin * (2.51 * lin + 0.03)) / (lin * (2.43 * lin + 0.59) + 0.14)
         return np.clip(lin, 0, 1) ** (1 / 2.2)
 
 
