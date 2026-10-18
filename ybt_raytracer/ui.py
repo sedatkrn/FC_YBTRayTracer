@@ -12,6 +12,7 @@ from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 from . import materials as _mats
 from . import theme as _theme
 from . import lightpresets as _lp
+from . import userdefaults as _ud
 from . import __version__ as _VER
 
 
@@ -40,6 +41,12 @@ def main(lang=None):
         except Exception:
             pass
     g = vars(S)                      # ayarlar settings modülünde durur
+    if not getattr(FreeCAD, "_ybt_defaults_applied", False):     # kayıtlı varsayılanlar oturumda bir kez yüklenir
+        FreeCAD._ybt_defaults_applied = True
+        try:
+            _ud.apply_saved()
+        except Exception as ex:
+            FreeCAD.Console.PrintWarning("RayTrace: defaults: %s\n" % ex)
 
     dlg = QtGui.QDialog(Gui.getMainWindow())
     dlg.setWindowTitle("FC YBT Raytracer v%s" % _VER)
@@ -526,9 +533,133 @@ def main(lang=None):
         i18n.set_lang(new)
         QtCore.QTimer.singleShot(0, lambda: (dlg.close(), main(new)))
     cb_lang.currentIndexChanged.connect(on_lang)
+    def rebuild():
+        QtCore.QTimer.singleShot(0, lambda: (dlg.close(), main(i18n.LANG)))
+
+    def open_defaults():
+        if state["busy"]:
+            return
+        apply_all()                                   # panelin şu anki değerleri settings'e alınsın
+        dd = QtGui.QDialog(dlg)
+        dd.setWindowTitle(T("Varsayılan ayarlar"))
+        _theme.apply(dd)
+        dd.setMinimumWidth(460)
+        vl = QtGui.QVBoxLayout(dd)
+        info = QtGui.QLabel(T("Panelin şu anki değerlerini varsayılan olarak kaydedebilir, önceki kayıtlara dönebilirsiniz. "
+                              "● işaretli kayıt, FreeCAD her açıldığında yüklenen varsayılandır."))
+        info.setWordWrap(True)
+        vl.addWidget(info)
+        row = QtGui.QHBoxLayout()
+        ed = QtGui.QLineEdit()
+        ed.setPlaceholderText(T("Kayıt adı (isteğe bağlı)"))
+        b_save = QtGui.QPushButton(T("Şu anki ayarları varsayılan olarak kaydet"))
+        b_save.setStyleSheet("font-weight: bold;")
+        row.addWidget(ed, 1)
+        row.addWidget(b_save)
+        vl.addLayout(row)
+        vl.addWidget(QtGui.QLabel(T("Geçmiş (en yeni üstte, son %d kayıt):") % _ud.MAX_HIST))
+        lst = QtGui.QListWidget()
+        lst.setMinimumHeight(190)
+        vl.addWidget(lst)
+        b_load = QtGui.QPushButton(T("Seçili kaydı panele yükle"))
+        b_def = QtGui.QPushButton(T("Seçili kaydı varsayılan yap"))
+        b_del = QtGui.QPushButton(T("Seçili kaydı sil"))
+        b_fac = QtGui.QPushButton(T("Fabrika ayarlarını panele yükle"))
+        b_off = QtGui.QPushButton(T("Kayıtlı varsayılanı kapat"))
+        b_off.setToolTip(T("Kayıtlar silinmez; FreeCAD bir sonraki açılışta fabrika ayarlarıyla başlar"))
+        b_cl = QtGui.QPushButton(T("Kapat"))
+        g1 = QtGui.QHBoxLayout()
+        g1.addWidget(b_load)
+        g1.addWidget(b_def)
+        g1.addWidget(b_del)
+        g2 = QtGui.QHBoxLayout()
+        g2.addWidget(b_fac)
+        g2.addWidget(b_off)
+        g2.addStretch(1)
+        g2.addWidget(b_cl)
+        vl.addLayout(g1)
+        vl.addLayout(g2)
+        st = QtGui.QLabel("")
+        st.setStyleSheet("color: #85858a;")
+        vl.addWidget(st)
+
+        def refill():
+            d = _ud.load()
+            lst.clear()
+            for i in reversed(range(len(d["hist"]))):
+                h = d["hist"][i]
+                it = QtGui.QListWidgetItem(("● " if i == d.get("current", -1) else "    ") + h.get("ts", "") +
+                                           (("   –   " + h["name"]) if h.get("name") else ""))
+                it.setData(QtCore.Qt.UserRole, i)
+                lst.addItem(it)
+            if lst.count():
+                lst.setCurrentRow(0)
+            has = lst.count() > 0
+            for b in (b_load, b_def, b_del):
+                b.setEnabled(has)
+            b_off.setEnabled(d.get("current", -1) >= 0)
+
+        def sel():
+            it = lst.currentItem()
+            return None if it is None else it.data(QtCore.Qt.UserRole)
+
+        def do_save_def():
+            try:
+                _ud.save_current(ed.text())
+                ed.clear()
+                st.setText(T("Kaydedildi: ") + _ud.path())
+            except Exception as ex:
+                st.setText(T("Kaydedilemedi: ") + str(ex))
+            refill()
+
+        def do_load():
+            i = sel()
+            if i is None:
+                return
+            _ud.apply(_ud.load()["hist"][i]["values"])
+            dd.accept()
+            rebuild()
+
+        def do_make():
+            i = sel()
+            if i is not None:
+                _ud.make_default(i)
+                st.setText(T("Seçili kayıt varsayılan yapıldı (açılışta yüklenir)."))
+                refill()
+
+        def do_del():
+            i = sel()
+            if i is not None:
+                _ud.delete(i)
+                refill()
+
+        def do_fac():
+            _ud.apply(_ud.FACTORY)
+            dd.accept()
+            rebuild()
+
+        def do_off():
+            _ud.clear_default()
+            st.setText(T("Kayıtlı varsayılan kapatıldı; sonraki açılışta fabrika ayarları kullanılır."))
+            refill()
+        b_save.clicked.connect(do_save_def)
+        b_load.clicked.connect(do_load)
+        b_def.clicked.connect(do_make)
+        b_del.clicked.connect(do_del)
+        b_fac.clicked.connect(do_fac)
+        b_off.clicked.connect(do_off)
+        b_cl.clicked.connect(dd.accept)
+        lst.itemDoubleClicked.connect(lambda _i: do_load())
+        refill()
+        (dd.exec_ if hasattr(dd, "exec_") else dd.exec)()
+
+    btn_def = QtGui.QPushButton(T("⚙ Varsayılanlar…"))
+    btn_def.setToolTip(T("Varsayılan ayarları kaydet, geçmiş kayıtlara dön, fabrika ayarlarına dön"))
+    btn_def.clicked.connect(open_defaults)
     hrow = QtGui.QHBoxLayout()
     hrow.addWidget(head)
     hrow.addStretch(1)
+    hrow.addWidget(btn_def)
     hrow.addWidget(QtGui.QLabel("Dil / Language:"))
     hrow.addWidget(cb_lang)
     lcol.addLayout(hrow)
