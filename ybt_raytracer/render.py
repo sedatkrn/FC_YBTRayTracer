@@ -570,6 +570,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             spec_sum = np.zeros((len(hi), 3))
             for li, (Ld, lcol, power, cast) in enumerate(lights):
                 ndl = np.clip(_dot(nrm, Ld), 0, None)
+                lit_pos = ndl > 0                                # ışığa bakan yüzler (gölge çarpanından önce)
+                vfac = None                                      # ışık görünürlüğü (kesirli gölgede parlama da aynı oranda azalır)
                 if cast:
                     lit_idx = np.nonzero(ndl > 0)[0]
                     if len(lit_idx):
@@ -589,9 +591,13 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                         else:
                             vis_l = light_vis(Psh[lit_idx] + ngeo[lit_idx] * eps, li)
                         ndl[lit_idx] *= vis_l
+                        vfac = np.ones(len(ndl))
+                        vfac[lit_idx] = vis_l
                 lit += (power * ndl)[:, None] * lcol
                 Hh = _norm(Ld - Dh)
-                sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * (ndl > 0)
+                sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * lit_pos
+                if vfac is not None:
+                    sp = sp * vfac                               # önceden vis>0 iken parlama tam şiddetteydi: gölge kenarında basamak/patlama yapıyordu
                 spec_sum += (spec_k * min(power / 0.7, 1.5) * sp)[:, None] * lcol
             if has_mat:                                         # metal: vurgu yüzey renginde
                 spec_sum = spec_sum * (1.0 - metal_k[:, None] + metal_k[:, None] * np.minimum(albedo_raw * 1.4, 1.0))
