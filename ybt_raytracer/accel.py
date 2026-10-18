@@ -288,12 +288,14 @@ class _LightGrid(object):
             ids_g = (subset[ids_l] if subset is not None else ids_l).astype(np.int64)
             self.levels.append((sh, Gk, offs, ids_g, cmax))
 
-    def shadowed(self, sc, P, L, tk=None):
-        """P: (n,3) yüzeyden hafif ofsetli noktalar. Döner bool (n,) — ışığa giden yol kapalı mı."""
+    def shadowed(self, sc, P, L, tk=None, want_t=False):
+        """P: (n,3) yüzeyden hafif ofsetli noktalar. Döner bool (n,) — ışığa giden yol kapalı mı.
+        want_t=True: (bool, t) — t, bulunan bir engelle olan mesafe (yumuşak gölge yarı gölge genişliği için; en yakın olması garanti değil)."""
         n = len(P)
         occ = np.zeros(n, dtype=bool)
+        tmin = np.full(n, np.inf) if want_t else None
         if n == 0:
-            return occ
+            return (occ, tmin) if want_t else occ
         L = np.asarray(L, dtype=np.float64)
         lP = P @ L - 1e-9 * self.diag                         # bu yüksekliğin altında kalan üçgenler ışını kesemez
         cx = self._cell(P @ self.a, self.amin)
@@ -316,12 +318,17 @@ class _LightGrid(object):
             sub = cand[keep]
             cnt = cnt[keep]
             start = offs[cc[keep]]
-            occ[sub] |= self._pairs(sc, P, L, sub, start, cnt, ids, tk)
+            if want_t:
+                tm_ = np.full(len(sub), np.inf)
+                occ[sub] |= self._pairs(sc, P, L, sub, start, cnt, ids, tk, tm=tm_)
+                tmin[sub] = np.minimum(tmin[sub], tm_)
+            else:
+                occ[sub] |= self._pairs(sc, P, L, sub, start, cnt, ids, tk)
             cand = cand[~occ[cand]]
-        return occ
+        return (occ, tmin) if want_t else occ
 
     @staticmethod
-    def _pairs(sc, P, L, sub, start, cnt, ids, tk, chunk=1500000):
+    def _pairs(sc, P, L, sub, start, cnt, ids, tk, chunk=1500000, tm=None):
         """(nokta, üçgen) çiftlerini vektörel sınar; her nokta için en az bir çarpışma var mı."""
         res = np.zeros(len(sub), dtype=bool)
         cum = np.cumsum(cnt)
@@ -346,6 +353,8 @@ class _LightGrid(object):
                 hit = (t > 0) & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9)
             if hit.any():
                 res[np.unique(pl[hit])] = True
+                if tm is not None:
+                    np.minimum.at(tm, pl[hit], t[hit])
             a = e
         return res
 

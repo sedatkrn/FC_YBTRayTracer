@@ -46,6 +46,49 @@ def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
     return np.where(hit & (wsum > 1e-6), acc / np.maximum(wsum, 1e-6), 0.0)
 
 
+def _soft_blur(v0, Tb, valid, oid, foot, ndl, tan_t, rmax=48):
+    """Hızlı yumuşak gölge: sert gölge maskesi (v0: 1 aydınlık, 0 gölge, 0.55 cam) her piksel için kendi yarı gölge genişliğinde
+    (engel mesafesi x ışık yarıçapı) kutu süzgeçten geçer; her nesne ayrı (gölge nesne kenarından başka yüzeye sızmaz), süzgeç
+    toplam-alan tablosuyla (SAT) O(1)/piksel. Kenar çizgisinde kutu ortalaması doğrusal bir geçiştir; smoothstep ile S eğrisine çevrilir."""
+    out = v0.copy()
+    cand = valid & (v0 < 1.0)
+    if not cand.any():
+        return out
+    sat = lambda a: np.pad(np.cumsum(np.cumsum(a, 0), 1), ((1, 0), (1, 0)))
+    for o in np.unique(oid[cand]):
+        sel = valid & (oid == o)
+        ys, xs = np.nonzero(sel)
+        y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+        m = sel[y0:y1, x0:x1]
+        v, T = v0[y0:y1, x0:x1], Tb[y0:y1, x0:x1]
+        f, nd = foot[y0:y1, x0:x1], ndl[y0:y1, x0:x1]
+        shad = m & (v < 1.0) & (T > 0)
+        if not shad.any():
+            continue
+        Hh, Ww = m.shape
+        stretch_max = 1.0 / np.sqrt(0.3)
+        Rs = int(min(rmax, max(1, np.ceil(T[shad].max() * tan_t * stretch_max / max(f[m].min(), 1e-12)))))
+        S_c, S_t = sat(shad.astype(np.float64)), sat(np.where(shad, T, 0.0))
+        S_m, S_v = sat(m.astype(np.float64)), sat(np.where(m, v, 0.0))
+        yy, xx = np.nonzero(m)
+
+        def box(S, r):
+            ya, yb = np.clip(yy - r, 0, Hh), np.clip(yy + r + 1, 0, Hh)
+            xa, xb = np.clip(xx - r, 0, Ww), np.clip(xx + r + 1, 0, Ww)
+            return S[yb, xb] - S[ya, xb] - S[yb, xa] + S[ya, xa]
+        rs = np.full(len(yy), Rs)
+        cnt, sT = box(S_c, rs), box(S_t, rs)
+        has = cnt > 0.5
+        Tavg = np.where(has, sT / np.maximum(cnt, 1.0), 0.0)
+        stretch = 1.0 / np.sqrt(np.maximum(nd[yy, xx], 0.3))
+        rp = np.clip(np.rint(Tavg * tan_t * stretch / np.maximum(f[yy, xx], 1e-12)).astype(np.int64), 0, Rs)
+        mean = box(S_v, rp) / np.maximum(box(S_m, rp), 1.0)
+        res = np.where(has, mean * mean * (3.0 - 2.0 * mean), v[yy, xx])
+        sub = out[y0:y1, x0:x1]
+        sub[yy, xx] = res
+    return out
+
+
 def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, tick=None, stage=None):
     """
     cam: dict(pos, fwd, up, persp=bool, size=float)
@@ -85,11 +128,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
                        bool(lt.get("shadow", False)) and shadows))
     soft_r = float(S.SOFT_SHADOW)
-    soft_on = soft_r > 0.0 and shadows and scene.count <= int(S.SOFT_MAX_TRIS) and any(lt[3] for lt in lights)
+    soft_fast = str(S.SOFT_METHOD) != "sampled"
+    soft_on = soft_r > 0.0 and shadows and any(lt[3] for lt in lights) and (soft_fast or scene.count <= int(S.SOFT_MAX_TRIS))
     sample_dirs = {}                                         # ışık -> gölge örnek yönleri (0 = merkez); yumuşak gölgede ışık diski üzerinde
     for li_, lt_ in enumerate(lights):
         Ld_ = lt_[0]
-        if not (soft_on and lt_[3]):
+        if not (soft_on and lt_[3]) or soft_fast:
             sample_dirs[li_] = [Ld_]
             continue
         K_ = max(4, min(48, int(S.SOFT_SAMPLES)))
@@ -296,11 +340,24 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     if raster:
         vis[(0.5, 0.5)] = (mkbuf(np.float64, np.inf), mkbuf(np.int64, -1))
     ao_on = ao_on and raster
+    ss_lights = [li_ for li_, lt_ in enumerate(lights) if lt_[3]] if (soft_on and soft_fast and raster) else []
+    ss_on = bool(ss_lights)
+    pre_on = ao_on or ss_on                                    # görünürlük tamponu en baştan çıkarılsın
+    oid_ext = np.concatenate([scene.oid, [-2]]) if f_on else scene.oid
+    if ss_on:
+        ss_buf = {li_: mkbuf(np.float64, 1.0) for li_ in ss_lights}     # son ışık görünürlüğü
+        ss_v0 = {li_: mkbuf(np.float64, 1.0) for li_ in ss_lights}      # sert gölge maskesi
+        ss_T = {li_: mkbuf(np.float64, 0.0) for li_ in ss_lights}       # engel mesafesi
+        ss_N = {li_: mkbuf(np.float64, 0.0) for li_ in ss_lights}       # n.L
+        ss_oid = mkbuf(np.int64, -3)
+        ss_foot = mkbuf(np.float64, 1.0)
+    else:
+        ss_buf = None
     ao_buf = mkbuf(np.float64, 0.0) if ao_on else None
     ao_have = mkbuf(np.float64, 0.0) if ao_on else None        # AO ışını atılan pikseller (kalanlar süzgeçle doldurulur)
     ao_step = max(1, int(S.AO_STEP))
 
-    def lights_blocked(Pl, li, si=0):
+    def lights_blocked(Pl, li, si=0, want_t=False):
         """Yüzey noktalarından li. ışığın si. örnek yönüne giden yol: 0 = açık, 1 = opak engel, 2 = cam engel."""
         Ld = sample_dirs[li][si]
         out = np.zeros(len(Pl), dtype=np.int8)
@@ -315,13 +372,24 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 out[_any(scene, Pl, Dg, gi)] = 2
             if len(oi):
                 out[_any(scene, Pl, Dg, oi)] = 1
-            return out
+            return (out, np.full(len(Pl), np.inf)) if want_t else out
         gop, ggl = grids.get((li, si), (None, None))
+        tmn = np.full(len(Pl), np.inf) if want_t else None
         if ggl is not None:
-            out[ggl.shadowed(scene, Pl, Ld, tk)] = 2
+            if want_t:
+                o_, t_ = ggl.shadowed(scene, Pl, Ld, tk, True)
+                out[o_] = 2
+                tmn = np.minimum(tmn, t_)
+            else:
+                out[ggl.shadowed(scene, Pl, Ld, tk)] = 2
         if gop is not None:
-            out[gop.shadowed(scene, Pl, Ld, tk)] = 1
-        return out
+            if want_t:
+                o_, t_ = gop.shadowed(scene, Pl, Ld, tk, True)
+                out[o_] = 1
+                tmn = np.minimum(tmn, t_)
+            else:
+                out[gop.shadowed(scene, Pl, Ld, tk)] = 1
+        return (out, tmn) if want_t else out
 
     def floor_apply(RO, RD, tb, ti):
         """Analitik zemin düzlemi: nesnelerden yakınsa tb/ti (yerinde) zemin isabetiyle değiştirilir."""
@@ -743,7 +811,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         return run_threads(items, fn, on_done)
 
     # ---- 0. geçiş (AO açıksa): görünürlük tamponu -> piksel başına AO ışınları -> bilateral süzgeç ----
-    if ao_on:
+    if pre_on:
         tmax_ao = float(S.AO_RADIUS) * scene.diag
         m_ao = max(1, int(S.AO_SAMPLES))
 
@@ -757,6 +825,56 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         if run_parallel(list(range(ny)), vis_band,
                         lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), T("görünürlük"))) is False:
             return None
+
+        if ss_on:
+            tan_soft = float(np.tan(np.radians(min(float(S.SOFT_SHADOW), 30.0))))
+
+            def ss_band(ty):
+                r0, r1 = ty * tile, min(ty * tile + tile, h)
+                nrow = r1 - r0
+                px = np.tile(np.arange(w), nrow)
+                py = np.repeat(np.arange(r0, r1), w)
+                O, D = prim_rays(px, py, 0.5, 0.5)
+                O = np.broadcast_to(O, D.shape)
+                tb = vis[(0.5, 0.5)][0][r0:r1].ravel().copy()
+                ti = vis[(0.5, 0.5)][1][r0:r1].ravel().copy()
+                if f_on:
+                    floor_apply(O, D, tb, ti)
+                hitm = ti >= 0
+                ss_oid[r0:r1] = np.where(hitm, oid_ext[np.maximum(ti, 0)], -3).reshape(nrow, w)
+                ss_foot[r0:r1] = ((np.where(hitm, tb, 0.0) * pix_ang_g) if persp else np.full(nrow * w, pix_ang_g)).reshape(nrow, w)
+                idx = np.nonzero(hitm)[0]
+                if len(idx) == 0:
+                    return
+                Dh = D[idx]
+                P = O[idx] + Dh * tb[idx][:, None]
+                nn = n_ext[ti[idx]].copy()
+                nn *= np.where(_dot(nn, Dh) > 0, -1.0, 1.0)[:, None]
+                for li_ in ss_lights:
+                    nd = _dot(nn, lights[li_][0])
+                    v0 = np.where(nd > 0, 1.0, 0.0)
+                    Tt = np.zeros(len(idx))
+                    lit = np.nonzero(nd > 0)[0]
+                    if len(lit):
+                        blk, tm = lights_blocked(P[lit] + nn[lit] * eps, li_, 0, True)
+                        v0[lit] = _vis_of(blk)
+                        Tt[lit] = np.where(np.isfinite(tm), tm, 0.0)
+                    for buf_, val_, fill_ in ((ss_v0, v0, 1.0), (ss_T, Tt, 0.0), (ss_N, nd, 0.0)):
+                        full = np.full(nrow * w, fill_)
+                        full[idx] = val_
+                        buf_[li_][r0:r1] = full.reshape(nrow, w)
+
+            say(T("gölge tamponu hazırlanıyor..."))
+            if run_parallel(list(range(ny)), ss_band,
+                            lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), T("gölge tamponu"))) is False:
+                return None
+            oid_a, foot_a = np.array(ss_oid), np.array(ss_foot)
+            for li_ in ss_lights:
+                nd_a = np.array(ss_N[li_])
+                valid_a = (oid_a != -3) & (nd_a > 0)
+                v0_a = np.array(ss_v0[li_])
+                v0_a = np.where(oid_a == -3, 1.0, v0_a)
+                ss_buf[li_][:] = _soft_blur(v0_a, np.array(ss_T[li_]), valid_a, oid_a, foot_a, nd_a, tan_soft)
 
         def ao_band(ty):
             r0, r1 = ty * tile, min(ty * tile + tile, h)
@@ -801,11 +919,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 out[idx] = occ
             ao_buf[r0:r1] = out.reshape(nrow, w)
 
-        say(T("ortam tıkanıklığı hesaplanıyor..."))
-        if run_parallel(list(range(ny)), ao_band,
-                        lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), T("ortam tıkanıklığı"))) is False:
-            return None
-        ao_buf[:] = _ao_blur(np.array(ao_buf), np.array(ao_have), np.array(vis[(0.5, 0.5)][1]), np.array(vis[(0.5, 0.5)][0]), n_ext,
+        if ao_on:
+          say(T("ortam tıkanıklığı hesaplanıyor..."))
+          if run_parallel(list(range(ny)), ao_band,
+                          lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), T("ortam tıkanıklığı"))) is False:
+              return None
+          ao_buf[:] = _ao_blur(np.array(ao_buf), np.array(ao_have), np.array(vis[(0.5, 0.5)][1]), np.array(vis[(0.5, 0.5)][0]), n_ext,
                              fid if f_on else -1, scene.oid, 2 * ao_step + 1)
         say(T("ışınlar izleniyor..."))
 

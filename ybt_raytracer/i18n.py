@@ -332,6 +332,8 @@ EN = {
     "Işın sayısı": "Ray count",
     "görünürlük tamponu hazırlanıyor...": "preparing visibility buffer...",
     "ortam tıkanıklığı hesaplanıyor...": "computing ambient occlusion...",
+    "gölge tamponu hazırlanıyor...": "preparing shadow buffer...",
+    "gölge tamponu": "shadow buffer",
     "görünürlük": "visibility",
     "ortam tıkanıklığı": "ambient occlusion",
     'Aydınlatma': 'Lighting',
