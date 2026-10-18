@@ -578,6 +578,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                             hq = hi[lit_idx]
                             qx, qy = px[pix[hq]], py[pix[hq]]
                             okq = (ss_oid[qy, qx] == oid_ext[tid[lit_idx]]) & (ss_N[li][qy, qx] > 0)
+                            if (sx, sy) != (0.5, 0.5):                 # AA alt örneği: tampon piksel merkezine ait; yalnız yarı gölgede kullan,
+                                bq = ss_buf[li][qy, qx]                # dar/keskin kenarlarda gerçek gölge ışını (kenar yumuşatma çalışsın)
+                                okq &= (bq > 0.02) & (bq < 0.98)
                             vis_l = np.empty(len(lit_idx))
                             vis_l[okq] = ss_buf[li][qy[okq], qx[okq]]
                             if (~okq).any():                           # tampon uyuşmuyorsa (AA kenarı vb.) sert gölge ışını
@@ -986,7 +989,16 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         d = np.abs(img[1:, :] - img[:-1, :]).max(2)
         gx[1:, :] = np.maximum(gx[1:, :], d)
         gx[:-1, :] = np.maximum(gx[:-1, :], d)
-        ey, ex_ = np.nonzero(gx > S.AA_THRESH)
+        edge = gx > S.AA_THRESH
+        if raster:                                              # siluet kenarları (nesne | zemin/arka plan) renk farkı küçük olsa da yumuşatılır
+            hit_ = np.array(vis[(0.5, 0.5)][1]) >= 0
+            dh_ = hit_[:, 1:] != hit_[:, :-1]
+            dv_ = hit_[1:, :] != hit_[:-1, :]
+            edge[:, 1:] |= dh_
+            edge[:, :-1] |= dh_
+            edge[1:, :] |= dv_
+            edge[:-1, :] |= dv_
+        ey, ex_ = np.nonzero(edge)
         ne = len(ey)
         say(T("kenar yumuşatma: %d piksel x %d örnek...") % (ne, k * k))
         offs_s = (np.arange(k) + 0.5) / k
