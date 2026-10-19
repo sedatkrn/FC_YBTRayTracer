@@ -477,7 +477,7 @@ def open_surface(on_change=None, is_busy=None):
         d = QtGui.QDialog(dlg)
         d.setWindowTitle(T("Doku Düzenleyici") + " - " + T(_CH_TITLE[chan]))
         _theme.apply(d)
-        d.setMinimumSize(760, 540)
+        d.setMinimumSize(520, 400)
         hl = QtGui.QHBoxLayout(d)
 
         # ---------------- sol: katman listesi
@@ -517,13 +517,18 @@ def open_surface(on_change=None, is_busy=None):
         tree_l.setColumnWidth(0, 150)
         tree_l.setColumnWidth(1, 46)
         tree_l.setColumnWidth(2, 24)
-        tree_l.setMinimumWidth(250)
+        tree_l.setMinimumWidth(120)
         left_.addWidget(tree_l, 1)
         lb_hint = QtGui.QLabel(T("Üstteki katman üstte işlenir; her katman altındakinin üzerine blend moduyla karışır."))
         lb_hint.setWordWrap(True)
         lb_hint.setStyleSheet("color: #85858a;")
         left_.addWidget(lb_hint)
-        hl.addLayout(left_, 0)
+        left_w = QtGui.QWidget()                                  # sol bölüm yatayda daralabilsin (sağ panel öncelikli)
+        left_w.setLayout(left_)
+        left_w.setMinimumWidth(140)
+        left_w.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Preferred)
+        left_.setContentsMargins(0, 0, 0, 0)
+        hl.addWidget(left_w, 2)
 
         # ---------------- sağ: katman ayarları
         right_ = QtGui.QVBoxLayout()
@@ -723,13 +728,13 @@ def open_surface(on_change=None, is_busy=None):
         right_sc = QtGui.QScrollArea()                            # pencere küçülünce üst üste binmesin: kaydırma çubuğu
         right_sc.setWidgetResizable(True)
         right_sc.setFrameShape(QtGui.QFrame.NoFrame)
-        right_sc.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        right_sc.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         right_sc.setWidget(right_w)
         right_sc.viewport().setAutoFillBackground(False)
         right_sc.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         right_w.setAutoFillBackground(False)
         right_w.setStyleSheet("QWidget#ybtpage { background: transparent; }")
-        hl.addWidget(right_sc, 1)
+        hl.addWidget(right_sc, 3)
 
         common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_tile, cb_img, cb_pt, b_c1, b_c2, b_world, b_auto, sp_size] + ax_b + \
             list(pw.values()) + list(tsp.values())
