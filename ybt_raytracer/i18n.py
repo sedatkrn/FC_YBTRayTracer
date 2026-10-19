@@ -617,4 +617,5 @@ EN = {
     'yönü': 'direction',
     'HDRI / ortam haritası seç': 'Choose HDRI / environment map',
     'Ortam haritası (*.hdr *.pic *.png *.jpg *.jpeg)': 'Environment map (*.hdr *.pic *.png *.jpg *.jpeg)',
+    'Ortam / HDRI': 'Environment / HDRI',
 }

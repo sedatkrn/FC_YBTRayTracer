@@ -320,79 +320,6 @@ def main(lang=None):
             wd.setEnabled(ck_ao.isChecked())
     ck_ao.toggled.connect(sync_ao)
     sync_ao()
-    # ---- Ortam / HDRI ----
-    env_state = {"file": str(S.ENV_FILE or "")}
-    cb_env = QtGui.QComboBox()
-    cb_env.addItems([T("Ortam: kapalı"), T("Ortam: hazır gökyüzü"), T("Ortam: HDRI dosyası")])
-    cb_env.setCurrentIndex({"off": 0, "sky": 1, "hdri": 2}.get(str(S.ENV_MODE), 0))
-    cb_env.setToolTip(T("Küresel ortam ışığı: gökyüzü/HDRI haritası arka planı, yansımaları ve sahnenin ışığını verir; haritadaki güneş gölgeli ışık olur. "
-                        "Açıkken sahne ışıkları ve ortam ışığı yerine bu kullanılır."))
-    btn_envf = QtGui.QPushButton(T("HDRI seç..."))
-    lbl_envf = QtGui.QLabel(os.path.basename(env_state["file"]) if env_state["file"] else "")
-    sp_ei = spin(10, 500, S.ENV_INTENSITY * 100, 10, " %")
-    sp_ei.setToolTip(T("Ortam ışığı ve güneş şiddeti"))
-    sp_er = spin(-180, 180, S.ENV_ROT, 5, " °")
-    sp_er.setToolTip(T("Haritayı dikey eksen etrafında döndürür (güneşin yönü de döner)"))
-    sp_ee = spin(1, 85, S.ENV_SUN_ELEV, 5, " °")
-    sp_ee.setToolTip(T("Hazır gökyüzü: güneş yüksekliği"))
-    sp_ea = spin(-180, 360, S.ENV_SUN_AZ, 5, " °")
-    sp_ea.setToolTip(T("Hazır gökyüzü: güneşin yönü (0° = +X, 90° = +Y)"))
-    sp_en = spin(4, 128, S.ENV_SAMPLES, 4)
-    sp_en.setToolTip(T("Piksel başına gökyüzü görünürlük ışını (çok = daha temiz, daha yavaş; pencereden giren ışıkta daha çok gerekir)"))
-    ck_ebg = QtGui.QCheckBox(T("Arka planda göster"))
-    ck_ebg.setChecked(bool(S.ENV_BACKGROUND))
-    ck_eli = QtGui.QCheckBox(T("Aydınlat"))
-    ck_eli.setChecked(bool(S.ENV_LIGHT))
-    ck_ere = QtGui.QCheckBox(T("Yansıt"))
-    ck_ere.setChecked(bool(S.ENV_REFLECT))
-    ck_esu = QtGui.QCheckBox(T("Güneşi ayır"))
-    ck_esu.setChecked(bool(S.ENV_SUN))
-    ck_ekl = QtGui.QCheckBox(T("Sahne ışıkları kalsın"))
-    ck_ekl.setChecked(bool(S.ENV_KEEP_LIGHTS))
-    er1 = QtGui.QHBoxLayout()
-    er1.addWidget(cb_env, 1)
-    er1.addWidget(btn_envf)
-    lvb.addLayout(er1)
-    lvb.addWidget(lbl_envf)
-    er2 = QtGui.QHBoxLayout()
-    for t_, w_ in ((T("Şiddet"), sp_ei), (T("Dönüş"), sp_er), (T("Işın"), sp_en)):
-        er2.addWidget(QtGui.QLabel(t_))
-        er2.addWidget(w_)
-    lvb.addLayout(er2)
-    er3 = QtGui.QHBoxLayout()
-    for t_, w_ in ((T("Güneş yüksekliği"), sp_ee), (T("yönü"), sp_ea)):
-        er3.addWidget(QtGui.QLabel(t_))
-        er3.addWidget(w_)
-    lvb.addLayout(er3)
-    er4 = QtGui.QHBoxLayout()
-    for w_ in (ck_ebg, ck_eli, ck_ere):
-        er4.addWidget(w_)
-    lvb.addLayout(er4)
-    er5 = QtGui.QHBoxLayout()
-    er5.addWidget(ck_esu)
-    er5.addWidget(ck_ekl)
-    lvb.addLayout(er5)
-
-    def sync_env(*_a):
-        i_ = cb_env.currentIndex()
-        on_ = i_ > 0
-        btn_envf.setVisible(i_ == 2)
-        lbl_envf.setVisible(i_ == 2)
-        for wd in (sp_ei, sp_er, sp_en, ck_ebg, ck_eli, ck_ere, ck_esu, ck_ekl):
-            wd.setEnabled(on_)
-        sp_ee.setEnabled(i_ == 1)
-        sp_ea.setEnabled(i_ == 1)
-
-    def pick_env():
-        res = QtGui.QFileDialog.getOpenFileName(dlg, T("HDRI / ortam haritası seç"), os.path.dirname(env_state["file"]) or os.path.expanduser("~"),
-                                                T("Ortam haritası (*.hdr *.pic *.png *.jpg *.jpeg)"))
-        path = res[0] if isinstance(res, (tuple, list)) else res
-        if path:
-            env_state["file"] = path
-            lbl_envf.setText(os.path.basename(path))
-    btn_envf.clicked.connect(pick_env)
-    cb_env.currentIndexChanged.connect(sync_env)
-    sync_env()
     ck_soft = QtGui.QCheckBox(T("Yumuşak gölge"))
     ck_soft.setChecked(float(S.SOFT_SHADOW) > 0.0)
     ck_soft.setToolTip(T("Gölge kenarları yumuşar (alan ışığı). Gölgeli her ışık için birkaç gölge ızgarası kurulur; küçük ve orta sahnelerde ucuzdur, çok büyük modelde atlanır."))
@@ -429,7 +356,83 @@ def main(lang=None):
     ck_fr.setChecked(bool(S.FRESNEL))
     ck_fr.setToolTip(T("Parlak opak yüzeylerde (boya, plastik, seramik) yansıma, yüzeye eğik bakıldıkça güçlenir"))
     lvb.addWidget(ck_fr)
+    # ---- Ortam / HDRI ----
+    ebox = QtGui.QGroupBox(T("Ortam / HDRI"))
+    evb = QtGui.QVBoxLayout(ebox)
+    env_state = {"file": str(S.ENV_FILE or "")}
+    cb_env = QtGui.QComboBox()
+    cb_env.addItems([T("Ortam: kapalı"), T("Ortam: hazır gökyüzü"), T("Ortam: HDRI dosyası")])
+    cb_env.setCurrentIndex({"off": 0, "sky": 1, "hdri": 2}.get(str(S.ENV_MODE), 0))
+    cb_env.setToolTip(T("Küresel ortam ışığı: gökyüzü/HDRI haritası arka planı, yansımaları ve sahnenin ışığını verir; haritadaki güneş gölgeli ışık olur. "
+                        "Açıkken sahne ışıkları ve ortam ışığı yerine bu kullanılır."))
+    btn_envf = QtGui.QPushButton(T("HDRI seç..."))
+    lbl_envf = QtGui.QLabel(os.path.basename(env_state["file"]) if env_state["file"] else "")
+    sp_ei = spin(10, 500, S.ENV_INTENSITY * 100, 10, " %")
+    sp_ei.setToolTip(T("Ortam ışığı ve güneş şiddeti"))
+    sp_er = spin(-180, 180, S.ENV_ROT, 5, " °")
+    sp_er.setToolTip(T("Haritayı dikey eksen etrafında döndürür (güneşin yönü de döner)"))
+    sp_ee = spin(1, 85, S.ENV_SUN_ELEV, 5, " °")
+    sp_ee.setToolTip(T("Hazır gökyüzü: güneş yüksekliği"))
+    sp_ea = spin(-180, 360, S.ENV_SUN_AZ, 5, " °")
+    sp_ea.setToolTip(T("Hazır gökyüzü: güneşin yönü (0° = +X, 90° = +Y)"))
+    sp_en = spin(4, 128, S.ENV_SAMPLES, 4)
+    sp_en.setToolTip(T("Piksel başına gökyüzü görünürlük ışını (çok = daha temiz, daha yavaş; pencereden giren ışıkta daha çok gerekir)"))
+    ck_ebg = QtGui.QCheckBox(T("Arka planda göster"))
+    ck_ebg.setChecked(bool(S.ENV_BACKGROUND))
+    ck_eli = QtGui.QCheckBox(T("Aydınlat"))
+    ck_eli.setChecked(bool(S.ENV_LIGHT))
+    ck_ere = QtGui.QCheckBox(T("Yansıt"))
+    ck_ere.setChecked(bool(S.ENV_REFLECT))
+    ck_esu = QtGui.QCheckBox(T("Güneşi ayır"))
+    ck_esu.setChecked(bool(S.ENV_SUN))
+    ck_ekl = QtGui.QCheckBox(T("Sahne ışıkları kalsın"))
+    ck_ekl.setChecked(bool(S.ENV_KEEP_LIGHTS))
+    er1 = QtGui.QHBoxLayout()
+    er1.addWidget(cb_env, 1)
+    er1.addWidget(btn_envf)
+    evb.addLayout(er1)
+    evb.addWidget(lbl_envf)
+    er2 = QtGui.QHBoxLayout()
+    for t_, w_ in ((T("Şiddet"), sp_ei), (T("Dönüş"), sp_er), (T("Işın"), sp_en)):
+        er2.addWidget(QtGui.QLabel(t_))
+        er2.addWidget(w_)
+    evb.addLayout(er2)
+    er3 = QtGui.QHBoxLayout()
+    for t_, w_ in ((T("Güneş yüksekliği"), sp_ee), (T("yönü"), sp_ea)):
+        er3.addWidget(QtGui.QLabel(t_))
+        er3.addWidget(w_)
+    evb.addLayout(er3)
+    er4 = QtGui.QHBoxLayout()
+    for w_ in (ck_ebg, ck_eli, ck_ere):
+        er4.addWidget(w_)
+    evb.addLayout(er4)
+    er5 = QtGui.QHBoxLayout()
+    er5.addWidget(ck_esu)
+    er5.addWidget(ck_ekl)
+    evb.addLayout(er5)
+
+    def sync_env(*_a):
+        i_ = cb_env.currentIndex()
+        on_ = i_ > 0
+        btn_envf.setVisible(i_ == 2)
+        lbl_envf.setVisible(i_ == 2)
+        for wd in (sp_ei, sp_er, sp_en, ck_ebg, ck_eli, ck_ere, ck_esu, ck_ekl):
+            wd.setEnabled(on_)
+        sp_ee.setEnabled(i_ == 1)
+        sp_ea.setEnabled(i_ == 1)
+
+    def pick_env():
+        res = QtGui.QFileDialog.getOpenFileName(dlg, T("HDRI / ortam haritası seç"), os.path.dirname(env_state["file"]) or os.path.expanduser("~"),
+                                                T("Ortam haritası (*.hdr *.pic *.png *.jpg *.jpeg)"))
+        path = res[0] if isinstance(res, (tuple, list)) else res
+        if path:
+            env_state["file"] = path
+            lbl_envf.setText(os.path.basename(path))
+    btn_envf.clicked.connect(pick_env)
+    cb_env.currentIndexChanged.connect(sync_env)
+    sync_env()
     lv.addWidget(lbox)
+    lv.addWidget(ebox)
     light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb, cb_pre, bt_cust]
 
     # ---- Sanal Zemin ----
@@ -580,6 +583,7 @@ def main(lang=None):
     collapsible(qbox, T("Kalite Ayarları"), start_open=True)
     collapsible(fbox, T("Sanal Zemin"))
     collapsible(lbox, T("Işık Ayarları"))
+    collapsible(ebox, T("Ortam / HDRI"))
     lv.addStretch(1)
 
     sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
