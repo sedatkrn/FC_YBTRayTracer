@@ -387,6 +387,7 @@ def main(lang=None):
     ck_esu.setChecked(bool(S.ENV_SUN))
     ck_ekl = QtGui.QCheckBox(T("Sahne ışıkları kalsın"))
     ck_ekl.setChecked(bool(S.ENV_KEEP_LIGHTS))
+    ck_ekl.setToolTip(T("Sahne ışıkları ve 'Ortam ışığı' dolgu olarak ortamla birlikte çalışır (iç mekânda sıçrayan ışığın yerini tutar)"))
     er1 = QtGui.QHBoxLayout()
     er1.addWidget(cb_env, 1)
     er1.addWidget(btn_envf)

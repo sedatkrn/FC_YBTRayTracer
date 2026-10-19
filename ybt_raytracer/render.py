@@ -448,8 +448,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             ds_.append(_norm(Ld_ + u_ * rr_ * np.cos(th_) + v_ * rr_ * np.sin(th_)))
         sample_dirs[li_] = ds_
     amb = float(S.AMBIENT) * np.array(S.AMBIENT_COLOR, dtype=np.float64) ** 2.2
-    if env_light:
-        amb = amb * 0.0                                       # gökyüzü ışığı ortam terimini değiştirir
+    if env_light and not bool(S.ENV_KEEP_LIGHTS):
+        amb = amb * 0.0                                       # gökyüzü ışığı ortam terimini değiştirir ("sahne ışıkları kalsın" ise ortam ışığı da dolgu olarak kalır)
     eps = scene.diag * 1e-5
 
     alpha_t = scene.alpha if S.GLASS else np.ones(scene.count)   # 1 = opak

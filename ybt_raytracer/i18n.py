@@ -618,4 +618,5 @@ EN = {
     'HDRI / ortam haritası seç': 'Choose HDRI / environment map',
     'Ortam haritası (*.hdr *.pic *.png *.jpg *.jpeg)': 'Environment map (*.hdr *.pic *.png *.jpg *.jpeg)',
     'Ortam / HDRI': 'Environment / HDRI',
+    "Sahne ışıkları ve 'Ortam ışığı' dolgu olarak ortamla birlikte çalışır (iç mekânda sıçrayan ışığın yerini tutar)": "Scene lights and 'Ambient light' act as fill together with the environment (stands in for bounced light indoors)",
 }
