@@ -658,6 +658,7 @@ def open_surface(on_change=None, is_busy=None):
                 (T("Konum"), "tex_p", -1e6, 1e6, 10.0, 1, " mm"),
                 (T("Dönme"), "tex_r", -360.0, 360.0, 5.0, 1, "°"))):
             pgw = QtGui.QWidget()
+            pgw.setObjectName("ybtpage")
             tg = QtGui.QGridLayout(pgw)
             tg.setColumnStretch(1, 1)
             r0 = 0

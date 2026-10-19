@@ -235,6 +235,21 @@ def load_image_file(path, maxdim=1024):
     return read_png(path)
 
 
+def _read_fast(path):
+    """PNG -> (h,w,3) uint8. Önce Qt (hızlı); yoksa saf Python/numpy okuyucu (satır döngüsü: yavaş, ~0.1-0.5 sn)."""
+    try:
+        from PySide import QtGui
+        img = QtGui.QImage(path)
+        if not img.isNull():
+            img = img.convertToFormat(QtGui.QImage.Format_RGB888)
+            w, h, bpl = img.width(), img.height(), img.bytesPerLine()
+            buf = np.frombuffer(bytes(img.constBits()), dtype=np.uint8)[:bpl * h].reshape(h, bpl)[:, :w * 3]
+            return np.ascontiguousarray(buf.reshape(h, w, 3))
+    except Exception:
+        pass
+    return read_png(path)
+
+
 def load(key):
     """Anahtar (hazır doku adı) ya da kayıtlı özel yol -> Texture; bulunamazsa None."""
     if not key:
@@ -250,7 +265,7 @@ def load(key):
             if k == key:
                 p = os.path.join(_DIR, fn)
                 if os.path.isfile(p):
-                    tex = Texture(read_png(p), mode)
+                    tex = Texture(_read_fast(p), mode)
                     tex.rel = rel
                 break
     if tex is None and key not in _CUSTOM and os.path.isfile(key):      # doğrudan dosya yolu (kullanıcı görüntüsü; yeniden başlatınca da çalışır)

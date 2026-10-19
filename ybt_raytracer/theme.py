@@ -103,6 +103,12 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
 QProgressBar {{ background-color: {BORDER}; border: 1px solid {BORDER}; border-radius: 3px; color: #ffffff; text-align: center; }}
 QProgressBar::chunk {{ background-color: {ACCENT}; border-radius: 2px; }}
+QTabWidget::pane {{ border: 1px solid {BORDER}; background-color: {BG}; top: -1px; }}
+QWidget#ybtpage {{ background-color: {BG}; }}
+QTabBar::tab {{ background-color: {BTN}; color: {TEXT}; border: 1px solid {BORDER}; border-bottom: none; padding: 4px 14px; margin-right: 2px;
+    border-top-left-radius: 3px; border-top-right-radius: 3px; }}
+QTabBar::tab:hover {{ background-color: {BTN_HOVER}; }}
+QTabBar::tab:selected {{ background-color: {ACCENT}; color: #ffffff; }}
 QSplitter::handle {{ background-color: {BORDER}; }}
 QFrame[frameShape="4"], QFrame[frameShape="5"] {{ color: {LINE}; }}
 """.format(BG=BG, PANEL=PANEL, FIELD=FIELD, BTN=BTN, BTN_HOVER=BTN_HOVER, HEADER=HEADER, BORDER=BORDER, LINE=LINE,
