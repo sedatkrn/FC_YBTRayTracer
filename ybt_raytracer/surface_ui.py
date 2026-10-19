@@ -23,6 +23,8 @@ _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
 ]
 
 
+_T_CSS = "QPushButton { padding: 0px; min-height: 0px; font-size: 10px; font-weight: bold; }"
+_T_CSS_ON = "QPushButton { background-color: #5b7fa6; color: white; }"
 _CH_KEYS = ("diffuse", "spec", "gloss", "refl", "transp", "lum")      # doku (T) alabilen sayısal kanallar
 
 
@@ -317,7 +319,8 @@ def open_surface(on_change=None, is_busy=None):
     t_buttons["bump"] = QtGui.QPushButton("T")
     grid.addWidget(t_buttons["bump"], len(_PARAMS), 3)
     for _b in t_buttons.values():
-        _b.setFixedWidth(30)
+        _b.setFixedSize(32, 16)                              # yükseklik 1 : genişlik 2
+        _b.setStyleSheet(_T_CSS)
     right.addLayout(grid)
     b2 = QtGui.QHBoxLayout()
     btn_save = QtGui.QPushButton(T("Kütüphaneye kaydet"))
@@ -440,7 +443,7 @@ def open_surface(on_change=None, is_busy=None):
 
     def refresh_tex_buttons():
         for chn, b in t_buttons.items():
-            b.setStyleSheet("font-weight: bold; background: #3b6ea5; color: white;" if _spec_get(chn).get("tex") else "")
+            b.setStyleSheet(_T_CSS + (_T_CSS_ON if _spec_get(chn).get("tex") else ""))
             b.setToolTip(T("Doku ayarları: ") + T(_CH_TITLE[chn]))
 
     def refill_pops():

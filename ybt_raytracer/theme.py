@@ -72,7 +72,19 @@ QComboBox:hover {{ background-color: {BTN_HOVER}; }}
 QComboBox:disabled {{ background-color: {PANEL}; color: {TEXT_DIS}; }}
 QComboBox::drop-down {{ border: none; width: 20px; }}
 QComboBox::down-arrow {{ image: url({ICONS}/down.png); width: 10px; height: 7px; }}
-QComboBox QAbstractItemView {{ background-color: {FIELD}; border: 1px solid {BORDER}; selection-background-color: {ACCENT}; selection-color: #ffffff; outline: none; }}
+QComboBox {{ combobox-popup: 0; }}
+QComboBox QAbstractItemView {{ background-color: {FIELD}; color: {TEXT}; border: 1px solid {BORDER}; selection-background-color: {ACCENT}; selection-color: #ffffff; outline: none; }}
+QComboBox QAbstractItemView::item {{ min-height: 20px; padding: 1px 6px; }}
+QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected {{ background-color: {ACCENT}; color: #ffffff; }}
+QAbstractItemView {{ background-color: {FIELD}; color: {TEXT}; alternate-background-color: {PANEL}; selection-background-color: {ACCENT}; selection-color: #ffffff; }}
+QTableWidget, QTableView {{ background-color: {FIELD}; gridline-color: {BORDER}; border: 1px solid {BORDER}; }}
+QTableWidget::item:selected, QTableView::item:selected {{ background-color: {ACCENT}; color: #ffffff; }}
+QTableCornerButton::section {{ background-color: {HEADER}; border: none; }}
+QMenu {{ background-color: {FIELD}; color: {TEXT}; border: 1px solid {BORDER}; padding: 2px; }}
+QMenu::item {{ padding: 4px 22px 4px 18px; }}
+QMenu::item:selected {{ background-color: {ACCENT}; color: #ffffff; }}
+QMenu::item:disabled {{ color: {TEXT_DIS}; }}
+QMenu::separator {{ height: 1px; background: {LINE}; margin: 3px 6px; }}
 
 QSlider::groove:horizontal {{ height: 4px; background: {BORDER}; border-radius: 2px; }}
 QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 2px; }}
