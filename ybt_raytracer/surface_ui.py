@@ -23,6 +23,7 @@ _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
 ]
 
 
+_TEX_CLIP = {}                                               # doku ayarı panosu (kanallar ve malzemeler arasında ortak)
 _T_CSS = "QPushButton { padding: 0px; min-height: 0px; font-size: 10px; font-weight: bold; }"
 _T_CSS_ON = "QPushButton { background-color: #5b7fa6; color: white; }"
 _CH_KEYS = ("diffuse", "spec", "gloss", "refl", "transp", "lum")      # doku (T) alabilen sayısal kanallar
@@ -501,6 +502,15 @@ def open_surface(on_change=None, is_busy=None):
         lb_str.setVisible(chan == "bump")
         sp_str.setVisible(chan == "bump")
         vl.addLayout(top)
+        cp_row = QtGui.QHBoxLayout()
+        b_copy = QtGui.QPushButton(T("Kopyala"))
+        b_copy.setToolTip(T("Bu kanalın doku ayarlarını (doku, boy, projeksiyon, eksen, ölçek, konum, dönme, koordinat türü) panoya alır"))
+        b_paste = QtGui.QPushButton(T("Yapıştır"))
+        b_paste.setToolTip(T("Panodaki doku ayarlarını bu kanala uygular (ters çevirme ve bump yüksekliği bu kanalda olduğu gibi kalır)"))
+        cp_row.addWidget(b_copy)
+        cp_row.addWidget(b_paste)
+        cp_row.addStretch(1)
+        vl.addLayout(cp_row)
         gb = QtGui.QGroupBox(T("Doku yönü ve yerleşimi"))
         tgl = QtGui.QGridLayout(gb)
         tgl.addWidget(QtGui.QLabel(T("Projeksiyon")), 0, 0)
@@ -567,6 +577,32 @@ def open_surface(on_change=None, is_busy=None):
             for w_ in (sp_mix, sp_tw, ck_inv, sp_str, gb):
                 w_.setEnabled(has)
             cb_axis.setEnabled(has and cb_proj.currentData() != "cubic")
+            b_paste.setEnabled(bool(_TEX_CLIP))
+
+        def do_copy():
+            sp = _spec_get(chan)
+            if not sp.get("tex"):
+                msg(T("Kopyalanacak doku yok: önce bu kanala bir doku seçin."))
+                return
+            _TEX_CLIP.clear()
+            _TEX_CLIP.update({k: sp.get(k) for k in M.SPEC_KEYS if k in sp})
+            for _c, (_d, _rf) in pops.items():
+                _rf()                                     # diğer pencerelerde "Yapıştır" etkinleşsin
+            msg(T("Doku ayarı kopyalandı: ") + T(_CH_TITLE[chan]))
+
+        def do_paste():
+            if not _TEX_CLIP:
+                return
+            sp = M.spec_of(st["mat"], chan)
+            for k, v in _TEX_CLIP.items():
+                if k not in ("tex_strength", "tex_invert"):
+                    sp[k] = v
+            refill()
+            refresh_tex_buttons()
+            schedule(PREVIEW_DELAY_MS)
+            msg(T("Doku ayarı yapıştırıldı: ") + T(_CH_TITLE[chan]))
+        b_copy.clicked.connect(do_copy)
+        b_paste.clicked.connect(do_paste)
 
         def on_edit(*_a):
             sp = M.spec_of(st["mat"], chan)

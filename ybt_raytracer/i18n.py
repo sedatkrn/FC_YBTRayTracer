@@ -509,4 +509,11 @@ EN = {
     'Gri tonlu haritayı tersine çevirir (parlak ile koyu yer değiştirir)': 'Inverts the grayscale map (bright and dark swap)',
     "Kabartı yüksekliği: %100 = doku tekrarının yaklaşık %3'ü": 'Relief height: 100% = about 3% of the texture repeat',
     'Bump yüksekliği': 'Bump height',
+    'Kopyala': 'Copy',
+    'Yapıştır': 'Paste',
+    'Bu kanalın doku ayarlarını (doku, boy, projeksiyon, eksen, ölçek, konum, dönme, koordinat türü) panoya alır': "Copies this channel's texture settings (texture, size, projection, axis, scale, position, rotation, coordinate type) to the clipboard",
+    'Panodaki doku ayarlarını bu kanala uygular (ters çevirme ve bump yüksekliği bu kanalda olduğu gibi kalır)': 'Applies the copied texture settings to this channel (invert and bump height stay as they are on this channel)',
+    'Kopyalanacak doku yok: önce bu kanala bir doku seçin.': 'Nothing to copy: choose a texture for this channel first.',
+    'Doku ayarı kopyalandı: ': 'Texture settings copied: ',
+    'Doku ayarı yapıştırıldı: ': 'Texture settings pasted: ',
 }
