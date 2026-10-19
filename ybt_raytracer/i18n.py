@@ -619,4 +619,9 @@ EN = {
     'Ortam haritası (*.hdr *.pic *.png *.jpg *.jpeg)': 'Environment map (*.hdr *.pic *.png *.jpg *.jpeg)',
     'Ortam / HDRI': 'Environment / HDRI',
     "Sahne ışıkları ve 'Ortam ışığı' dolgu olarak ortamla birlikte çalışır (iç mekânda sıçrayan ışığın yerini tutar)": "Scene lights and 'Ambient light' act as fill together with the environment (stands in for bounced light indoors)",
+    'Döşeme': 'Tiling',
+    'Otomatik (dokunun kendi modu)': "Auto (texture's own mode)",
+    'Tekrar (düz döşeme)': 'Repeat (plain tiling)',
+    'Ayna (kenarlar aynalanır)': 'Mirror (edges mirrored)',
+    "Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur.": "Tiling: Repeat = tiles side by side as-is (seams may show); Mirror = every other tile is flipped (no seams). Auto: the preset's own setting, mirror for your own files. No tiling while 'Automatic sizing' is on.",
 }

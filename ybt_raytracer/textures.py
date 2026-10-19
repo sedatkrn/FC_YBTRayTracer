@@ -250,28 +250,31 @@ def _read_fast(path):
     return read_png(path)
 
 
-def load(key):
-    """Anahtar (hazır doku adı) ya da kayıtlı özel yol -> Texture; bulunamazsa None."""
+def load(key, tile=None):
+    """Anahtar (hazır doku adı) ya da kayıtlı özel yol -> Texture; bulunamazsa None.
+    tile: None/"auto" = dokunun kendi modu (hazır dokularda listedeki, kendi dosyalarda ayna); "repeat" = düz tekrar; "mirror" = aynalı tekrar."""
     if not key:
         return None
-    if key in _CACHE:
-        return _CACHE[key]
+    force = tile if tile in ("repeat", "mirror") else None
+    ck = key if force is None else (key, force)
+    if ck in _CACHE:
+        return _CACHE[ck]
     tex = None
     if key in _CUSTOM:
         arr, mode = _CUSTOM[key]
-        tex = Texture(arr, mode)
+        tex = Texture(arr, force or mode)
     else:
         for k, _name, fn, mode, rel in PRESETS:
             if k == key:
                 p = os.path.join(_DIR, fn)
                 if os.path.isfile(p):
-                    tex = Texture(_read_fast(p), mode)
+                    tex = Texture(_read_fast(p), force or mode)
                     tex.rel = rel
                 break
     if tex is None and key not in _CUSTOM and os.path.isfile(key):      # doğrudan dosya yolu (kullanıcı görüntüsü; yeniden başlatınca da çalışır)
         try:
-            tex = Texture(load_image_file(key), "mirror")
+            tex = Texture(load_image_file(key), force or "mirror")
         except Exception:
             tex = None
-    _CACHE[key] = tex
+    _CACHE[ck] = tex
     return tex

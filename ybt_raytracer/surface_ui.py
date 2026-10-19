@@ -653,6 +653,12 @@ def open_surface(on_change=None, is_busy=None):
         b_auto = QtGui.QPushButton(T("Otomatik boyutlandır"))
         b_auto.setCheckable(True)
         b_auto.setToolTip(T("Açıkken görüntü nesnenin yüzüne tam oturur (tek kez, nesnenin boyutuna gerilir). Kapalıyken doku döşenir (tekrar eder). Açınca ölçek 1, konum 0 olur."))
+        cb_tile = QtGui.QComboBox()
+        for k_, nm_ in (("auto", "Otomatik (dokunun kendi modu)"), ("repeat", "Tekrar (düz döşeme)"), ("mirror", "Ayna (kenarlar aynalanır)")):
+            cb_tile.addItem(T(nm_), k_)
+        cb_tile.setToolTip(T("Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur."))
+        gp2.addWidget(lab("Döşeme"), 3, 0)
+        gp2.addWidget(cb_tile, 3, 1, 1, 3)
         gp2.addWidget(b_world, 1, 1, 1, 3)
         gp2.addWidget(b_auto, 2, 1, 1, 3)
         gp2.setColumnStretch(1, 1)
@@ -702,7 +708,7 @@ def open_surface(on_change=None, is_busy=None):
         right_.addLayout(brow)
         hl.addLayout(right_, 1)
 
-        common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_img, cb_pt, b_c1, b_c2, b_world, b_auto, sp_size] + ax_b + \
+        common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_tile, cb_img, cb_pt, b_c1, b_c2, b_world, b_auto, sp_size] + ax_b + \
             list(pw.values()) + list(tsp.values())
         BL_LETTER = dict(normal="N", add="+", sub="-", mul="x", div="/", diff="D", screen="S", max="L", min="K")
 
@@ -732,7 +738,7 @@ def open_surface(on_change=None, is_busy=None):
                 else:
                     rgb = np.repeat(v[:, :, None], 3, axis=2)
             else:
-                tx = _tex.load(L["tex"]) if L.get("tex") else None
+                tx = _tex.load(L["tex"], L.get("tile")) if L.get("tex") else None
                 if tx is not None:
                     a = tx.levels[0]
                     hh, ww = a.shape[:2]
@@ -832,6 +838,7 @@ def open_surface(on_change=None, is_busy=None):
             sp_op.setValue(L["opacity"] * 100.0)
             b_inv.setChecked(L["invert"])
             cb_proj.setCurrentIndex(max(0, cb_proj.findData(L["tex_proj"])))
+            cb_tile.setCurrentIndex(max(0, cb_tile.findData(L.get("tile", "auto"))))
             k = cb_img.findData(L["tex"])
             if k < 0 and L["tex"]:                               # kullanıcı dosyası: listede göster
                 cb_img.insertItem(cb_img.count() - 1, T("Dosya: ") + os.path.basename(L["tex"]), L["tex"])
@@ -880,6 +887,7 @@ def open_surface(on_change=None, is_busy=None):
             L["opacity"] = sp_op.value() / 100.0
             L["invert"] = b_inv.isChecked()
             L["tex_proj"] = cb_proj.currentData() or "cubic"
+            L["tile"] = cb_tile.currentData() or "auto"
             if cb_img.currentData() != "__file__":
                 L["tex"] = cb_img.currentData() or ""
             L["ptype"] = cb_pt.currentData() or "turbulence"
@@ -1041,7 +1049,7 @@ def open_surface(on_change=None, is_busy=None):
             update_row()
             schedule(PREVIEW_DELAY_MS)
 
-        for w_ in (cb_type, cb_blend, cb_proj, cb_pt):
+        for w_ in (cb_type, cb_blend, cb_proj, cb_pt, cb_tile):
             w_.currentIndexChanged.connect(on_edit)
         cb_img.currentIndexChanged.connect(on_img)
         b_load.clicked.connect(lambda *_a: load_external())

@@ -262,7 +262,7 @@ def _prep_layers(m, scene):
                 base.update(proc=True, q=dict(L, axis=int(L.get("tex_axis", 2))), size=float(L.get("tex_scale", 0.0)),
                             c1=_lin(L.get("pcolor1", (0, 0, 0))), c2=_lin(L.get("pcolor2", (1, 1, 1))))
             else:
-                t_ = load_texture(L["tex"])
+                t_ = load_texture(L["tex"], L.get("tile"))
                 if t_ is None:
                     continue
                 w_ = float(L.get("tex_scale", 0.0))
