@@ -379,6 +379,11 @@ def normalize(d):
 def library():
     """Hazır + kullanıcı malzemeleri (kullanıcınınki aynı adı ezer)."""
     lib = dict(BUILTIN)
+    try:
+        from . import docstore
+        lib.update(docstore.doc_materials())       # belgeye gömülü tanımlar (kullanıcının kütüphanesinde olmayan adlar için)
+    except Exception:
+        pass
     lib.update(load_user())
     return lib
 

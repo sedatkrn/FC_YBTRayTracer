@@ -185,9 +185,18 @@ def open_surface(on_change=None, is_busy=None):
     pin0 = bool(prm.GetBool("SurfaceOnTop", True))
     # "en üstte": render penceresinin çocuğu (transient) olur; pencere yöneticisi onu her zaman ebeveyninin üstünde tutar
     # (Wayland'de de çalışır). Kapalıyken FreeCAD ana penceresinin çocuğudur: render penceresi onu örtebilir.
-    dlg = QtGui.QDialog(main_dlg if (pin0 and main_dlg is not None) else Gui.getMainWindow())
+    dlg = QtGui.QDialog(main_dlg if (pin0 and main_dlg is not None) else None)
+    dlg.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowCloseButtonHint)
     dlg.setWindowTitle(T("Yüzey / Malzeme Düzenleyici"))
     dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
+
+    def _save_doc(*_a):
+        try:
+            from . import docstore
+            docstore.save(FreeCAD.ActiveDocument)               # kullanılan malzeme tanımları belgeyle birlikte saklanır
+        except Exception:
+            pass
+    dlg.finished.connect(_save_doc)
     _theme.apply(dlg)                                           # koyu gri palet (ana pencereyle aynı)
     st = {"mat": M.normalize({}), "name": "", "lock": False, "items": []}
     widgets = {}

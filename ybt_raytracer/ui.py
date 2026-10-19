@@ -41,6 +41,7 @@ def main(lang=None):
         except Exception:
             pass
     g = vars(S)                      # ayarlar settings modülünde durur
+    from . import docstore as _ds
     if not getattr(FreeCAD, "_ybt_defaults_applied", False):     # kayıtlı varsayılanlar oturumda bir kez yüklenir
         FreeCAD._ybt_defaults_applied = True
         try:
@@ -48,7 +49,12 @@ def main(lang=None):
         except Exception as ex:
             FreeCAD.Console.PrintWarning("RayTrace: defaults: %s\n" % ex)
 
-    dlg = QtGui.QDialog(Gui.getMainWindow())
+    try:
+        _ds.load_settings(doc)                                  # belgeye kaydedilmiş panel ayarları (varsa) kullanıcı varsayılanlarının üstüne biner
+    except Exception as ex:
+        FreeCAD.Console.PrintWarning("RayTrace: doc settings: %s\n" % ex)
+    dlg = QtGui.QDialog(None)                                   # ebeveynsiz üst düzey pencere: görev çubuğunda görünür, küçültülebilir
+    dlg.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowMaximizeButtonHint | QtCore.Qt.WindowCloseButtonHint)
     dlg.setWindowTitle("FC YBT Raytracer v%s" % _VER)
     _theme.apply(dlg)                                           # koyu gri palet (theme.py)
     try:
@@ -1209,6 +1215,11 @@ def main(lang=None):
             view = Gui.ActiveDocument.ActiveView
             cam, aspect = read_camera(view)
             apply_basic()
+            try:
+                apply_all()
+                _ds.save(d)                                     # ayarlar + malzeme tanımları belgeyle birlikte saklanır
+            except Exception as ex:
+                FreeCAD.Console.PrintWarning("RayTrace: doc save: %s\n" % ex)
             fc_info = ""
             fc = None
             if ck_fc.isChecked():
@@ -1358,6 +1369,13 @@ def main(lang=None):
     lbl.on_click = on_preview_click
     lbl.setToolTip(T("Render aldıktan sonra bir parçaya tıklayın: Malzemeler penceresinde seçilir (Ctrl: seçime ekle)"))
 
+    def _save_to_doc(*_a):
+        try:
+            apply_all()
+            _ds.save(FreeCAD.ActiveDocument)
+        except Exception:
+            pass
+    dlg.finished.connect(_save_to_doc)                          # pencere kapanırken de belgeye yaz
     FreeCAD._raytrace_dlg = dlg
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     _theme.fix_combos(dlg)
