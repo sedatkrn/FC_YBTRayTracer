@@ -181,6 +181,17 @@ Settings are passed as keyword arguments named like `settings.py` (lower case) a
 Cameras: `api.make_camera(pos, target, fov=40)`, `api.fit_camera(scene)`, `api.orbit_cameras(...)`. In headless FreeCAD (`freecadcmd`) an isometric camera fitting the scene is used when no camera is given.
 Pass a fresh dict as `tess_cache` when shape parameters change. Ready-made example: [`examples/FC_ybt_turntable.FCMacro`](examples/FC_ybt_turntable.FCMacro) (camera turntable or rotating part; frame sequence → video with `ffmpeg`).
 
+### Screenshots
+
+| HDRI sky | Standard lights |
+|---|---|
+| ![Garden with HDRI](docs/hdri_ev.png) | ![Garden with standard lights](docs/sky_ev_standart.png) |
+| ![Room with HDRI](docs/hdri_oda.png) | ![Room with standard lights](docs/oda_standart.png) |
+
+![Environment / HDRI settings](docs/panel_hdri.jpg)
+![Material window](docs/surface_editor.jpg)
+![Texture editor](docs/texture_editor.jpg)
+
 ### Limitations
 
 - Mesh vertex colors are not used; the object's single colour/material applies.
