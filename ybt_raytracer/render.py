@@ -877,7 +877,10 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             if env_light:                                       # gökyüzü ışığı: birincilde görünürlük tamponu, ikincilde SH
                 if env_bufs is not None and depth == 0:
                     qy_, qx_ = py[pix[hi]], px[pix[hi]]
-                    lit += np.stack([b_[qy_, qx_] for b_ in env_bufs], 1) * env_i
+                    e_l = np.stack([b_[qy_, qx_] for b_ in env_bufs], 1) * env_i
+                    if bool(S.AO):                              # temas/köşe kararması gökyüzü ışığına da uygulanır
+                        e_l = e_l * (1.0 - float(S.AO_STRENGTH) * ao_buf[qy_, qx_])[:, None]
+                    lit += e_l
                 else:
                     lit += env.sh_light(_rot_z(nrm, -env_rot)) * env_i
             spec_sum = np.zeros((len(hi), 3))
