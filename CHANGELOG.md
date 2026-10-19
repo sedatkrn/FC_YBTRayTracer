@@ -1,6 +1,10 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.5.0 (hazırlanıyor):
+
+- **Doku yönü ve yerleşimi** (Surface penceresi, "Doku yönü ve yerleşimi" grubu): projeksiyon (Küp 3 yönlü / Düzlemsel / Silindirik / Küresel), eksen (X/Y/Z), eksen başına ölçek, konum (mm), dönme, "Dünya koordinatları" kutusu. Varsayılan nesne koordinatı: doku nesnenin sınır kutusu merkezine bağlıdır, nesneyle birlikte gider. UV gerekmez.
+
 v1.4.0:
 
 - **Varsayılanlar menüsü**: panelin en üstünde "⚙ Varsayılanlar…" düğmesi. Mevcut ayarlar düzenlenebilir tabloda görünür; varsayılan olarak kaydedilir (FreeCAD açılışında yüklenir), son 10 kayıtlık geçmişten geri dönülür, fabrika ayarları panele yüklenebilir (ybt_raytracer/userdefaults.py, `ybt_raytracer_defaults.json`).

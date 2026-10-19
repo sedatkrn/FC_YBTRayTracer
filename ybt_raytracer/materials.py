@@ -14,6 +14,12 @@ Bir malzeme sözlüğü:
   tex     ""/anahtar  doku (textures.PRESETS anahtarı; "" = düz renk). Nesneye UV gerekmez: dünya koordinatından üç düzlemli izdüşüm.
   tex_scale  >=0 doku tekrarının belge birimiyle (mm) genişliği; 0 = otomatik (sahne boyutuna göre)
   tex_mix 0..1   doku ile malzeme/nesne renginin karışımı (1 = yalnız doku)
+  tex_proj  "cubic" (3 yönlü, varsayılan) | "planar" | "cylindrical" | "spherical": doku izdüşümü
+  tex_axis  0/1/2  düzlemsel: bakış ekseni (X/Y/Z); silindirik/küresel: kutup ekseni
+  tex_sx/sy/sz     eksen başına doku ölçeği çarpanı (1 = tex_scale genişliği)
+  tex_px/py/pz     doku konumu (mm; koordinat orijinine göre kayma)
+  tex_rx/ry/rz     doku dönmesi (derece, X sonra Y sonra Z)
+  tex_world        False: nesne koordinatı (doku nesnenin sınır kutusu merkezine bağlı, nesneyle birlikte gider); True: dünya koordinatı
 Atama nesnenin 'YBTMaterial' (metin) özelliğinde saklanır; belgeyle birlikte kaydolur.
 "Render'a dahil et" işareti nesnenin 'YBTInclude' (mantıksal) özelliğinde saklanır; özellik yoksa nesne dahildir.
 """
@@ -24,7 +30,9 @@ PROP = "YBTMaterial"
 INC_PROP = "YBTInclude"
 
 DEFAULT = dict(color=None, diffuse=1.0, spec=0.30, gloss=0.28, metal=0.0, refl=0.0, transp=0.0, ior=1.0, lum=0.0,
-               tex="", tex_scale=0.0, tex_mix=1.0)
+               tex="", tex_scale=0.0, tex_mix=1.0,
+               tex_proj="cubic", tex_axis=2, tex_sx=1.0, tex_sy=1.0, tex_sz=1.0,
+               tex_px=0.0, tex_py=0.0, tex_pz=0.0, tex_rx=0.0, tex_ry=0.0, tex_rz=0.0, tex_world=False)
 KEYS = tuple(DEFAULT.keys())
 
 
@@ -257,6 +265,18 @@ def normalize(d):
     for k, (lo, hi) in lim.items():
         out[k] = min(max(float(out[k]), lo), hi)
     out["tex"] = str(out["tex"] or "")
+    out["tex_proj"] = out["tex_proj"] if out["tex_proj"] in ("cubic", "planar", "cylindrical", "spherical") else "cubic"
+    try:
+        out["tex_axis"] = min(max(int(out["tex_axis"]), 0), 2)
+    except Exception:
+        out["tex_axis"] = 2
+    for k in ("tex_sx", "tex_sy", "tex_sz"):
+        out[k] = min(max(float(out[k]), 0.01), 1000.0)
+    for k in ("tex_px", "tex_py", "tex_pz"):
+        out[k] = min(max(float(out[k]), -1e9), 1e9)
+    for k in ("tex_rx", "tex_ry", "tex_rz"):
+        out[k] = min(max(float(out[k]), -360.0), 360.0)
+    out["tex_world"] = bool(out["tex_world"])
     return out
 
 

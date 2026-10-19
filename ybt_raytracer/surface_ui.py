@@ -54,6 +54,8 @@ def _preview_scene(mat, shape="sphere"):
     mat = dict(mat)
     if mat.get("tex"):                                     # önizleme nesnesi ~2 birim: doku tekrarı 1 birim (ya da mm/100)
         mat["tex_scale"] = 1.0 if mat.get("tex_scale", 0.0) <= 0 else mat["tex_scale"] / 100.0
+        for _k in ("tex_px", "tex_py", "tex_pz"):
+            mat[_k] = mat.get(_k, 0.0) / 100.0
     nu, nv = 48, 24
     th = np.linspace(0, 2 * np.pi, nu + 1)
     ph = np.linspace(0, np.pi, nv + 1)
@@ -84,7 +86,8 @@ def _preview_scene(mat, shape="sphere"):
     cols = np.concatenate(cols + [np.array(gc)])
     alps = np.concatenate(alps + [np.ones(len(gt))])
     mids = np.concatenate(mids + [np.zeros(len(gt), dtype=np.int32)])
-    return Scene(tris, cols, alps, mids, [mat])
+    oids = np.concatenate([np.zeros(len(sph), dtype=np.int32), np.full(len(gt), -1, dtype=np.int32)])
+    return Scene(tris, cols, alps, mids, [mat], oid=oids, onames=["preview"])
 
 
 def render_preview(mat, w=280, h=210, shape="sphere"):
@@ -285,6 +288,44 @@ def open_surface(on_change=None, is_busy=None):
     cb_tex.setToolTip(T("Malzemeye doku atar. Nesnede UV gerekmez: doku dünya koordinatından üç yönden izdüşürülür."))
     tex_row.addWidget(cb_tex, 1)
     right.addLayout(tex_row)
+    # ---- doku yönü / yerleşimi (LightWave "T" paneli sadeleştirilmiş) ----
+    gb_tex = QtGui.QGroupBox(T("Doku yönü ve yerleşimi"))
+    tgl = QtGui.QGridLayout(gb_tex)
+    tgl.addWidget(QtGui.QLabel(T("Projeksiyon")), 0, 0)
+    cb_proj = QtGui.QComboBox()
+    for k_, nm_ in (("cubic", "Küp (3 yönlü)"), ("planar", "Düzlemsel"), ("cylindrical", "Silindirik"), ("spherical", "Küresel")):
+        cb_proj.addItem(T(nm_), k_)
+    cb_proj.setToolTip(T("Küp: üç yönden izdüşüm (UV gerekmez). Düzlemsel: tek eksen boyunca. Silindirik/Küresel: nesne merkezi etrafında sarar."))
+    tgl.addWidget(cb_proj, 0, 1, 1, 2)
+    tgl.addWidget(QtGui.QLabel(T("Eksen")), 0, 3)
+    cb_axis = QtGui.QComboBox()
+    for i_, nm_ in enumerate(("X", "Y", "Z")):
+        cb_axis.addItem(nm_, i_)
+    cb_axis.setToolTip(T("Düzlemsel: dokunun baktığı eksen. Silindirik/Küresel: kutup ekseni."))
+    tgl.addWidget(cb_axis, 0, 4)
+    ck_world = QtGui.QCheckBox(T("Dünya koordinatları"))
+    ck_world.setToolTip(T("Kapalı: doku nesnenin merkezine bağlıdır, nesneyle birlikte gider. Açık: doku sabit uzayda durur (nesne hareket edince kayar)."))
+    tgl.addWidget(ck_world, 1, 0, 1, 3)
+    btn_trst = QtGui.QPushButton(T("Sıfırla"))
+    btn_trst.setToolTip(T("Doku ölçek, konum ve dönmesini varsayılana döndürür"))
+    tgl.addWidget(btn_trst, 1, 3, 1, 2)
+    tsp = {}
+    for r_, (ttl, pref, lo_, hi_, stp_, dec_, suf_) in enumerate((
+            (T("Ölçek"), "tex_s", 0.01, 1000.0, 0.1, 2, ""),
+            (T("Konum (mm)"), "tex_p", -1e6, 1e6, 10.0, 1, ""),
+            (T("Dönme"), "tex_r", -360.0, 360.0, 5.0, 1, "°"))):
+        tgl.addWidget(QtGui.QLabel(ttl), 2 + r_, 0)
+        for c_, ax_ in enumerate("xyz"):
+            sp_ = QtGui.QDoubleSpinBox()
+            sp_.setRange(lo_, hi_)
+            sp_.setSingleStep(stp_)
+            sp_.setDecimals(dec_)
+            if suf_:
+                sp_.setSuffix(suf_)
+            sp_.setPrefix(ax_.upper() + " ")
+            tgl.addWidget(sp_, 2 + r_, 1 + c_)
+            tsp[pref + ax_] = sp_
+    right.addWidget(gb_tex)
     grid = QtGui.QGridLayout()
     for r, (key, label, lo, hi, tip) in enumerate(_PARAMS):
         lb = QtGui.QLabel(T(label))
@@ -371,6 +412,12 @@ def open_surface(on_change=None, is_busy=None):
             sp.setValue(v)
             sl.setValue(int(round((v - lo) / (hi - lo) * 1000)))
         cb_tex.setCurrentIndex(max(0, cb_tex.findData(st["mat"].get("tex", ""))))
+        cb_proj.setCurrentIndex(max(0, cb_proj.findData(st["mat"]["tex_proj"])))
+        cb_axis.setCurrentIndex(int(st["mat"]["tex_axis"]))
+        ck_world.setChecked(bool(st["mat"]["tex_world"]))
+        for k_, sp_ in tsp.items():
+            sp_.setValue(float(st["mat"][k_]))
+        sync_tex_ui()
         ck_fc.setChecked(st["mat"]["color"] is None)
         btn_color.setStyleSheet(color_css(st["mat"]["color"] or (0.7, 0.7, 0.72)))
         btn_color.setEnabled(st["mat"]["color"] is not None)
@@ -402,10 +449,40 @@ def open_surface(on_change=None, is_busy=None):
     for key, (sl, sp, lo, hi) in widgets.items():
         make_param_handlers(key, sl, sp, lo, hi)
 
+    def sync_tex_ui(*_a):
+        has = bool(st["mat"].get("tex"))
+        gb_tex.setEnabled(has)
+        cb_axis.setEnabled(has and cb_proj.currentData() != "cubic")
+
+    def on_tex_prop(*_a):
+        if st["lock"]:
+            return
+        st["mat"]["tex_proj"] = cb_proj.currentData() or "cubic"
+        st["mat"]["tex_axis"] = int(cb_axis.currentData() or 0)
+        st["mat"]["tex_world"] = ck_world.isChecked()
+        for k_, sp_ in tsp.items():
+            st["mat"][k_] = float(sp_.value())
+        sync_tex_ui()
+        schedule(PREVIEW_DELAY_MS)
+    cb_proj.currentIndexChanged.connect(on_tex_prop)
+    cb_axis.currentIndexChanged.connect(on_tex_prop)
+    ck_world.toggled.connect(on_tex_prop)
+    for _sp in tsp.values():
+        _sp.valueChanged.connect(on_tex_prop)
+
+    def reset_tex_place():
+        for k_, sp_ in tsp.items():
+            sp_.blockSignals(True)
+            sp_.setValue(1.0 if k_.startswith("tex_s") else 0.0)
+            sp_.blockSignals(False)
+        on_tex_prop()
+    btn_trst.clicked.connect(reset_tex_place)
+
     def on_tex_changed(_i):
         if st["lock"]:
             return
         st["mat"]["tex"] = cb_tex.currentData() or ""
+        sync_tex_ui()
         schedule()
     cb_tex.currentIndexChanged.connect(on_tex_changed)
 

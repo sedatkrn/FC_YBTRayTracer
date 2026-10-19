@@ -104,6 +104,84 @@ def _soft_blur(v0, Tb, valid, oid, foot, ndl, tan_t, rmax=48):
     return out
 
 
+_PLANE = ((1, 2), (0, 2), (0, 1))        # X, Y, Z eksenine dik düzlemin (u, v) eksenleri
+
+
+def _tex_params(m):
+    """Malzeme sözlüğünden doku yerleşim parametreleri (render için hazır)."""
+    rx, ry, rz = [np.radians(float(m.get(k, 0.0))) for k in ("tex_rx", "tex_ry", "tex_rz")]
+    cx, sx_, cy, sy_, cz, sz_ = np.cos(rx), np.sin(rx), np.cos(ry), np.sin(ry), np.cos(rz), np.sin(rz)
+    Rx = np.array([[1, 0, 0], [0, cx, -sx_], [0, sx_, cx]])
+    Ry = np.array([[cy, 0, sy_], [0, 1, 0], [-sy_, 0, cy]])
+    Rz = np.array([[cz, -sz_, 0], [sz_, cz, 0], [0, 0, 1]])
+    R = Rz @ Ry @ Rx
+    ident = not any(float(m.get(k, 0.0)) for k in ("tex_rx", "tex_ry", "tex_rz"))
+    return dict(proj=str(m.get("tex_proj", "cubic")), axis=int(m.get("tex_axis", 2)),
+                s=np.array([float(m.get("tex_sx", 1.0)), float(m.get("tex_sy", 1.0)), float(m.get("tex_sz", 1.0))]),
+                pos=np.array([float(m.get("tex_px", 0.0)), float(m.get("tex_py", 0.0)), float(m.get("tex_pz", 0.0))]),
+                R=None if ident else R, world=bool(m.get("tex_world", False)))
+
+
+def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
+    """Doku rengi (n,3) doğrusal. Pc: sahne merkezine göre vuruş noktaları; ng: geometrik normal; tid: üçgen kimliği."""
+    n = len(Pc)
+    if tp["world"]:
+        C = np.tile(-scene.center, (n, 1))
+        hext = None
+    else:
+        cen, he = scene.obj_bounds()
+        oi = scene.oid[tid]
+        okk = (oi >= 0) & (oi < len(cen))
+        okk[okk] = ~np.isnan(cen[oi[okk], 0])
+        C = np.tile(-scene.center, (n, 1))
+        hext = np.full((n, 3), scene.diag / 4.0)
+        if okk.any():
+            C[okk] = cen[oi[okk]]
+            hext[okk] = he[oi[okk]]
+    Q = Pc - C - tp["pos"]
+    nl = ng
+    if tp["R"] is not None:
+        Q = Q @ tp["R"]
+        nl = nl @ tp["R"]
+    Q = Q / tp["s"]
+    per = tw * tx.span
+    cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
+    foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
+    lod = np.log2(np.maximum(foot / (tw * float(np.mean(tp["s"])) / tx.base_w), 1.0))
+    proj, ax = tp["proj"], tp["axis"]
+    if proj in ("cylindrical", "spherical"):
+        a_, b_ = _PLANE[ax]
+        ang = np.arctan2(Q[:, b_], Q[:, a_]) / (2.0 * np.pi)
+        sav = float(np.mean(tp["s"]))
+        if hext is None:
+            R0 = np.full(n, scene.diag / 4.0)
+        elif proj == "cylindrical":
+            R0 = np.maximum(hext[:, a_], hext[:, b_])
+        else:
+            R0 = hext.max(1)
+        rep = np.maximum(1.0, np.round(2.0 * np.pi * R0 / (sav * per)))
+        if proj == "cylindrical":
+            u, v = ang * rep, Q[:, ax] / (per * tx.aspect)
+        else:
+            rr = np.maximum(np.sqrt((Q * Q).sum(1)), 1e-12)
+            lat = np.arcsin(np.clip(Q[:, ax] / rr, -1.0, 1.0)) / np.pi + 0.5
+            u, v = ang * rep, lat * rep / 2.0 / tx.aspect
+        return tx.sample(u, v, lod)
+    if proj == "planar":
+        a_, b_ = _PLANE[ax]
+        return tx.sample(Q[:, a_] / per, Q[:, b_] / (per * tx.aspect), lod)
+    wt3 = np.abs(nl) ** 4                                   # "cubic": üç düzlemli, normale göre ağırlıklı
+    wt3 /= wt3.sum(1, keepdims=True)
+    tcol = np.zeros((n, 3))
+    wsum = np.zeros(n)
+    for axx, (a_, b_) in enumerate(_PLANE):
+        sl = np.nonzero(wt3[:, axx] > 0.02)[0]
+        if len(sl):
+            tcol[sl] += wt3[sl, axx][:, None] * tx.sample(Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect), lod[sl])
+            wsum[sl] += wt3[sl, axx]
+    return tcol / np.maximum(wsum, 1e-9)[:, None]
+
+
 def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, tick=None, stage=None):
     """
     cam: dict(pos, fwd, up, persp=bool, size=float)
@@ -194,7 +272,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             if t_ is not None:
                 w_ = float(m_.get("tex_scale", 0.0))
                 w_ = w_ if w_ > 0 else t_.rel * scene.diag
-                tex_mats[i_ + 1] = (t_, max(w_, 1e-6 * scene.diag), float(m_.get("tex_mix", 1.0)))
+                tex_mats[i_ + 1] = (t_, max(w_, 1e-6 * scene.diag), float(m_.get("tex_mix", 1.0)), _tex_params(m_))
+    if tex_mats and any(not t_[3]["world"] for t_ in tex_mats.values()):
+        scene.obj_bounds()                                    # çatallanmadan önce hesapla (işçiler paylaşır)
     pix_ang_g = 2.0 * (np.tan(cam["size"] / 2.0) if bool(cam["persp"]) else cam["size"] / 2.0) / max(h, 1)
     refr = bool(S.GLASS and has_glass and float(ior_tab.max()) > 1.0005)   # kırılma: Snell yasası, çıkışta tam iç yansıma
     f_on = bool(S.FLOOR)
@@ -534,27 +614,13 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     albedo[isf0] = ftex.sample(u, v, lod)
             a = alpha_ext[tid]
             mt = mid_ext[tid]                                   # nokta başına malzeme indeksi
-            if tex_mats:                                        # malzeme dokusu: UV'siz, dünya koordinatından üç düzlemli izdüşüm
-                for k_, (tx, tw, mix) in tex_mats.items():
+            if tex_mats:                                        # malzeme dokusu: UV'siz; izdüşüm ve yerleşim malzeme ayarlarından
+                for k_, (tx, tw, mix, tp) in tex_mats.items():
                     ix = np.nonzero(mt == k_)[0]
                     if len(ix) == 0:
                         continue
-                    Pw = P[ix] + scene.center
-                    wt3 = np.abs(ngeo[ix]) ** 4
-                    wt3 /= wt3.sum(1, keepdims=True)
-                    cosg = np.maximum(np.abs(_dot(ngeo[ix], Dh[ix])), 0.2)
-                    dist = tb[hi][ix] if persp else np.ones(len(ix))
-                    foot = dist * pix_ang_g / cosg * (1.0 + 3.0 * RN[hi][ix])
-                    lod = np.log2(np.maximum(foot / (tw / tx.base_w), 1.0))
-                    per = tw * tx.span
-                    tcol = np.zeros((len(ix), 3))
-                    wsum = np.zeros(len(ix))
-                    for ax, (a_, b_) in enumerate(((1, 2), (0, 2), (0, 1))):
-                        sl = np.nonzero(wt3[:, ax] > 0.02)[0]
-                        if len(sl):
-                            tcol[sl] += wt3[sl, ax][:, None] * tx.sample(Pw[sl, a_] / per, Pw[sl, b_] / (per * tx.aspect), lod[sl])
-                            wsum[sl] += wt3[sl, ax]
-                    tcol /= np.maximum(wsum, 1e-9)[:, None]
+                    tcol = _tex_sample(scene, tx, tw, tp, P[ix], ngeo[ix], Dh[ix], tid[ix],
+                                       tb[hi][ix] if persp else np.ones(len(ix)), RN[hi][ix], pix_ang_g)
                     albedo[ix] = (1.0 - mix) * albedo[ix] + mix * tcol
             albedo_raw = albedo
             if has_mat:

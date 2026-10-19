@@ -40,6 +40,29 @@ class Scene(object):
         self.v0B = (v0 * b).sum(1)
         self.count = len(v0)
 
+    def obj_bounds(self):
+        """Nesne başına sınır kutusu: (merkez, yarı boyut), (K,3) dizileri; sahne merkezine göre. oid < 0 olan ya da boş nesne için NaN.
+        Doku koordinatları (nesne koordinatı) ve silindirik/küresel izdüşüm için; bir kez hesaplanır."""
+        ob = getattr(self, "_obj_bounds", None)
+        if ob is None:
+            m = self.oid >= 0
+            k = int(self.oid.max()) + 1 if m.any() else 1
+            cen = np.full((k, 3), np.nan)
+            hext = np.full((k, 3), np.nan)
+            if m.any():
+                t = self.tri[m]
+                o = self.oid[m]
+                order = np.argsort(o, kind="stable")
+                os_ = o[order]
+                starts = np.flatnonzero(np.r_[True, os_[1:] != os_[:-1]])
+                lo = np.minimum.reduceat(t.min(1)[order], starts, axis=0)
+                hi = np.maximum.reduceat(t.max(1)[order], starts, axis=0)
+                ids = os_[starts]
+                cen[ids] = (lo + hi) / 2.0
+                hext[ids] = (hi - lo) / 2.0
+            ob = self._obj_bounds = (cen, hext)
+        return ob
+
     def smooth_normals(self, angle_deg=45.0):
         """Köşe normalleri (count,3,3): aynı noktada buluşan, aralarındaki açı eşikten küçük yüzlerin alan ağırlıklı
         ortalaması. Eğri yüzeyler (küre, simit, silindir yanı) pürüzsüz görünür; keskin kenarlar (küp, plaka) korunur."""
