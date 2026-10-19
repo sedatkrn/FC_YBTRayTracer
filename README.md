@@ -26,7 +26,12 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - **"Render'a dahil et"** kutusu: Malzemeler (Surface) penceresindeki nesne listesinde her nesnenin onay kutusu; kutusu kaldırılan nesne sahneye hiç girmez (gölge/yansıma da vermez)
 - **"Kadraj dışındaki nesneleri atla"** seçeneği: kameranın görmediği nesneler üçgenlenmez ve sahne boyutuna katılmaz (büyük modelde yakın plan çekimlerde hızlandırır)
 - **Arayüzsüz API** (`ybt_raytracer.api`): panel açmadan render, **turntable** ve hareketli parça **animasyonu** (aşağıya bakın)
-- Ayar paneli ile açılan pencere, alt kısımda ilerleme çubuğu, durdurma, farklı kaydet
+- **Ortam / HDRI**: hazır gökyüzü ya da `.hdr` / PNG / JPG (equirectangular) harita; arka plan, yansıma ve gökyüzü aydınlatması (pencereden giren ışık dahil), haritadaki güneş otomatik gölgeli ışık olur; şiddet, dönüş, ışın sayısı
+- **Malzemeler (Surface) penceresi**: renk, diffuse, specular, glossiness, metal, yansıma, saydamlık, kırılma indisi, parlama (luminosity), bump; hazır malzeme kütüphanesi, kendi malzemelerin, nesne listesinde sağ tık kopyala/yapıştır, boya kovası
+- **LightWave tarzı Doku Düzenleyici**: her kanal için çok katmanlı doku (görüntü ya da prosedürel), blend modları, projeksiyon (küp / düzlemsel / silindirik / küresel), ölçek-konum-dönme, otomatik boyutlandır, döşeme modu (otomatik / tekrar / ayna), katman önizlemesi
+- **Prosedürel dokular**: türbülans, fraktal, damar, mermer, ahşap, dama, ızgara, nokta, tuğla, dalga (görüntü gerekmez)
+- **Belgeyle saklama**: panel ayarları ve kullanılan malzeme tanımları FCStd içine yazılır; belge başka bilgisayarda açılınca geri gelir
+- Ayar paneli ile açılan pencere, alt kısımda ilerleme çubuğu, durdurma, farklı kaydet; pencereler görev çubuğunda görünür ve küçültülebilir
 
 ![Sanal zemin ve ayar paneli](docs/sanal_zemin.png)
 ![Cam ve yansıma](docs/cam_yansima.png)
@@ -34,6 +39,20 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 ![Yumuşak yüzeyler: önce / sonra](docs/smooth_shading.png)
 ![Cam kırılması: IOR kapalı / 1.5](docs/refraction.png)
 ![Işıklar](docs/bim_isiklar.png)
+
+### Ortam / HDRI
+
+| HDRI gökyüzü | Standart ışıklar |
+|---|---|
+| ![HDRI ile bahçe](docs/hdri_ev.png) | ![Standart ışıklarla bahçe](docs/sky_ev_standart.png) |
+| ![HDRI ile oda](docs/hdri_oda.png) | ![Standart ışıklarla oda](docs/oda_standart.png) |
+
+![Ortam / HDRI ayarları](docs/panel_hdri.jpg)
+
+### Malzemeler ve dokular
+
+![Malzeme penceresi](docs/surface_editor.jpg)
+![Doku düzenleyici](docs/texture_editor.jpg)
 
 ## Dil / Language
 Panelin sağ üstündeki "Dil / Language" kutusundan Türkçe veya English seçilir; seçim hatırlanır (ilk açılışta FreeCAD arayüz dili Türkçeyse Türkçe, değilse English).
@@ -84,11 +103,12 @@ Kamera: `api.make_camera(pos, target, fov=40)`, `api.fit_camera(scene)`, `api.or
 - Kırılma yalnızca saydam yüzeylerde ve kapalı gövdelerde (küre, silindir, kutu) doğru çalışır; cam altında ışık odaklanması (kostik) yok, gölge camdan yarı saydam geçer.
 - Zemin dokularının bir kısmı (çakıl, mermer, taş, ahşap) kenarlardan aynalanarak tekrarlanır; geniş zeminde simetri fark edilebilir.
 - Sahne hazırlığı (üçgenleme, karo/ızgara/küme ağacı) tek çekirdekte; çok büyük sahnelerde cam/yansıma yavaştır (düşük kalite kademesi önerilir).
-- Malzeme parlaklığı/yansıtıcılığı henüz nesneden okunmuyor.
+- Sekmeli (dolaylı) ışık henüz yok: yalnız pencereden/ışıktan doğrudan gelen aydınlatma hesaplanır; kapalı iç mekânlarda ışık almayan duvarlar koyu kalır (ortam ışığı dolgu olarak kullanılabilir).
+- HDRI dosyaları büyükse (8k) ilk okuma birkaç saniye sürer; küçültülmüş hali önbelleğe alınır. Düşük dinamik aralıklı haritalarda güneş ayrılamaz.
 
 ## Yol haritası
 
-Metal yansıma rengi, nesne dokuları, yumuşak gölge / gökyüzü ışığı, ayarların hatırlanması, ışık ön ayarları, daha hızlı sahne hazırlığı.
+Sekmeli (dolaylı) aydınlatma (irradiance cache + Monte Carlo), son kalite yol izleme modu, yüzey özellikleri (çift taraflı, renk filtresi, pürüzlü yansıma, clearcoat), FreeCAD eklentisine (addon) dönüştürme, daha hızlı sahne hazırlığı.
 
 ## Lisans
 
@@ -117,7 +137,12 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - **"Include in render"** checkbox per object in the Materials (Surface) window's object list; unchecked objects are left out of the scene entirely (no shadows/reflections either)
 - **"Skip objects outside the frame"** option: objects the camera cannot see are not tessellated and do not count toward the scene size (speeds up close-ups of large models)
 - **Headless API** (`ybt_raytracer.api`): render without opening the panel, **turntable** and moving-part **animation** (see below)
-- Settings panel opens first; progress bar, stop button, save-as
+- **Environment / HDRI**: built-in sky or an equirectangular `.hdr` / PNG / JPG map; background, reflections and sky lighting (including light entering through windows); the sun in the map becomes a shadow-casting light; intensity, rotation, ray count
+- **Materials (Surface) window**: colour, diffuse, specular, glossiness, metal, reflection, transparency, IOR, luminosity, bump; built-in library, your own materials, right-click copy/paste on the object list, paint bucket
+- **LightWave-style Texture Editor**: multi-layer textures per channel (image or procedural), blend modes, projection (cubic / planar / cylindrical / spherical), scale-position-rotation, automatic sizing, tiling mode (auto / repeat / mirror), layer preview
+- **Procedural textures**: turbulence, fractal noise, veins, marble, wood, checker, grid, dots, bricks, ripples (no image needed)
+- **Stored with the document**: panel settings and the definitions of the materials in use are saved inside the FCStd and restored on any machine
+- Settings panel opens first; progress bar, stop button, save-as; windows show in the taskbar and can be minimised
 
 ### Install
 
@@ -162,11 +187,12 @@ Pass a fresh dict as `tess_cache` when shape parameters change. Ready-made examp
 - Refraction works best on transparent closed bodies (sphere, cylinder, box); no caustics, shadows pass through glass as partial shade.
 - Some floor textures (gravel, marble, stone, wood) tile by mirroring, so symmetry may show on a large floor.
 - Scene preparation (tessellation, tile/grid/cluster build) is single-threaded; glass/reflections on very large scenes are slow (use a lower quality level).
-- Material shininess/reflectivity is not yet read from objects.
+- No bounced (indirect) light yet: only direct light from lights/windows is computed, so walls that receive no light stay dark in closed interiors (use ambient light as fill).
+- Large (8k) HDRI files take a few seconds on first load; a reduced copy is cached. The sun cannot be extracted from low-dynamic-range maps.
 
 ### Roadmap
 
-Metal reflection colour, object textures, soft shadows / sky light, remembered settings, light presets, faster scene preparation.
+Bounced (indirect) lighting (irradiance cache + Monte Carlo), a final-quality path-tracing mode, surface features (double-sided, colour filter, glossy reflection, clearcoat), conversion into a FreeCAD addon, faster scene preparation.
 
 ### License
 
