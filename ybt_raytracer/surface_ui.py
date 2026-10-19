@@ -241,6 +241,14 @@ def open_surface(on_change=None, is_busy=None):
     left.addWidget(QtGui.QLabel("<b>%s</b>" % T("Malzeme kütüphanesi")))
     lst = QtGui.QListWidget()
     left.addWidget(lst, 3)
+    ck_auto = QtGui.QCheckBox(T("Değişiklikleri seçili nesnelere otomatik uygula"))
+    ck_auto.setToolTip(T("Sağdaki malzeme özelliklerini değiştirince, soldaki listede seçili nesnelere kendiliğinden atanır (ayrıca 'Seçili nesnelere ata' gerekmez)"))
+    try:
+        ck_auto.setChecked(bool(prm.GetBool("AutoApply", True)))
+    except Exception:
+        ck_auto.setChecked(True)
+    ck_auto.toggled.connect(lambda on: prm.SetBool("AutoApply", bool(on)))
+    left.addWidget(ck_auto)
     b_row = QtGui.QHBoxLayout()
     btn_assign = QtGui.QPushButton(T("Seçili nesnelere ata"))
     btn_clear = QtGui.QPushButton(T("Atamayı kaldır"))
@@ -296,19 +304,19 @@ def open_surface(on_change=None, is_busy=None):
     for k_, nm_ in (("cubic", "Küp (3 yönlü)"), ("planar", "Düzlemsel"), ("cylindrical", "Silindirik"), ("spherical", "Küresel")):
         cb_proj.addItem(T(nm_), k_)
     cb_proj.setToolTip(T("Küp: üç yönden izdüşüm (UV gerekmez). Düzlemsel: tek eksen boyunca. Silindirik/Küresel: nesne merkezi etrafında sarar."))
-    tgl.addWidget(cb_proj, 0, 1, 1, 2)
-    tgl.addWidget(QtGui.QLabel(T("Eksen")), 0, 3)
+    tgl.addWidget(cb_proj, 0, 1, 1, 3)
+    tgl.addWidget(QtGui.QLabel(T("Eksen")), 0, 4)
     cb_axis = QtGui.QComboBox()
     for i_, nm_ in enumerate(("X", "Y", "Z")):
         cb_axis.addItem(nm_, i_)
     cb_axis.setToolTip(T("Düzlemsel: dokunun baktığı eksen. Silindirik/Küresel: kutup ekseni."))
-    tgl.addWidget(cb_axis, 0, 4)
+    tgl.addWidget(cb_axis, 0, 5, 1, 2)
     ck_world = QtGui.QCheckBox(T("Dünya koordinatları"))
     ck_world.setToolTip(T("Kapalı: doku nesnenin merkezine bağlıdır, nesneyle birlikte gider. Açık: doku sabit uzayda durur (nesne hareket edince kayar)."))
-    tgl.addWidget(ck_world, 1, 0, 1, 3)
+    tgl.addWidget(ck_world, 1, 0, 1, 4)
     btn_trst = QtGui.QPushButton(T("Sıfırla"))
     btn_trst.setToolTip(T("Doku ölçek, konum ve dönmesini varsayılana döndürür"))
-    tgl.addWidget(btn_trst, 1, 3, 1, 2)
+    tgl.addWidget(btn_trst, 1, 4, 1, 3)
     tsp = {}
     for r_, (ttl, pref, lo_, hi_, stp_, dec_, suf_) in enumerate((
             (T("Ölçek"), "tex_s", 0.01, 1000.0, 0.1, 2, ""),
@@ -316,15 +324,19 @@ def open_surface(on_change=None, is_busy=None):
             (T("Dönme"), "tex_r", -360.0, 360.0, 5.0, 1, "°"))):
         tgl.addWidget(QtGui.QLabel(ttl), 2 + r_, 0)
         for c_, ax_ in enumerate("xyz"):
+            lb_ = QtGui.QLabel(ax_.upper())                 # eksen etiketi kutunun dışında, solunda (LightWave gibi)
+            lb_.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
             sp_ = QtGui.QDoubleSpinBox()
             sp_.setRange(lo_, hi_)
             sp_.setSingleStep(stp_)
             sp_.setDecimals(dec_)
             if suf_:
                 sp_.setSuffix(suf_)
-            sp_.setPrefix(ax_.upper() + " ")
-            tgl.addWidget(sp_, 2 + r_, 1 + c_)
+            tgl.addWidget(lb_, 2 + r_, 1 + 2 * c_)
+            tgl.addWidget(sp_, 2 + r_, 2 + 2 * c_)
             tsp[pref + ax_] = sp_
+    for c_ in range(3):
+        tgl.setColumnStretch(2 + 2 * c_, 1)
     right.addWidget(gb_tex)
     grid = QtGui.QGridLayout()
     for r, (key, label, lo, hi, tip) in enumerate(_PARAMS):
@@ -400,8 +412,15 @@ def open_surface(on_change=None, is_busy=None):
 
     timer.timeout.connect(do_preview)
 
-    def schedule(delay=150):
+    auto_timer = QtCore.QTimer(dlg)
+    auto_timer.setSingleShot(True)
+    auto_timer.timeout.connect(lambda: do_auto_apply())
+
+    def schedule(delay=150, user=True):
         timer.start(delay)
+        if user and not st["lock"]:                      # kullanıcı bir değer değiştirdi: seçili nesnelere otomatik uygula
+            st["auto_names"] = [it.data(0, QtCore.Qt.UserRole) for it in tree.selectedItems()]   # hedef: değişiklik anındaki seçim
+            auto_timer.start(600)
 
     def fill_editor(name, mat):
         st["lock"] = True
@@ -422,7 +441,7 @@ def open_surface(on_change=None, is_busy=None):
         btn_color.setStyleSheet(color_css(st["mat"]["color"] or (0.7, 0.7, 0.72)))
         btn_color.setEnabled(st["mat"]["color"] is not None)
         st["lock"] = False
-        schedule()
+        schedule(user=False)
 
     def make_param_handlers(key, sl, sp, lo, hi):
         def from_slider(v):
@@ -491,7 +510,7 @@ def open_surface(on_change=None, is_busy=None):
             prm.SetString("PreviewShape", cb_shape.currentData() or "sphere")
         except Exception:
             pass
-        schedule()
+        schedule(user=False)
     cb_shape.currentIndexChanged.connect(on_shape_changed)
 
     def on_fc_toggle(on):
@@ -665,6 +684,21 @@ def open_surface(on_change=None, is_busy=None):
             M.assign(o, name)
         changed()
         msg(T("%d nesneye atandı: %s") % (len(objs), display_name(name)))
+
+    def do_auto_apply():
+        """Düzenleyicide değişiklik yapıldı: malzemeyi kütüphanede güncelle ve seçili nesnelere ata (sessizce)."""
+        if not ck_auto.isChecked() or st["lock"]:
+            return
+        objs = [o for o in (doc.getObject(n) for n in st.get("auto_names", [])) if o is not None]
+        if not objs or not ed_name.text().strip():
+            return
+        name = commit_current()
+        if name is None:
+            return
+        for o in objs:
+            M.assign(o, name)
+        changed()
+        msg(T("%d nesneye otomatik uygulandı: %s") % (len(objs), display_name(name)))
 
     def do_clear():
         objs = sel_objects()

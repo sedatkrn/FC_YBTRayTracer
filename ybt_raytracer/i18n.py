@@ -495,4 +495,7 @@ EN = {
     'Ölçek': 'Scale',
     'Konum (mm)': 'Position (mm)',
     'Dönme': 'Rotation',
+    'Değişiklikleri seçili nesnelere otomatik uygula': 'Apply changes to selected objects automatically',
+    "Sağdaki malzeme özelliklerini değiştirince, soldaki listede seçili nesnelere kendiliğinden atanır (ayrıca 'Seçili nesnelere ata' gerekmez)": "When you change the material properties on the right, they are assigned to the objects selected in the list automatically (no need for 'Assign to selected')",
+    '%d nesneye otomatik uygulandı: %s': 'Applied automatically to %d objects: %s',
 }
