@@ -11,20 +11,12 @@ Bir malzeme sözlüğü:
   transp  0..1   saydamlık (0 = opak, 1 = tam saydam)
   ior     1..3   kırılma indisi (yalnız saydam malzemede etkili; 1 = düz geçiş)
   lum     0..1   kendi ışığı (parlama, ışıktan bağımsız)
-  tex     ""/anahtar  doku (textures.PRESETS anahtarı; "" = düz renk). Nesneye UV gerekmez: dünya koordinatından üç düzlemli izdüşüm.
-  tex_scale  >=0 doku tekrarının belge birimiyle (mm) genişliği; 0 = otomatik (sahne boyutuna göre)
-  tex_mix 0..1   doku ile malzeme/nesne renginin karışımı (1 = yalnız doku)
-  tex_proj  "cubic" (3 yönlü, varsayılan) | "planar" | "cylindrical" | "spherical": doku izdüşümü
-  tex_axis  0/1/2  düzlemsel: bakış ekseni (X/Y/Z); silindirik/küresel: kutup ekseni
-  tex_sx/sy/sz     eksen başına doku ölçeği çarpanı (1 = tex_scale genişliği)
-  tex_px/py/pz     doku konumu (mm; koordinat orijinine göre kayma)
-  tex_rx/ry/rz     doku dönmesi (derece, X sonra Y sonra Z)
-  tex_invert       gri tonlu kanallarda dokuyu ters çevir (yalnız renk dışı kanallar)
-  tex_strength     bump kanalı: yükseklik çarpanı (1 = %100)
-  tex_ch           {kanal: doku ayarı}: diffuse/spec/gloss/refl/transp/lum/bump kanallarının dokuları. Her doku ayarı yukarıdaki tex* alanlarını
-                   aynı adlarla taşır; renk kanalının dokusu malzemenin kendi tex* alanlarıdır. Gri tonlu kanalda değer = doku parlaklığı
-                   (0..1), tex_mix ile malzeme değerine karışır; bump kanalında doku yükseklik haritasıdır.
-  tex_world        False: nesne koordinatı (doku nesnenin sınır kutusu merkezine bağlı, nesneyle birlikte gider); True: dünya koordinatı
+  tex_layers {kanal: [katman, ...]}  kanal başına doku katmanları (alttan üste). Kanallar: color, diffuse, spec, gloss, refl, transp, lum, bump.
+              Katman: type "image"|"proc", name, on, opacity 0..1, blend, invert + görüntü (tex, tex_scale, tex_proj, tex_axis, tex_s*, tex_p*,
+              tex_r*, tex_world) ya da prosedürel (ptype, pvalue, pfreq, ppower, pcontrast, pstripes, pseed, pcolor1, pcolor2) alanları.
+              Gri tonlu kanalda katman değeri malzeme değerine, renk kanalında yüzey rengine karışır; bump kanalı yükseklik haritasıdır.
+  bump_height  bump kanalı yükseklik çarpanı (1 = %100)
+  (eski tek-doku alanları tex, tex_scale, tex_mix, tex_*, tex_ch okunurken katmanlara çevrilir)
 Atama nesnenin 'YBTMaterial' (metin) özelliğinde saklanır; belgeyle birlikte kaydolur.
 "Render'a dahil et" işareti nesnenin 'YBTInclude' (mantıksal) özelliğinde saklanır; özellik yoksa nesne dahildir.
 """
@@ -35,14 +27,22 @@ PROP = "YBTMaterial"
 INC_PROP = "YBTInclude"
 
 DEFAULT = dict(color=None, diffuse=1.0, spec=0.30, gloss=0.28, metal=0.0, refl=0.0, transp=0.0, ior=1.0, lum=0.0,
-               tex="", tex_scale=0.0, tex_mix=1.0,
-               tex_proj="cubic", tex_axis=2, tex_sx=1.0, tex_sy=1.0, tex_sz=1.0,
-               tex_px=0.0, tex_py=0.0, tex_pz=0.0, tex_rx=0.0, tex_ry=0.0, tex_rz=0.0, tex_world=False,
-               tex_invert=False, tex_strength=1.0, tex_ch={})
+               bump_height=1.0, tex_layers={})
+KEYS = tuple(DEFAULT.keys())
 CHANNELS = ("color", "diffuse", "spec", "gloss", "refl", "transp", "lum", "bump")
 GRAY_CHANNELS = CHANNELS[1:]
-SPEC_KEYS = tuple(k for k in DEFAULT if k.startswith("tex") and k != "tex_ch")
-KEYS = tuple(DEFAULT.keys())
+BLENDS = (("normal", "Normal"), ("add", "Toplamsal"), ("sub", "Çıkarmalı"), ("mul", "Çarpma"), ("div", "Bölme"),
+          ("diff", "Fark"), ("screen", "Ekran"), ("max", "Açık olan"), ("min", "Koyu olan"))
+BLEND_KEYS = tuple(k for k, _n in BLENDS)
+PROC_KEYS = ("turbulence", "fractal", "veins", "marble", "wood", "checker", "grid", "dots", "bricks", "ripples")
+# katman alanları (hem görüntü hem prosedürel katman bunların hepsini taşır; kullanılmayanlar yok sayılır)
+LAYER_DEFAULT = dict(type="image", name="", on=True, opacity=1.0, blend="normal", invert=False,
+                     tex="", tex_scale=0.0, tex_proj="cubic", tex_axis=2, tex_sx=1.0, tex_sy=1.0, tex_sz=1.0,
+                     tex_px=0.0, tex_py=0.0, tex_pz=0.0, tex_rx=0.0, tex_ry=0.0, tex_rz=0.0, tex_world=False,
+                     ptype="turbulence", pvalue=1.0, pfreq=3, ppower=0.5, pcontrast=0.0, pstripes=6.0, pseed=0,
+                     pcolor1=(0.0, 0.0, 0.0), pcolor2=(1.0, 1.0, 1.0))
+LEGACY_KEYS = ("tex", "tex_scale", "tex_mix", "tex_proj", "tex_axis", "tex_sx", "tex_sy", "tex_sz", "tex_px", "tex_py", "tex_pz",
+               "tex_rx", "tex_ry", "tex_rz", "tex_world", "tex_invert", "tex_strength", "tex_ch")
 
 
 def shininess(gloss):
@@ -261,45 +261,95 @@ def save_user(lib):
                   f, ensure_ascii=False, indent=1)
 
 
-def spec_default():
-    """Boş doku ayarı (tüm kanallar için ortak alanlar)."""
-    return {k: DEFAULT[k] for k in SPEC_KEYS}
+def new_layer(kind="image", **kw):
+    """Yeni katman sözlüğü (kind: "image" | "proc")."""
+    d = dict(LAYER_DEFAULT)
+    d["type"] = kind
+    d.update(kw)
+    return d
 
 
-def _norm_spec(out):
-    """Doku ayarı alanlarını (yerinde) geçerli aralıklara getirir."""
-    out["tex"] = str(out.get("tex") or "")
-    out["tex_scale"] = min(max(float(out.get("tex_scale", 0.0)), 0.0), 1e9)
-    out["tex_mix"] = min(max(float(out.get("tex_mix", 1.0)), 0.0), 1.0)
-    out["tex_proj"] = out.get("tex_proj") if out.get("tex_proj") in ("cubic", "planar", "cylindrical", "spherical") else "cubic"
+def norm_layer(src):
+    """Katman alanlarını geçerli aralıklara getirir (yeni sözlük döner)."""
+    d = dict(LAYER_DEFAULT)
+    for k in LAYER_DEFAULT:
+        if k in src and src[k] is not None:
+            d[k] = src[k]
+    d["type"] = "proc" if d["type"] in ("proc", "procedural") else "image"
+    d["name"] = str(d["name"] or "")
+    d["on"] = bool(d["on"])
+    d["opacity"] = min(max(float(d["opacity"]), 0.0), 1.0)
+    d["blend"] = d["blend"] if d["blend"] in BLEND_KEYS else "normal"
+    d["invert"] = bool(d["invert"])
+    d["tex"] = str(d["tex"] or "")
+    d["tex_scale"] = min(max(float(d["tex_scale"]), 0.0), 1e9)
+    d["tex_proj"] = d["tex_proj"] if d["tex_proj"] in ("cubic", "planar", "cylindrical", "spherical") else "cubic"
     try:
-        out["tex_axis"] = min(max(int(out.get("tex_axis", 2)), 0), 2)
+        d["tex_axis"] = min(max(int(d["tex_axis"]), 0), 2)
     except Exception:
-        out["tex_axis"] = 2
+        d["tex_axis"] = 2
     for k in ("tex_sx", "tex_sy", "tex_sz"):
-        out[k] = min(max(float(out.get(k, 1.0)), 0.01), 1000.0)
+        d[k] = min(max(float(d[k]), 0.01), 1000.0)
     for k in ("tex_px", "tex_py", "tex_pz"):
-        out[k] = min(max(float(out.get(k, 0.0)), -1e9), 1e9)
+        d[k] = min(max(float(d[k]), -1e9), 1e9)
     for k in ("tex_rx", "tex_ry", "tex_rz"):
-        out[k] = min(max(float(out.get(k, 0.0)), -360.0), 360.0)
-    out["tex_world"] = bool(out.get("tex_world", False))
-    out["tex_invert"] = bool(out.get("tex_invert", False))
-    out["tex_strength"] = min(max(float(out.get("tex_strength", 1.0)), 0.0), 20.0)
+        d[k] = min(max(float(d[k]), -360.0), 360.0)
+    d["tex_world"] = bool(d["tex_world"])
+    d["ptype"] = d["ptype"] if d["ptype"] in PROC_KEYS else "turbulence"
+    d["pvalue"] = min(max(float(d["pvalue"]), 0.0), 1.0)
+    d["pfreq"] = min(max(int(d["pfreq"]), 1), 8)
+    d["ppower"] = min(max(float(d["ppower"]), 0.05), 0.95)
+    d["pcontrast"] = min(max(float(d["pcontrast"]), -100.0), 100.0)
+    d["pstripes"] = min(max(float(d["pstripes"]), 0.1), 500.0)
+    d["pseed"] = int(d["pseed"])
+    for k in ("pcolor1", "pcolor2"):
+        c = d[k]
+        d[k] = tuple(min(max(float(x), 0.0), 1.0) for x in (c if c and len(c) == 3 else LAYER_DEFAULT[k]))
+    return d
+
+
+def layer_active(L):
+    """Katman render'ı etkiler mi: açık ve (prosedürel ya da görüntüsü seçili)."""
+    return bool(L.get("on", True)) and (L.get("type") == "proc" or bool(L.get("tex")))
+
+
+def layers_of(mat, chan):
+    """Kanalın katman listesi (canlı başvuru; yoksa oluşturulur). Alttan üste sıralı."""
+    return mat.setdefault("tex_layers", {}).setdefault(chan, [])
+
+
+def has_layers(mat, chan):
+    return any(layer_active(L) for L in (mat.get("tex_layers") or {}).get(chan, []))
+
+
+def _legacy_layers(d):
+    """Eski tek-doku alanlarından (tex*, tex_ch) katman listeleri üretir."""
+    out = {}
+
+    def conv(sp, chan):
+        if not sp or not sp.get("tex"):
+            return None
+        L = {k: sp[k] for k in LAYER_DEFAULT if k in sp}
+        L["type"] = "image"
+        L["opacity"] = sp.get("tex_mix", 1.0)
+        L["invert"] = sp.get("tex_invert", False)
+        L["name"] = sp.get("name", "")
+        return norm_layer(L)
+    c = conv({k: d.get(k) for k in LEGACY_KEYS if d.get(k) is not None}, "color")
+    if c:
+        out["color"] = [c]
+    raw = d.get("tex_ch") if isinstance(d.get("tex_ch"), dict) else {}
+    for chn in GRAY_CHANNELS:
+        sp = raw.get(chn)
+        if isinstance(sp, dict):
+            L = conv(sp, chn)
+            if L:
+                out[chn] = [L]
     return out
 
 
-def spec_of(mat, chan):
-    """Kanalın doku ayarı sözlüğü (canlı başvuru: değiştirilince malzeme değişir). Renk kanalı = malzemenin kendisi."""
-    if chan == "color":
-        return mat
-    chs = mat.setdefault("tex_ch", {})
-    if chan not in chs:
-        chs[chan] = spec_default()
-    return chs[chan]
-
-
 def normalize(d):
-    """Eksik/bozuk alanları varsayılanla tamamla, aralıklara sıkıştır."""
+    """Eksik/bozuk alanları varsayılanla tamamla, aralıklara sıkıştır. Eski (tek doku) kayıtlar katmanlara çevrilir."""
     out = dict(DEFAULT)
     for k in KEYS:
         if k in d and d[k] is not None:
@@ -307,19 +357,21 @@ def normalize(d):
     c = out["color"]
     out["color"] = tuple(min(max(float(x), 0.0), 1.0) for x in c) if c else None
     lim = dict(diffuse=(0, 1), spec=(0, 1), gloss=(0, 1), metal=(0, 1), refl=(0, 1), transp=(0, 1), ior=(1, 3), lum=(0, 1),
-               tex_scale=(0, 1e9), tex_mix=(0, 1))
+               bump_height=(0, 20))
     for k, (lo, hi) in lim.items():
         out[k] = min(max(float(out[k]), lo), hi)
-    _norm_spec(out)
-    chs = {}
-    raw = d.get("tex_ch") if isinstance(d.get("tex_ch"), dict) else {}
-    for chn in GRAY_CHANNELS:
-        sp = raw.get(chn)
-        if isinstance(sp, dict):
-            t = _norm_spec(dict(spec_default(), **{k: v for k, v in sp.items() if k in SPEC_KEYS and v is not None}))
-            if t["tex"]:                                   # dokusuz kanal saklanmaz
-                chs[chn] = t
-    out["tex_ch"] = chs
+    raw = d.get("tex_layers") if (isinstance(d.get("tex_layers"), dict) and d.get("tex_layers")) else None
+    if raw is None:
+        raw = _legacy_layers(d)
+        b_ = (d.get("tex_ch") or {}).get("bump") if isinstance(d.get("tex_ch"), dict) else None
+        if isinstance(b_, dict):
+            out["bump_height"] = min(max(float(b_.get("tex_strength", 1.0)), 0.0), 20.0)
+    lay = {}
+    for chn in CHANNELS:
+        ls = raw.get(chn)
+        if isinstance(ls, (list, tuple)) and ls:
+            lay[chn] = [norm_layer(L) for L in ls if isinstance(L, dict)]
+    out["tex_layers"] = {k: v for k, v in lay.items() if v}
     return out
 
 

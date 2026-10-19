@@ -9,6 +9,7 @@ from . import settings as S
 from .materials import shininess as _shin
 from .i18n import T
 from .textures import load as load_texture, sample_gray as _sample_gray
+from .procedural import evaluate as _proc_eval
 from .core import _any, _closest, _closest_sorted, _dot, _norm, camera_basis
 from .parallel import _Ticker, _limit_blas
 from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins, _screen_boxes, band_sel, raster_rows
@@ -122,8 +123,8 @@ def _tex_params(m):
                 R=None if ident else R, world=bool(m.get("tex_world", False)))
 
 
-def _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
-    """Ortak hazırlık: doku uzayı koordinatları Q, dönmüş normal, mip düzeyi, nesne boyutu."""
+def _tex_space(scene, tp, Pc, ng, tid):
+    """Doku uzayı: noktaların Q koordinatları (konum, dönme, ölçek uygulanmış), dönmüş normal, nesne yarı boyutu (dünya ise None)."""
     n = len(Pc)
     if tp["world"]:
         C = np.tile(-scene.center, (n, 1))
@@ -143,7 +144,12 @@ def _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
     if tp["R"] is not None:
         Q = Q @ tp["R"]
         nl = nl @ tp["R"]
-    Q = Q / tp["s"]
+    return Q / tp["s"], nl, hext
+
+
+def _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
+    """Görüntü dokusu için: Q, dönmüş normal, mip düzeyi, tekrar genişliği, nesne boyutu."""
+    Q, nl, hext = _tex_space(scene, tp, Pc, ng, tid)
     per = tw * tx.span
     cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
     foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
@@ -195,62 +201,125 @@ def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=Fals
     return tcol / np.maximum(wsum, 1e-9) if gray else tcol / np.maximum(wsum, 1e-9)[:, None]
 
 
-def _tex_grad(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
-    """Bump: yükseklik haritasının dünya uzayındaki eğimi ∇h (n,3), 1/mm. Dört yönlü sonlu fark; örnek aralığı mip düzeyine bağlı."""
-    Q, nl, lod, per, hext = _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang)
-    n = len(Pc)
-    fct = 2.0 ** lod
-    eu, ev = fct / tx.w, fct / tx.h                        # bir texel (u ve v birimiyle)
+def _lin(c):
+    return np.array(c, dtype=np.float64) ** 2.2
 
-    def hgrad(u, v, l, ee_u, ee_v):
-        du = (_sample_gray(tx, u + ee_u, v, l) - _sample_gray(tx, u - ee_u, v, l)) / (2.0 * ee_u)
-        dv = (_sample_gray(tx, u, v + ee_v, l) - _sample_gray(tx, u, v - ee_v, l)) / (2.0 * ee_v)
-        return du, dv
-    gQ = np.zeros((n, 3))
-    if tp["proj"] == "cubic":
-        wt3 = np.abs(nl) ** 4
-        wt3 /= wt3.sum(1, keepdims=True)
-        wsum = np.zeros(n)
-        for axx, (a_, b_) in enumerate(_PLANE):
-            sl = np.nonzero(wt3[:, axx] > 0.02)[0]
-            if len(sl):
-                du, dv = hgrad(Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect), lod[sl], eu[sl], ev[sl])
-                w_ = wt3[sl, axx]
-                gQ[sl, a_] += w_ * du / per
-                gQ[sl, b_] += w_ * dv / (per * tx.aspect)
-                wsum[sl] += w_
-        gQ /= np.maximum(wsum, 1e-9)[:, None]
-    else:
-        u, v, kind, aux = _tex_uv(tx, tp, Q, per, hext, scene)
-        du, dv = hgrad(u, v, lod, eu, ev)
-        ax = tp["axis"]
-        a_, b_ = _PLANE[ax]
-        if kind == "plane":
-            gQ[:, a_] = du / per
-            gQ[:, b_] = dv / (per * tx.aspect)
-        else:
-            th = np.arctan2(Q[:, b_], Q[:, a_])
-            et_a, et_b = -np.sin(th), np.cos(th)           # çevresel (teğet) yön, a-b düzleminde
-            if kind == "cyl":
-                rxy = np.maximum(np.sqrt(Q[:, a_] ** 2 + Q[:, b_] ** 2), 1e-9)
-                gt = du * aux / (2.0 * np.pi * rxy)
-                gQ[:, a_] = gt * et_a
-                gQ[:, b_] = gt * et_b
-                gQ[:, ax] = dv / (per * tx.aspect)
+
+def _prep_layers(m, scene):
+    """Malzemenin doku katmanları -> {kanal: [render için hazır katman]} (etkin olanlar)."""
+    out = {}
+    for chn, ls in (m.get("tex_layers") or {}).items():
+        pl = []
+        for L in ls:
+            if not (L.get("on", True) and (L.get("type") == "proc" or L.get("tex"))):
+                continue
+            base = dict(op=float(L.get("opacity", 1.0)), blend=str(L.get("blend", "normal")), inv=bool(L.get("invert", False)),
+                        tp=_tex_params(L))
+            if L.get("type") == "proc":
+                base.update(proc=True, q=dict(L, axis=int(L.get("tex_axis", 2))), size=float(L.get("tex_scale", 0.0)),
+                            c1=_lin(L.get("pcolor1", (0, 0, 0))), c2=_lin(L.get("pcolor2", (1, 1, 1))))
             else:
-                rep, rr = aux
-                rxy = np.maximum(np.sqrt(Q[:, a_] ** 2 + Q[:, b_] ** 2), 1e-9)
-                gt = du * rep / (2.0 * np.pi * rxy)
-                gl = dv * (rep / 2.0 / tx.aspect) / (np.pi * rr)         # meridyen yönü
-                ca, cb = Q[:, a_] / rxy, Q[:, b_] / rxy
-                sl_ = Q[:, ax] / rr
-                gQ[:, a_] = gt * et_a - gl * sl_ * ca
-                gQ[:, b_] = gt * et_b - gl * sl_ * cb
-                gQ[:, ax] = gl * rxy / rr
-    gP = (gQ / tp["s"])
-    if tp["R"] is not None:
-        gP = gP @ tp["R"].T
-    return gP
+                t_ = load_texture(L["tex"])
+                if t_ is None:
+                    continue
+                w_ = float(L.get("tex_scale", 0.0))
+                w_ = w_ if w_ > 0 else t_.rel * scene.diag
+                base.update(proc=False, tx=t_, tw=max(w_, 1e-6 * scene.diag))
+            pl.append(base)
+        if pl:
+            out[chn] = pl
+    return out
+
+
+def _proc_size(scene, ly, hext, n):
+    """Prosedürel katmanın doku boyu (n,): ayarlıysa sabit, değilse nesne boyutuna göre."""
+    if ly["size"] > 0.0:
+        return np.full(n, max(ly["size"], 1e-6 * scene.diag))
+    if hext is None:
+        return np.full(n, scene.diag * 0.25)
+    return np.maximum(hext.max(1) * 0.6, 1e-6 * scene.diag)
+
+
+def _layer_val(scene, ly, kind, Pc, ng, Dh, tid, dist, rn, pix_ang):
+    """Tek katmanın değeri: kind="color" -> (n,3) doğrusal renk; "gray" -> (n,) 0..1 (ters çevirme uygulanmış)."""
+    gray = kind != "color"
+    if not ly["proc"]:
+        v = _tex_sample(scene, ly["tx"], ly["tw"], ly["tp"], Pc, ng, Dh, tid, dist, rn, pix_ang, gray=gray)
+    else:
+        tp = ly["tp"]
+        Q, _nl, hext = _tex_space(scene, tp, Pc, ng, tid)
+        sz = _proc_size(scene, ly, hext, len(Pc))
+        cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
+        foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
+        g = _proc_eval(ly["q"]["ptype"], Q / sz[:, None], ly["q"], foot / (sz * float(np.mean(tp["s"]))))
+        v = g if gray else ly["c1"] + (ly["c2"] - ly["c1"]) * g[:, None]
+    return (1.0 - v) if ly["inv"] else v
+
+
+def _blend(res, v, mode, op):
+    if mode == "normal":
+        new = v
+    elif mode == "add":
+        new = res + v
+    elif mode == "sub":
+        new = res - v
+    elif mode == "mul":
+        new = res * v
+    elif mode == "div":
+        new = res / np.maximum(v, 1e-3)
+    elif mode == "diff":
+        new = np.abs(res - v)
+    elif mode == "screen":
+        new = 1.0 - (1.0 - res) * (1.0 - v)
+    elif mode == "max":
+        new = np.maximum(res, v)
+    elif mode == "min":
+        new = np.minimum(res, v)
+    else:
+        new = v
+    return (1.0 - op) * res + op * new if op < 1.0 else new
+
+
+def _stack(scene, layers, base, kind, ctx):
+    """Katmanları alttan üste, blend moduyla yüzey değerinin (base) üzerine uygular."""
+    res = base
+    for ly in layers:
+        res = _blend(res, _layer_val(scene, ly, kind, *ctx), ly["blend"], ly["op"])
+    return res
+
+
+_TETRA = np.array([[1.0, 1.0, 1.0], [1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0]])
+
+
+def _bump_normal(scene, layers, nrm, height, ctx):
+    """Bump: katman yığınının yükseklik alanını dünya uzayında dört noktalı (tetrahedron) sonlu farkla türetip normali eğer.
+    Adım, doku texel'i ile pikselin ayak izinden büyük olanıdır (uzakta bulanıklaşır, parıldama olmaz)."""
+    Pc, ng, Dh, tid, dist, rn, pix_ang = ctx
+    n = len(Pc)
+    cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
+    foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
+    eps = np.full(n, np.inf)
+    size_ref = np.zeros(n)
+    for ly in layers:
+        tp = ly["tp"]
+        if ly["proc"]:
+            _Q, _nl, hext = _tex_space(scene, tp, Pc, ng, tid)
+            sz = _proc_size(scene, ly, hext, n) * float(np.mean(tp["s"]))
+            eps = np.minimum(eps, sz / 40.0)
+        else:
+            sz = np.full(n, ly["tw"] * float(np.mean(tp["s"])))
+            eps = np.minimum(eps, sz * ly["tx"].span / ly["tx"].w)
+        size_ref += sz / len(layers)
+    eps = np.maximum(eps, 0.5 * foot)
+    g = np.zeros((n, 3))
+    zero = np.zeros(n)
+    for sv in _TETRA:
+        ctx2 = (Pc + eps[:, None] * sv, ng, Dh, tid, dist, rn, pix_ang)
+        g += sv * _stack(scene, layers, zero, "gray", ctx2)[:, None]
+    g /= (4.0 * eps)[:, None]
+    hrel = (height * 0.03 * size_ref)[:, None]                   # kabartı yüksekliği: doku boyunun %3'ü x güç
+    nb = nrm - hrel * (g - _dot(g, nrm)[:, None] * nrm)
+    return nb / np.maximum(np.sqrt(_dot(nb, nb)), 1e-12)[:, None]
 
 
 def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, tick=None, stage=None):
@@ -335,32 +404,16 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     ior_tab = np.array([ior] + [m["ior"] if S.REFRACTION else 1.0 for m in mt_])
     lum_tab = np.array([0.0] + [m["lum"] for m in mt_])
     has_mat = len(mt_) > 0
-    # doku atanmış malzemeler: indeks (1 tabanlı, mid ile aynı) -> (Texture, tekrar genişliği, karışım)
-    tex_mats = {}
-    for i_, m_ in enumerate(mt_):
-        if m_.get("tex"):
-            t_ = load_texture(m_["tex"])
-            if t_ is not None:
-                w_ = float(m_.get("tex_scale", 0.0))
-                w_ = w_ if w_ > 0 else t_.rel * scene.diag
-                tex_mats[i_ + 1] = (t_, max(w_, 1e-6 * scene.diag), float(m_.get("tex_mix", 1.0)), _tex_params(m_))
-    # kanal dokuları: malzeme indeksi -> {kanal: (Texture, tekrar genişliği, karışım, ters, yerleşim, bump gücü)}
+    # doku katmanları: malzeme indeksi (1 tabanlı, mid ile aynı) -> {kanal: [hazır katman, ...]} (alttan üste)
     ch_mats = {}
     for i_, m_ in enumerate(mt_):
-        for chn_, sp_ in (m_.get("tex_ch") or {}).items():
-            if not sp_.get("tex"):
-                continue
-            t_ = load_texture(sp_["tex"])
-            if t_ is None:
-                continue
-            w_ = float(sp_.get("tex_scale", 0.0))
-            w_ = w_ if w_ > 0 else t_.rel * scene.diag
-            ch_mats.setdefault(i_ + 1, {})[chn_] = (t_, max(w_, 1e-6 * scene.diag), float(sp_.get("tex_mix", 1.0)),
-                                                    bool(sp_.get("tex_invert", False)), _tex_params(sp_), float(sp_.get("tex_strength", 1.0)))
+        pl_ = _prep_layers(m_, scene)
+        if pl_:
+            ch_mats[i_ + 1] = pl_
     gloss_tab = np.array([0.28] + [m["gloss"] for m in mt_])
     ch_refl = any(("refl" in d_) for d_ in ch_mats.values())
     ch_tr = any(("transp" in d_) for d_ in ch_mats.values())
-    if any(not t_[3]["world"] for t_ in tex_mats.values()) or any(not v_[4]["world"] for d_ in ch_mats.values() for v_ in d_.values()):
+    if any(not ly_["tp"]["world"] for d_ in ch_mats.values() for ls_ in d_.values() for ly_ in ls_):
         scene.obj_bounds()                                    # çatallanmadan önce hesapla (işçiler paylaşır)
     pix_ang_g = 2.0 * (np.tan(cam["size"] / 2.0) if bool(cam["persp"]) else cam["size"] / 2.0) / max(h, 1)
     has_glass = has_glass or ch_tr
@@ -703,51 +756,40 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     albedo[isf0] = ftex.sample(u, v, lod)
             a = alpha_ext[tid]
             mt = mid_ext[tid]                                   # nokta başına malzeme indeksi
-            if tex_mats:                                        # malzeme dokusu: UV'siz; izdüşüm ve yerleşim malzeme ayarlarından
-                for k_, (tx, tw, mix, tp) in tex_mats.items():
-                    ix = np.nonzero(mt == k_)[0]
-                    if len(ix) == 0:
-                        continue
-                    tcol = _tex_sample(scene, tx, tw, tp, P[ix], ngeo[ix], Dh[ix], tid[ix],
-                                       tb[hi][ix] if persp else np.ones(len(ix)), RN[hi][ix], pix_ang_g)
-                    albedo[ix] = (1.0 - mix) * albedo[ix] + mix * tcol
             dif_h = spec_h = shin_h = lum_h = refl_h = None
-            if has_mat:                                         # nokta başına malzeme değerleri (kanal dokuları üzerine yazar)
+            if has_mat:                                         # nokta başına malzeme değerleri (doku katmanları üzerine yazar)
                 dif_h, spec_h, shin_h, lum_h, refl_h = dif_tab[mt], spec_tab[mt], shin_tab[mt], lum_tab[mt], refl_tab[mt]
-            if ch_mats and has_mat:
+            if ch_mats and has_mat:                             # doku katmanları: UV'siz; izdüşüm ve yerleşim katman ayarlarından
                 for k_, chd in ch_mats.items():
                     ix = np.nonzero(mt == k_)[0]
                     if len(ix) == 0:
                         continue
-                    dist_i = tb[hi][ix] if persp else np.ones(len(ix))
-                    for chn_, (tx, tw, op, inv, tp, stg) in chd.items():
-                        if chn_ == "bump":
-                            if stg <= 0.0:
+                    ctx = (P[ix], ngeo[ix], Dh[ix], tid[ix], tb[hi][ix] if persp else np.ones(len(ix)), RN[hi][ix], pix_ang_g)
+                    for chn_, lys in chd.items():
+                        if chn_ == "color":
+                            albedo[ix] = np.maximum(_stack(scene, lys, albedo[ix], "color", ctx), 0.0)
+                        elif chn_ == "bump":
+                            bh = float(mt_[k_ - 1].get("bump_height", 1.0))
+                            if bh <= 0.0:
                                 continue
-                            gP = _tex_grad(scene, tx, tw, tp, P[ix], ngeo[ix], Dh[ix], tid[ix], dist_i, RN[hi][ix], pix_ang_g)
-                            hrel = stg * 0.03 * tw                          # kabartı yüksekliği (mm): doku tekrarının %3'ü x güç
-                            nb = nrm[ix] - hrel * (gP - _dot(gP, nrm[ix])[:, None] * nrm[ix])
-                            nb /= np.maximum(np.sqrt(_dot(nb, nb)), 1e-12)[:, None]
+                            nb = _bump_normal(scene, lys, nrm[ix], bh, ctx)
                             if nrm is ngeo:
                                 nrm = nrm.copy()
                             nrm[ix] = nb
-                            continue
-                        g = _tex_sample(scene, tx, tw, tp, P[ix], ngeo[ix], Dh[ix], tid[ix], dist_i, RN[hi][ix], pix_ang_g, gray=True)
-                        if inv:
-                            g = 1.0 - g
-                        if chn_ == "diffuse":
-                            dif_h[ix] = (1.0 - op) * dif_h[ix] + op * g
+                        elif chn_ == "diffuse":
+                            dif_h[ix] = np.clip(_stack(scene, lys, dif_h[ix], "gray", ctx), 0.0, 1.5)
                         elif chn_ == "spec":
-                            spec_h[ix] = (1.0 - op) * spec_h[ix] + op * g
+                            spec_h[ix] = np.clip(_stack(scene, lys, spec_h[ix], "gray", ctx), 0.0, 1.5)
                         elif chn_ == "gloss":
-                            gl = (1.0 - op) * gloss_tab[k_] + op * g
+                            gl = np.clip(_stack(scene, lys, np.full(len(ix), gloss_tab[k_]), "gray", ctx), 0.0, 1.0)
                             shin_h[ix] = 2.0 + 600.0 * gl * gl
                         elif chn_ == "refl":
-                            refl_h[ix] = (1.0 - op) * refl_h[ix] + op * (g if refl_on else 0.0)
+                            if refl_on:
+                                refl_h[ix] = np.clip(_stack(scene, lys, refl_h[ix], "gray", ctx), 0.0, 1.0)
                         elif chn_ == "lum":
-                            lum_h[ix] = (1.0 - op) * lum_h[ix] + op * g
+                            lum_h[ix] = np.clip(_stack(scene, lys, lum_h[ix], "gray", ctx), 0.0, 4.0)
                         elif chn_ == "transp":
-                            a[ix] = 1.0 - ((1.0 - op) * (1.0 - a[ix]) + op * g)
+                            a[ix] = 1.0 - np.clip(_stack(scene, lys, 1.0 - a[ix], "gray", ctx), 0.0, 1.0)
             albedo_raw = albedo
             if has_mat:
                 albedo = albedo * dif_h[:, None]

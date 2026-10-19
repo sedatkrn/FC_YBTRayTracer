@@ -218,6 +218,23 @@ def register_custom(path, rgb8, mode="mirror"):
     _CACHE.pop(path, None)
 
 
+def load_image_file(path, maxdim=1024):
+    """Görüntü dosyası -> (h, w, 3) uint8. Önce Qt (png/jpg/bmp...), olmazsa yerleşik PNG okuyucu. En çok maxdim piksel (bellek/hız)."""
+    try:
+        from PySide import QtGui, QtCore
+        img = QtGui.QImage(path)
+        if not img.isNull():
+            if max(img.width(), img.height()) > maxdim:
+                img = img.scaled(maxdim, maxdim, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            img = img.convertToFormat(QtGui.QImage.Format_RGB888)
+            w, h, bpl = img.width(), img.height(), img.bytesPerLine()
+            buf = np.frombuffer(bytes(img.constBits()), dtype=np.uint8)[:bpl * h].reshape(h, bpl)[:, :w * 3]
+            return np.ascontiguousarray(buf.reshape(h, w, 3))
+    except Exception:
+        pass
+    return read_png(path)
+
+
 def load(key):
     """Anahtar (hazır doku adı) ya da kayıtlı özel yol -> Texture; bulunamazsa None."""
     if not key:
@@ -236,5 +253,10 @@ def load(key):
                     tex = Texture(read_png(p), mode)
                     tex.rel = rel
                 break
+    if tex is None and key not in _CUSTOM and os.path.isfile(key):      # doğrudan dosya yolu (kullanıcı görüntüsü; yeniden başlatınca da çalışır)
+        try:
+            tex = Texture(load_image_file(key), "mirror")
+        except Exception:
+            tex = None
     _CACHE[key] = tex
     return tex
