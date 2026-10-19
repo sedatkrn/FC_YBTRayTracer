@@ -60,10 +60,17 @@ The UI language (Türkçe / English) is chosen at the top-right of the panel; it
 
 ## Kurulum
 
+**Eklenti olarak (önerilen):** depoyu FreeCAD'in `Mod/` klasörüne kopyalayın (Linux: `~/.local/share/FreeCAD/Mod/FC_YBTRayTracer`; sürüme göre `v1-1/Mod/` olabilir)
+ve FreeCAD'i yeniden başlatın. Her tezgâhta *Macro* araç çubuğunda ve *Macro* menüsünde üç komut görünür: **YBT Raytracer** (ayar paneli), **YBT Malzemeler**, **YBT Varsayılanlar**.
+Eski makro kopyası makro klasöründe duruyorsa silin (iki kopya karışmasın).
+İsteğe bağlı ayrı tezgâh: *Edit > Preferences > Advanced* (parametre düzenleyici) içinde `User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer` altında
+`SeparateWorkbench` (Boolean) = true; Macro araç çubuğuna eklemeyi kapatmak için `ShowInAllWorkbenches` = false. Değişiklik için FreeCAD'i yeniden başlatın.
+
+**Makro olarak:**
 1. `FC_ybt_raytracer.FCMacro` dosyasını **ve** `ybt_raytracer/` klasörünü FreeCAD makro klasörüne birlikte kopyalayın
    (FreeCAD içinde *Macro > Macros...* penceresinde makro klasörü yolu görünür). Başlatıcı ile klasör yan yana durmalıdır.
 2. Bir belgeyi açın, 3B görünümü istediğiniz açıya getirin.
-3. *Macro > Macros...* ile makroyu çalıştırın, ayarları seçip **Render**'a basın.
+3. *Macro > Macros...* ile makroyu (ya da eklentideki **YBT Raytracer** komutunu) çalıştırın, ayarları seçip **Render**'a basın.
 
 Pencere açıkken 3B görünümü çevirip tekrar **Render** alabilirsiniz (sahne önbelleğe alınır).
 Sonuç PNG olarak kaydedilir; klasör yazılamazsa `~/Pictures` veya ev dizini kullanılır.
@@ -146,9 +153,16 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 
 ### Install
 
+**As an add-on (recommended):** copy the repository into FreeCAD's `Mod/` folder (Linux: `~/.local/share/FreeCAD/Mod/FC_YBTRayTracer`, or `v1-1/Mod/` depending on the version) and restart FreeCAD.
+Three commands appear in the *Macro* toolbar and *Macro* menu of every workbench: **YBT Raytracer** (settings panel), **YBT Materials**, **YBT Defaults**.
+Remove any old macro copy from the macro folder so the two copies don't clash.
+Optional separate workbench: in the parameter editor, under `User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer`, set `SeparateWorkbench` (Boolean) = true;
+set `ShowInAllWorkbenches` = false to stop adding the commands to the Macro toolbar/menu. Restart FreeCAD after changing either.
+
+**As a macro:**
 1. Copy `FC_ybt_raytracer.FCMacro` **and** the `ybt_raytracer/` folder together into your FreeCAD macro folder (shown in *Macro > Macros...*); the launcher and the folder must sit side by side.
 2. Open a document and orient the 3D view.
-3. Run the macro from *Macro > Macros...*, adjust settings, press **Render**.
+3. Run the macro from *Macro > Macros...* (or the **YBT Raytracer** command of the add-on), adjust settings, press **Render**.
 
 You can rotate the 3D view while the window is open and press **Render** again; the scene is cached.
 

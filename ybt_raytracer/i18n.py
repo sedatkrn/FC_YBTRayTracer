@@ -624,4 +624,9 @@ EN = {
     'Tekrar (düz döşeme)': 'Repeat (plain tiling)',
     'Ayna (kenarlar aynalanır)': 'Mirror (edges mirrored)',
     "Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur.": "Tiling: Repeat = tiles side by side as-is (seams may show); Mirror = every other tile is flipped (no seams). Auto: the preset's own setting, mirror for your own files. No tiling while 'Automatic sizing' is on.",
+    'YBT Malzemeler': 'YBT Materials',
+    'YBT Varsayılanlar': 'YBT Defaults',
+    'Render ayar panelini açar (Render düğmesiyle görüntü alınır)': 'Opens the render settings panel (press Render there to get an image)',
+    'Malzemeler (Surface) penceresini açar': 'Opens the Materials (Surface) window',
+    'Render ayarlarının varsayılanlarını düzenler / kaydeder': 'Edits / saves the default render settings',
 }

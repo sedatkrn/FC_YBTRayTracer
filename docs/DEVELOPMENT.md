@@ -23,6 +23,7 @@ Kullanıcı: Sedat (Türkçe konuşur; Manjaro/KDE Wayland; FreeCAD 1.1.4; YouTu
 - `api.py` arayüzsüz API: `render_document/render_scene/prepare_scene`, `make_camera/fit_camera/orbit_cameras/camera_from_view`, `turntable`; ayarlar kw ile `_Override` (çağrı sonunda geri yazılır). Örnek: `examples/FC_ybt_turntable.FCMacro`.
 - `ui.py` ana panel; `i18n.py` TR/EN (`T("Türkçe metin")`, kaynak metin Türkçe, EN sözlüğü `EN`); `textures.py` zemin dokuları.
 - Başlatıcı: `FC_ybt_raytracer.FCMacro` (paketi bulur, `ybt_raytracer.ui.main()` çağırır).
+- Eklenti (v1.5.0 hazırlığı): `Init.py` (yalnız sys.path), `InitGui.py` (komutları kaydeder; ayrı tezgâh parametreyle), `ybt_raytracer/commands.py` (YBT_Render / YBT_Materials / YBT_Defaults). Her tezgâhta görünme: `Gui.addWorkbenchManipulator` ile standart "Macro" araç çubuğu + `Std_DlgMacroExecute`'un menüsüne ekleme (manipulator yeni araç çubuğu/menü YARATAMAZ, yalnız var olanlara ekler). Varsayılanlar/Malzemeler komutları açık panelin `_raytrace_api["open_defaults"/"open_mats"]` işlevlerini kullanır. Parametreler: `Mod/FCYBTRayTracer/SeparateWorkbench`, `ShowInAllWorkbenches`. FreeCAD içinde henüz denenmedi (yalnız sahte FreeCAD modülüyle sınandı).
 
 ## Tasarım kuralları
 - Malzemesiz nesne = eski davranış (FreeCAD rengi); malzemesiz sahne eski sürümle piksel piksel aynı olmalı (regresyon testi).
@@ -50,3 +51,5 @@ Işık kırınımında kaydırma açılarında nadir siyah noktalar (hapsolmuş 
 - Regresyon: malzemesiz sahnede eski/yeni render farkı 0.0 olmalı.
 - Büyük sahnede (300k+ üçgen) brute-force doğrulama çalıştırma (zaman aşımı).
 - Dağıtım: değişen dosyalar main'e, ayrıca kullanıcının makro klasörüne (`FreeCAD.getUserMacroDir(True)`) ve `/home/sedat/claude-projeler/FC_ybt_raytracer/` altına kopyalanır; sürüm: `__init__.py`, `package.xml`, CHANGELOG.
+
+- Sürüm kuralı: her sürümde `ybt_raytracer/__init__.py` `__version__`, `package.xml` `<version>`/`<date>` ve CHANGELOG birlikte güncellenir.

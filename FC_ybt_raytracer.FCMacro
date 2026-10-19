@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-FC_ybt_raytracer.FCMacro -- başlatıcı (v1.0)
-FreeCAD içinde yerleşik numpy ışın izleyici. Asıl kod yanındaki `ybt_raytracer/` klasöründedir;
-bu dosya ve klasör AYNI yerde (Macro klasörü) durmalıdır.
+FC_ybt_raytracer.FCMacro -- ince başlatıcı
+FreeCAD içinde yerleşik numpy ışın izleyici. Asıl kod `ybt_raytracer/` paketindedir; bu dosya yalnızca paketi bulup
+ayar panelini açar (eklenti komutu YBT_Render ile aynı iş).
+Eklenti olarak kurulduysa (Mod/ klasörü; Init.py / InitGui.py) komutlar Macro araç çubuğunda ve menüsünde zaten vardır;
+bu makro, eklentisiz (makro klasörüne kopyalanmış) kullanım içindir. Bu dosya ve paket klasörü AYNI yerde durmalıdır.
 Kullanım: Macro > Macros... > bu dosyayı çalıştır.
 """
 import os
