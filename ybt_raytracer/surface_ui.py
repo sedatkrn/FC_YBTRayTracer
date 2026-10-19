@@ -527,8 +527,10 @@ def open_surface(on_change=None, is_busy=None):
 
         # ---------------- sağ: katman ayarları
         right_ = QtGui.QVBoxLayout()
+        right_.setSpacing(4)
         form = QtGui.QGridLayout()
         form.setColumnStretch(1, 1)
+        form.setVerticalSpacing(4)
 
         def lab(t_):
             q = QtGui.QLabel(T(t_))
@@ -555,7 +557,7 @@ def open_surface(on_change=None, is_busy=None):
         b_inv.setCheckable(True)
         form.addWidget(b_inv, 3, 1, 1, 2)
         lb_pv = QtGui.QLabel()
-        lb_pv.setFixedSize(132, 132)
+        lb_pv.setFixedSize(100, 100)
         lb_pv.setAlignment(QtCore.Qt.AlignCenter)
         lb_pv.setFrameShape(QtGui.QFrame.StyledPanel)
         lb_pv.setStyleSheet("background-color: #2a2a2c; border: 1px solid #6b7e92;")
@@ -635,6 +637,15 @@ def open_surface(on_change=None, is_busy=None):
         for _w in (lb_c1, lb_c2, b_c1, b_c2):
             _w.setVisible(chan == "color")
         stk.addWidget(pg_prc)
+
+        def fit_stack(*_a):                                       # yığın en yüksek sayfaya göre değil, görünen sayfaya göre boy alsın (görüntü sayfasında boşluk kalmasın)
+            for i_ in range(stk.count()):
+                pg_ = stk.widget(i_)
+                pg_.setSizePolicy(QtGui.QSizePolicy.Preferred,
+                                  QtGui.QSizePolicy.Preferred if i_ == stk.currentIndex() else QtGui.QSizePolicy.Ignored)
+            stk.updateGeometry()
+        stk.currentChanged.connect(fit_stack)
+        fit_stack()
         right_.addWidget(stk)
 
         # ortak yerleşim
@@ -706,7 +717,19 @@ def open_surface(on_change=None, is_busy=None):
         brow.addWidget(b_clr)
         brow.addWidget(b_close)
         right_.addLayout(brow)
-        hl.addLayout(right_, 1)
+        right_w = QtGui.QWidget()
+        right_w.setObjectName("ybtpage")
+        right_w.setLayout(right_)
+        right_sc = QtGui.QScrollArea()                            # pencere küçülünce üst üste binmesin: kaydırma çubuğu
+        right_sc.setWidgetResizable(True)
+        right_sc.setFrameShape(QtGui.QFrame.NoFrame)
+        right_sc.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        right_sc.setWidget(right_w)
+        right_sc.viewport().setAutoFillBackground(False)
+        right_sc.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        right_w.setAutoFillBackground(False)
+        right_w.setStyleSheet("QWidget#ybtpage { background: transparent; }")
+        hl.addWidget(right_sc, 1)
 
         common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_tile, cb_img, cb_pt, b_c1, b_c2, b_world, b_auto, sp_size] + ax_b + \
             list(pw.values()) + list(tsp.values())
