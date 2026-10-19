@@ -3,6 +3,7 @@
 ```
 v1.5.0 (hazırlanıyor):
 
+- AO şiddeti varsayılanı %30 → %50.
 - **AO iyileştirmesi**: AO artık gölge atmayan dolgu ışıklarına (Stüdyo ön ayarındaki yan/arka ışıklar) ve HDRI/gökyüzü ışığına da uygulanır; önceden yalnız ortam ışığını kısıyordu, bu yüzden iç mekanda etkisi çok zayıf kalıyordu.
 - **Döşeme modu (katman başına)**: Doku Düzenleyici'de "Döşeme": Otomatik (hazır dokunun kendi modu; kendi dosyalarda ayna) / Tekrar (düz döşeme) / Ayna (kenarlar aynalanır).
 - **Belgeyle birlikte saklama**: Render paneli ayarları (ışıklar, AO, HDRI, kalite...) ve belgedeki nesnelere atanmış malzeme tanımları artık FCStd içine (belge Meta özelliği) yazılır; belge başka bilgisayarda açılınca ayarlar ve malzemeler geri gelir. Kullanıcı kütüphanesindeki aynı adlı malzeme önceliklidir. HDRI için dosya yolu saklanır (harita gömülmez); yüklenen kişisel doku dosyalarının yolu da öyle.
