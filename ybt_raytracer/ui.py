@@ -741,6 +741,7 @@ def main(lang=None):
         b_cl.clicked.connect(dd.accept)
         lst.itemDoubleClicked.connect(lambda _i: do_load())
         refill()
+        _theme.fix_combos(dd)
         (dd.exec_ if hasattr(dd, "exec_") else dd.exec)()
 
     btn_def = QtGui.QPushButton(T("⚙ Varsayılanlar…"))
@@ -1269,6 +1270,7 @@ def main(lang=None):
 
     FreeCAD._raytrace_dlg = dlg
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
+    _theme.fix_combos(dlg)
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, soft_scale=sp_softk, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,

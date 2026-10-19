@@ -46,6 +46,17 @@ def init_lang():
 
 
 EN = {
+    'Yeni surface': 'New surface',
+    "Gri, varsayılan değerli yeni bir yüzey oluşturur (LightWave'deki gibi) ve kütüphaneye ekler": 'Creates a new gray surface with default values (like LightWave) and adds it to the library',
+    'Yeni yüzey': 'New surface',
+    'Yeni yüzey oluşturuldu: %s': 'New surface created: %s',
+    'Malzemeyi kopyala': 'Copy material',
+    'Malzeme kopyalandı: %s': 'Material copied: %s',
+    '%d nesneye yapıştırıldı: %s': 'Pasted to %d object(s): %s',
+    'Katman önizlemesi: dokunun bir tekrarı (ayarlar değişince güncellenir)': 'Layer preview: one repeat of the texture (updates as settings change)',
+    'Görüntü yükle...': 'Load image...',
+    'Bilgisayardan bir görüntü dosyası (PNG, JPG, BMP) seç ve bu katmanın dokusu yap': "Pick an image file (PNG, JPG, BMP) from your computer and use it as this layer's texture",
+    'Görüntü (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp)': 'Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp)',
     'Doku düzenleyici: ': 'Texture editor: ',
     'Doku Düzenleyici': 'Texture Editor',
     'Katman ekle': 'Add layer',

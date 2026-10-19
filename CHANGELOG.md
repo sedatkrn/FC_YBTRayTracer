@@ -4,6 +4,8 @@
 v1.5.0 (hazırlanıyor):
 
 - **LightWave tarzı Doku Düzenleyici**: her T düğmesi bir pencere açar. Sol: katman listesi (aç/kapa, opaklık, blend harfi), "Katman ekle ▾" → **Görüntü dokusu** / **Prosedürel doku**, kaldır, kopyala/yapıştır (kanallar ve malzemeler arası), yukarı/aşağı taşı. Sağ: Katman türü, Blend modu (Normal, Toplamsal, Çıkarmalı, Çarpma, Bölme, Fark, Ekran, Açık olan, Koyu olan), Katman opaklığı, Ters çevir, Doku ekseni X/Y/Z, Dünya koordinatları, Otomatik boyutlandır, Ölçek/Konum/Dönme sekmeleri. Görüntü dokusu hazır listeden ya da dosyadan (PNG/JPG/BMP) seçilir.
+- **Doku düzenleyici**: katman önizlemesi (ayarlar değişince güncellenir), "Görüntü yükle..." düğmesiyle bilgisayardan PNG/JPG/BMP yükleme, açılır listeler koyu tema (Fusion/KDE popup düzeltmesi).
+- **Malzemeler penceresi**: nesne listesinde sağ tık → Malzemeyi kopyala / Yapıştır / Atamayı kaldır; "Yeni surface" düğmesi gri varsayılan yüzey oluşturur.
 - **Prosedürel dokular** (görüntüsüz 3B desenler, saf numpy): Türbülans, Fraktal gürültü, Damarlar, Mermer, Ahşap halkaları, Dama, Izgara, Noktalar, Tuğla örgüsü, Dalgalar; Doku değeri, Frekanslar, Kontrast, Küçük güç, Desen sıklığı, Tohum; Renk kanalında iki renk arası karışım. Uzakta ince oktavlar sönümlenir.
 - **Kanal başına doku (T düğmesi)**: Surface penceresinde Renk, Diffuse, Specular, Glossiness, Reflection, Transparency ve Luminosity değerlerinin yanında "T"; dokusu olan kanalın düğmesi vurgulu. Gri tonlu kanallarda doku parlaklığı değer olur ("Doku payı", "Ters çevir"). Her kanalın kendi projeksiyonu / yerleşimi vardır (aşağıdaki madde).
 - **Bump haritası**: gri tonlu doku yükseklik haritası olarak yüzey normalini eğer (geometri değişmez; UV gerekmez; küp / düzlemsel / silindirik / küresel); "Bump yüksekliği" %.

@@ -115,3 +115,34 @@ def apply(widget):
         widget.setStyleSheet(stylesheet())
     except Exception:
         pass
+
+
+def fix_combos(root):
+    """Açılır liste (QComboBox) popup'larını koyu yap. Fusion/KDE'de popup menü gibi çizilip beyaz kalabiliyor; sıradan öğe temsilcisi
+    + görünüm/çerçeve paleti + stil sayfası bunu ezer. Pencere tamamen kurulduktan sonra çağrılır."""
+    try:
+        from PySide import QtGui
+        pal = QtGui.QPalette()
+        for role, col in ((QtGui.QPalette.Base, FIELD), (QtGui.QPalette.Window, FIELD), (QtGui.QPalette.Text, TEXT),
+                          (QtGui.QPalette.WindowText, TEXT), (QtGui.QPalette.Highlight, ACCENT),
+                          (QtGui.QPalette.HighlightedText, "#ffffff"), (QtGui.QPalette.Button, BTN), (QtGui.QPalette.ButtonText, TEXT)):
+            pal.setColor(role, QtGui.QColor(col))
+        css = ("QAbstractItemView { background-color: %s; color: %s; border: 1px solid %s; selection-background-color: %s; "
+               "selection-color: #ffffff; outline: 0; }"
+               "QAbstractItemView::item { min-height: 20px; padding: 1px 6px; }"
+               "QAbstractItemView::item:hover, QAbstractItemView::item:selected { background-color: %s; color: #ffffff; }"
+               % (FIELD, TEXT, BORDER, ACCENT, ACCENT))
+        for cb in root.findChildren(QtGui.QComboBox):
+            try:
+                cb.setItemDelegate(QtGui.QStyledItemDelegate(cb))      # menü stili yerine normal liste çizimi
+                v = cb.view()
+                v.setStyleSheet(css)
+                v.setPalette(pal)
+                c = v.parentWidget()
+                if c is not None:
+                    c.setPalette(pal)
+                    c.setStyleSheet("background-color: %s; border: 1px solid %s;" % (FIELD, BORDER))
+            except Exception:
+                pass
+    except Exception:
+        pass

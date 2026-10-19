@@ -117,7 +117,7 @@ def evaluate(ptype, p, q, foot):
         v = line.astype(np.float64)
     elif ptype == "dots":
         c = (p * stripes) % 1.0 - 0.5
-        v = (np.sqrt((c * c).sum(1)) < 0.32).astype(np.float64)
+        v = (np.sqrt(c[:, a_] ** 2 + c[:, b_] ** 2) < 0.32).astype(np.float64)      # eksene dik düzlemde yuvarlak noktalar (eksen boyunca silindir)
     elif ptype == "bricks":
         u = p[:, a_] * stripes * 0.5
         w = p[:, b_] * stripes

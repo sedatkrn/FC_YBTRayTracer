@@ -25,6 +25,7 @@ _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
 ]
 
 
+_LAST_DIR = {}                                                # son görüntü klasörü
 _LAYER_CLIP = {}                                             # doku katmanı panosu (kanallar ve malzemeler arasında ortak)
 _T_CSS = "QPushButton { padding: 0px; margin: 0px; min-width: 28px; max-width: 28px; min-height: 14px; max-height: 14px; font-size: 9px; font-weight: bold; }"
 _T_CSS_ON = "QPushButton { background-color: #5b7fa6; color: white; }"
@@ -329,6 +330,9 @@ def open_surface(on_change=None, is_busy=None):
     b2 = QtGui.QHBoxLayout()
     btn_save = QtGui.QPushButton(T("Kütüphaneye kaydet"))
     btn_del = QtGui.QPushButton(T("Kütüphaneden sil"))
+    btn_new = QtGui.QPushButton(T("Yeni surface"))
+    btn_new.setToolTip(T("Gri, varsayılan değerli yeni bir yüzey oluşturur (LightWave'deki gibi) ve kütüphaneye ekler"))
+    b2.addWidget(btn_new)
     b2.addWidget(btn_save)
     b2.addWidget(btn_del)
     right.addLayout(b2)
@@ -538,6 +542,13 @@ def open_surface(on_change=None, is_busy=None):
         b_inv = QtGui.QPushButton(T("Katmanı ters çevir"))
         b_inv.setCheckable(True)
         form.addWidget(b_inv, 3, 1, 1, 2)
+        lb_pv = QtGui.QLabel()
+        lb_pv.setFixedSize(132, 132)
+        lb_pv.setAlignment(QtCore.Qt.AlignCenter)
+        lb_pv.setFrameShape(QtGui.QFrame.StyledPanel)
+        lb_pv.setStyleSheet("background-color: #2a2a2c; border: 1px solid #6b7e92;")
+        lb_pv.setToolTip(T("Katman önizlemesi: dokunun bir tekrarı (ayarlar değişince güncellenir)"))
+        form.addWidget(lb_pv, 5, 1, 1, 2, QtCore.Qt.AlignHCenter)
         lb_bh = lab("Bump yüksekliği")
         sp_bh = QtGui.QDoubleSpinBox()
         sp_bh.setRange(0.0, 2000.0)
@@ -569,6 +580,9 @@ def open_surface(on_change=None, is_busy=None):
             cb_img.addItem(T(nm_), k_)
         cb_img.addItem(T("Dosyadan yükle..."), "__file__")
         gi.addWidget(cb_img, 1, 1)
+        b_load = QtGui.QPushButton(T("Görüntü yükle..."))
+        b_load.setToolTip(T("Bilgisayardan bir görüntü dosyası (PNG, JPG, BMP) seç ve bu katmanın dokusu yap"))
+        gi.addWidget(b_load, 2, 1)
         stk.addWidget(pg_img)
 
         pg_prc = QtGui.QWidget()
@@ -681,6 +695,61 @@ def open_surface(on_change=None, is_busy=None):
         def lays():
             return M.layers_of(st["mat"], chan)
 
+        def layer_preview(L, n=132):
+            """Katmanın tek tekrarlık küçük önizlemesi (n,n,3 uint8). Prosedürel: desen; görüntü: dosyanın kendisi."""
+            rgb = None
+            if L["type"] == "proc":
+                g = (np.arange(n) + 0.5) / n - 0.5
+                U, Vv = np.meshgrid(g, g)
+                ax = int(L["tex_axis"])
+                a_, b_ = ((1, 2), (0, 2), (0, 1))[ax]
+                p = np.zeros((n * n, 3))
+                p[:, a_] = U.ravel()
+                p[:, b_] = -Vv.ravel()
+                q = dict(L)
+                q["axis"] = ax
+                v = _proc.evaluate(L["ptype"], p, q, np.full(n * n, 0.5 / n)).reshape(n, n)
+                if L["invert"]:
+                    v = 1.0 - v
+                if chan == "color":
+                    c1 = np.array(L["pcolor1"], dtype=float)
+                    c2 = np.array(L["pcolor2"], dtype=float)
+                    rgb = c1[None, None, :] + (c2 - c1)[None, None, :] * v[:, :, None]
+                else:
+                    rgb = np.repeat(v[:, :, None], 3, axis=2)
+            else:
+                tx = _tex.load(L["tex"]) if L.get("tex") else None
+                if tx is not None:
+                    a = tx.levels[0]
+                    hh, ww = a.shape[:2]
+                    if tx.span == 2:
+                        hh, ww = hh // 2, ww // 2
+                    ys = np.minimum((np.arange(n) + 0.5) / n * hh, hh - 1).astype(int)
+                    xs = np.minimum((np.arange(n) + 0.5) / n * ww, ww - 1).astype(int)
+                    rgb = np.clip(a[ys][:, xs][:, :, :3], 0.0, 1.0) ** (1.0 / 2.2)
+                    if L["invert"]:
+                        rgb = 1.0 - rgb
+                    if chan != "color":
+                        gy = rgb.mean(axis=2, keepdims=True)
+                        rgb = np.repeat(gy, 3, axis=2)
+            if rgb is None:
+                yy, xx = np.mgrid[0:n, 0:n]
+                chk = (((yy // 12) + (xx // 12)) & 1).astype(float) * 0.12 + 0.12
+                rgb = np.repeat(chk[:, :, None], 3, axis=2)
+            return np.ascontiguousarray((np.clip(rgb, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
+
+        def update_preview():
+            ls = lays()
+            if not ls:
+                lb_pv.clear()
+                return
+            try:
+                a = layer_preview(cur_layer())
+                qi = QtGui.QImage(a.data, a.shape[1], a.shape[0], 3 * a.shape[1], QtGui.QImage.Format_RGB888).copy()
+                lb_pv.setPixmap(QtGui.QPixmap.fromImage(qi))
+            except Exception as ex:
+                msg("önizleme: %s" % ex)
+
         def cur_layer():
             ls = lays()
             if not ls:
@@ -739,6 +808,7 @@ def open_surface(on_change=None, is_busy=None):
             b_ps.setEnabled(bool(_LAYER_CLIP))
             b_clr.setEnabled(en)
             if not en:
+                lb_pv.clear()
                 return
             for w_ in common:
                 w_.blockSignals(True)
@@ -769,6 +839,7 @@ def open_surface(on_change=None, is_busy=None):
             pl_axis = L["tex_proj"] != "cubic" or L["type"] == "proc"
             for bb in ax_b:
                 bb.setEnabled(pl_axis)
+            update_preview()
 
         def refill():
             cur["lock"] = True
@@ -816,31 +887,41 @@ def open_surface(on_change=None, is_busy=None):
             refresh_tex_buttons()
             for bb in ax_b:
                 bb.setEnabled(L["tex_proj"] != "cubic" or L["type"] == "proc")
+            update_preview()
             schedule(PREVIEW_DELAY_MS)
+
+        def load_external():
+            """Bilgisayardan görüntü dosyası seç ve seçili katmanın dokusu yap."""
+            L = cur_layer()
+            if L is None:
+                return
+            start = os.path.dirname(L["tex"]) if L.get("tex") and os.path.isfile(L["tex"]) else _LAST_DIR.get("p", os.path.expanduser("~"))
+            res = QtGui.QFileDialog.getOpenFileName(d, T("Doku görüntüsü seç"), start,
+                                                    T("Görüntü (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp)"))
+            path = res[0] if isinstance(res, (tuple, list)) else res
+            ok = False
+            if path:
+                _LAST_DIR["p"] = os.path.dirname(path)
+                _tex._CACHE.pop(path, None)
+                ok = _tex.load(path) is not None
+                if ok:
+                    L["tex"] = path
+                    L["type"] = "image"
+                else:
+                    msg(T("Görüntü okunamadı: ") + path)
+            cur["lock"] = True
+            load_layer()                                          # seçimi (yeni dosya ya da önceki) yeniden göster
+            cur["lock"] = False
+            if ok:
+                update_row()
+                refresh_tex_buttons()
+                schedule(PREVIEW_DELAY_MS)
 
         def on_img(_i):
             if cur["lock"]:
                 return
             if cb_img.currentData() == "__file__":
-                res = QtGui.QFileDialog.getOpenFileName(d, T("Doku görüntüsü seç"), os.path.expanduser("~"),
-                                                        T("Görüntü (*.png *.jpg *.jpeg *.bmp)"))
-                path = res[0] if isinstance(res, (tuple, list)) else res
-                L = cur_layer()
-                ok = False
-                if path and L is not None:
-                    _tex._CACHE.pop(path, None)
-                    ok = _tex.load(path) is not None
-                    if ok:
-                        L["tex"] = path
-                    else:
-                        msg(T("Görüntü okunamadı: ") + path)
-                cur["lock"] = True
-                load_layer()                                      # seçimi (yeni dosya ya da önceki) yeniden göster
-                cur["lock"] = False
-                if ok:
-                    update_row()
-                    refresh_tex_buttons()
-                    schedule(PREVIEW_DELAY_MS)
+                load_external()
                 return
             on_edit()
 
@@ -853,6 +934,7 @@ def open_surface(on_change=None, is_busy=None):
             if col.isValid():
                 L[key] = (col.red() / 255.0, col.green() / 255.0, col.blue() / 255.0)
                 paint_color_btn(btn, L[key])
+                update_preview()
                 refresh_tex_buttons()
                 schedule(PREVIEW_DELAY_MS)
 
@@ -940,6 +1022,7 @@ def open_surface(on_change=None, is_busy=None):
         for w_ in (cb_type, cb_blend, cb_proj, cb_pt):
             w_.currentIndexChanged.connect(on_edit)
         cb_img.currentIndexChanged.connect(on_img)
+        b_load.clicked.connect(lambda *_a: load_external())
         for w_ in [sp_op, sp_bh, sp_size] + list(pw.values()) + list(tsp.values()):
             w_.valueChanged.connect(on_edit)
         for w_ in [b_inv, b_world] + ax_b:
@@ -960,6 +1043,7 @@ def open_surface(on_change=None, is_busy=None):
         tree_l.itemChanged.connect(on_tree_check)
         pops[chan] = (d, refill)
         refill()
+        _theme.fix_combos(d)
         d.show()
 
     for _chn, _b in t_buttons.items():
@@ -1189,6 +1273,37 @@ def open_surface(on_change=None, is_busy=None):
             on_change()
         msg((T("Render'a dahil: %s") if flag else T("Render'dan hariç tutuldu: %s")) % o.Label)
 
+    _MAT_CLIP = {"name": ""}
+
+    def tree_menu(pos):
+        it = tree.itemAt(pos)
+        if it is not None and not it.isSelected():
+            tree.clearSelection()
+            it.setSelected(True)
+        objs = sel_objects()
+        mn = M.assigned(objs[0]) if objs else ""
+        mnu = QtGui.QMenu(tree)
+        a_cp = mnu.addAction(T("Malzemeyi kopyala"))
+        a_cp.setEnabled(bool(mn) and it is not None)
+        a_ps = mnu.addAction(T("Yapıştır") + ((": " + display_name(_MAT_CLIP["name"])) if _MAT_CLIP["name"] else ""))
+        a_ps.setEnabled(bool(_MAT_CLIP["name"]) and bool(objs))
+        mnu.addSeparator()
+        a_cl = mnu.addAction(T("Atamayı kaldır"))
+        a_cl.setEnabled(bool(objs))
+        act = mnu.exec_(tree.viewport().mapToGlobal(pos)) if hasattr(mnu, "exec_") else mnu.exec(tree.viewport().mapToGlobal(pos))
+        if act is None:
+            return
+        if act is a_cp:
+            _MAT_CLIP["name"] = mn
+            msg(T("Malzeme kopyalandı: %s") % display_name(mn))
+        elif act is a_ps:
+            for o in objs:
+                M.assign(o, _MAT_CLIP["name"])
+            changed()
+            msg(T("%d nesneye yapıştırıldı: %s") % (len(objs), display_name(_MAT_CLIP["name"])))
+        elif act is a_cl:
+            do_clear()
+
     def set_selected_included(flag):
         objs = sel_objects()
         if not objs:
@@ -1203,6 +1318,23 @@ def open_surface(on_change=None, is_busy=None):
         n = commit_current()
         if n:
             msg(T("Kütüphaneye kaydedildi: %s") % n)
+
+    def do_new():
+        """LightWave 'New Surface': gri (%70), yayılı %100, parlaklık yok, yansıma/saydamlık yok, dokusuz yeni yüzey."""
+        lib = M.library()
+        base = T("Yeni yüzey")
+        n, k = base, 1
+        while n in lib:
+            k += 1
+            n = "%s %d" % (base, k)
+        mat = M.normalize(dict(M.DEFAULT, color=(0.7, 0.7, 0.7), diffuse=1.0, spec=0.0, gloss=0.4, metal=0.0, refl=0.0,
+                               transp=0.0, ior=1.0, lum=0.0, tex_layers={}))
+        user = M.load_user()
+        user[n] = mat
+        M.save_user(user)
+        refresh_lib(n)
+        fill_editor(n, mat)
+        msg(T("Yeni yüzey oluşturuldu: %s") % n)
 
     def do_del():
         n = ed_name.text().strip()
@@ -1313,7 +1445,10 @@ def open_surface(on_change=None, is_busy=None):
     btn_inc.clicked.connect(lambda *_a: set_selected_included(True))
     btn_exc.clicked.connect(lambda *_a: set_selected_included(False))
     tree.itemChanged.connect(on_item_changed)
+    tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+    tree.customContextMenuRequested.connect(tree_menu)
     btn_save.clicked.connect(do_save)
+    btn_new.clicked.connect(do_new)
     btn_del.clicked.connect(do_del)
     lst.itemClicked.connect(on_lib_click)
     lst.itemDoubleClicked.connect(lambda it: (on_lib_click(it), do_assign()))
@@ -1386,6 +1521,7 @@ def open_surface(on_change=None, is_busy=None):
                         save=do_save, preview=do_preview, fill=fill_editor, refresh=refresh_tree, msg=lbl_msg, prev=prev,
                         include=set_selected_included, pick=on_pick, select=select_names, similar=similar_names,
                         sim_check=ck_sim, paint=btn_paint)
+    _theme.fix_combos(dlg)
     place_near_main()
     dlg.show()
     msg(T("Nesneler taranıyor..."))
