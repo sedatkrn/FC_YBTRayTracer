@@ -38,7 +38,7 @@ PROC_KEYS = ("turbulence", "fractal", "veins", "marble", "wood", "checker", "gri
 # katman alanları (hem görüntü hem prosedürel katman bunların hepsini taşır; kullanılmayanlar yok sayılır)
 LAYER_DEFAULT = dict(type="image", name="", on=True, opacity=1.0, blend="normal", invert=False,
                      tex="", tex_scale=0.0, tex_proj="cubic", tex_axis=2, tex_sx=1.0, tex_sy=1.0, tex_sz=1.0,
-                     tex_px=0.0, tex_py=0.0, tex_pz=0.0, tex_rx=0.0, tex_ry=0.0, tex_rz=0.0, tex_world=False,
+                     tex_px=0.0, tex_py=0.0, tex_pz=0.0, tex_rx=0.0, tex_ry=0.0, tex_rz=0.0, tex_world=False, tex_fit=False,
                      ptype="turbulence", pvalue=1.0, pfreq=3, ppower=0.5, pcontrast=0.0, pstripes=6.0, pseed=0,
                      pcolor1=(0.0, 0.0, 0.0), pcolor2=(1.0, 1.0, 1.0))
 LEGACY_KEYS = ("tex", "tex_scale", "tex_mix", "tex_proj", "tex_axis", "tex_sx", "tex_sy", "tex_sz", "tex_px", "tex_py", "tex_pz",
@@ -295,6 +295,7 @@ def norm_layer(src):
     for k in ("tex_rx", "tex_ry", "tex_rz"):
         d[k] = min(max(float(d[k]), -360.0), 360.0)
     d["tex_world"] = bool(d["tex_world"])
+    d["tex_fit"] = bool(d["tex_fit"])
     d["ptype"] = d["ptype"] if d["ptype"] in PROC_KEYS else "turbulence"
     d["pvalue"] = min(max(float(d["pvalue"]), 0.0), 1.0)
     d["pfreq"] = min(max(int(d["pfreq"]), 1), 8)

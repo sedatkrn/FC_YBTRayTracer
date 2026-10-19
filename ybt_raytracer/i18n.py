@@ -46,6 +46,7 @@ def init_lang():
 
 
 EN = {
+    'Açıkken görüntü nesnenin yüzüne tam oturur (tek kez, nesnenin boyutuna gerilir). Kapalıyken doku döşenir (tekrar eder). Açınca ölçek 1, konum 0 olur.': "When on, the image fits the object's face exactly (once, stretched to the object size). When off, the texture is tiled. Turning it on resets scale to 1 and position to 0.",
     'Yeni surface': 'New surface',
     "Gri, varsayılan değerli yeni bir yüzey oluşturur (LightWave'deki gibi) ve kütüphaneye ekler": 'Creates a new gray surface with default values (like LightWave) and adds it to the library',
     'Yeni yüzey': 'New surface',

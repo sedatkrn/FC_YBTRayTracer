@@ -641,7 +641,8 @@ def open_surface(on_change=None, is_busy=None):
         b_world.setCheckable(True)
         b_world.setToolTip(T("Kapalı: doku nesnenin merkezine bağlıdır, nesneyle birlikte gider. Açık: doku sabit uzayda durur (nesne hareket edince kayar)."))
         b_auto = QtGui.QPushButton(T("Otomatik boyutlandır"))
-        b_auto.setToolTip(T("Ölçek 1, konum 0 ve doku boyu otomatik: doku nesnenin boyutuna göre yeniden oturur"))
+        b_auto.setCheckable(True)
+        b_auto.setToolTip(T("Açıkken görüntü nesnenin yüzüne tam oturur (tek kez, nesnenin boyutuna gerilir). Kapalıyken doku döşenir (tekrar eder). Açınca ölçek 1, konum 0 olur."))
         gp2.addWidget(b_world, 1, 1, 1, 3)
         gp2.addWidget(b_auto, 2, 1, 1, 3)
         gp2.setColumnStretch(1, 1)
@@ -691,7 +692,7 @@ def open_surface(on_change=None, is_busy=None):
         right_.addLayout(brow)
         hl.addLayout(right_, 1)
 
-        common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_img, cb_pt, b_c1, b_c2, b_world, sp_size] + ax_b + \
+        common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_img, cb_pt, b_c1, b_c2, b_world, b_auto, sp_size] + ax_b + \
             list(pw.values()) + list(tsp.values())
         BL_LETTER = dict(normal="N", add="+", sub="-", mul="x", div="/", diff="D", screen="S", max="L", min="K")
 
@@ -834,6 +835,7 @@ def open_surface(on_change=None, is_busy=None):
             for i_, bb in enumerate(ax_b):
                 bb.setChecked(L["tex_axis"] == i_)
             b_world.setChecked(L["tex_world"])
+            b_auto.setChecked(L["tex_fit"])
             sp_size.setValue(float(L["tex_scale"]))
             for k_, sp_ in tsp.items():
                 sp_.setValue(float(L[k_]))
@@ -910,6 +912,8 @@ def open_surface(on_change=None, is_busy=None):
                 if ok:
                     L["tex"] = path
                     L["type"] = "image"
+                    L["tex_fit"] = True                               # kullanıcı görüntüsü: varsayılan olarak nesneye sığdır
+                    L["tex_scale"] = 0.0
                 else:
                     msg(T("Görüntü okunamadı: ") + path)
             cur["lock"] = True
@@ -1008,18 +1012,23 @@ def open_surface(on_change=None, is_busy=None):
                 refresh_tex_buttons()
                 schedule(PREVIEW_DELAY_MS)
 
-        def auto_size():
+        def on_auto(on):
+            if cur["lock"]:
+                return
             L = cur_layer()
             if L is None:
                 return
-            L["tex_scale"] = 0.0
-            for k_ in ("tex_sx", "tex_sy", "tex_sz"):
-                L[k_] = 1.0
-            for k_ in ("tex_px", "tex_py", "tex_pz"):
-                L[k_] = 0.0
+            L["tex_fit"] = bool(on)
+            if on:                                                # LightWave "Automatic Sizing": ölçek 1, konum 0, nesneye sığdır
+                L["tex_scale"] = 0.0
+                for k_ in ("tex_sx", "tex_sy", "tex_sz"):
+                    L[k_] = 1.0
+                for k_ in ("tex_px", "tex_py", "tex_pz"):
+                    L[k_] = 0.0
             cur["lock"] = True
             load_layer()
             cur["lock"] = False
+            update_row()
             schedule(PREVIEW_DELAY_MS)
 
         for w_ in (cb_type, cb_blend, cb_proj, cb_pt):
@@ -1040,7 +1049,7 @@ def open_surface(on_change=None, is_busy=None):
         b_ps.clicked.connect(paste_layer)
         b_up.clicked.connect(lambda *_a: move(1))
         b_dn.clicked.connect(lambda *_a: move(-1))
-        b_auto.clicked.connect(auto_size)
+        b_auto.toggled.connect(on_auto)
         b_close.clicked.connect(d.hide)
         tree_l.currentItemChanged.connect(lambda *_a: on_tree_sel())
         tree_l.itemChanged.connect(on_tree_check)

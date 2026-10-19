@@ -120,7 +120,7 @@ def _tex_params(m):
     return dict(proj=str(m.get("tex_proj", "cubic")), axis=int(m.get("tex_axis", 2)),
                 s=np.array([float(m.get("tex_sx", 1.0)), float(m.get("tex_sy", 1.0)), float(m.get("tex_sz", 1.0))]),
                 pos=np.array([float(m.get("tex_px", 0.0)), float(m.get("tex_py", 0.0)), float(m.get("tex_pz", 0.0))]),
-                R=None if ident else R, world=bool(m.get("tex_world", False)))
+                R=None if ident else R, world=bool(m.get("tex_world", False)), fit=bool(m.get("tex_fit", False)))
 
 
 def _tex_space(scene, tp, Pc, ng, tid):
@@ -153,15 +153,40 @@ def _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
     per = tw * tx.span
     cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
     foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
-    lod = np.log2(np.maximum(foot / (tw * float(np.mean(tp["s"])) / tx.base_w), 1.0))
+    if tp.get("fit") and hext is not None:                    # nesneye sığdır: görüntü genişliği = nesnenin (büyük iki) boyutu
+        twe = 2.0 * np.sort(hext, axis=1)[:, 1:].mean(1) * float(np.mean(tp["s"]))
+        lod = np.log2(np.maximum(foot / np.maximum(twe / tx.base_w, 1e-12), 1.0))
+    else:
+        lod = np.log2(np.maximum(foot / (tw * float(np.mean(tp["s"])) / tx.base_w), 1.0))
     return Q, nl, lod, per, hext
 
 
-def _tex_uv(tx, tp, Q, per, hext, scene):
+def _face_sign(ax, nl):
+    """Yüze dışarıdan bakan göze göre u yönü: +1 ya da -1 (n,) (görüntü aynalanmasın)."""
+    if nl is None:
+        return 1.0
+    pos = nl[:, ax] > 0
+    return np.where(pos == (ax != 1), 1.0, -1.0)
+
+
+def _tex_uv(tx, tp, Q, per, hext, scene, nl=None):
     """Silindirik/küresel/düzlemsel için (u, v) ve türev yardımcıları. Döner: (u, v, kind, aux)."""
     n = len(Q)
     proj, ax = tp["proj"], tp["axis"]
     a_, b_ = _PLANE[ax]
+    fit = bool(tp.get("fit")) and hext is not None
+    sp = float(tx.span)
+    if fit and proj in ("cylindrical", "spherical"):          # görüntü bir kez sarar, yükseklik nesne boyuna sığar
+        ang = np.arctan2(Q[:, b_], Q[:, a_]) / (2.0 * np.pi) + 0.5
+        if proj == "cylindrical":
+            return ang / sp, (0.5 - Q[:, ax] / np.maximum(2.0 * hext[:, ax], 1e-9)) / sp, "cyl", None
+        rr = np.maximum(np.sqrt((Q * Q).sum(1)), 1e-12)
+        lat = np.arcsin(np.clip(Q[:, ax] / rr, -1.0, 1.0)) / np.pi + 0.5
+        return ang / sp, (1.0 - lat) / sp, "sph", None
+    if fit and proj == "planar":
+        su = _face_sign(ax, nl)
+        return ((su * Q[:, a_] / np.maximum(2.0 * hext[:, a_], 1e-9) + 0.5) / sp,
+                (0.5 - Q[:, b_] / np.maximum(2.0 * hext[:, b_], 1e-9)) / sp, "plane", None)
     if proj in ("cylindrical", "spherical"):
         ang = np.arctan2(Q[:, b_], Q[:, a_]) / (2.0 * np.pi)
         sav = float(np.mean(tp["s"]))
@@ -186,8 +211,9 @@ def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=Fals
     n = len(Pc)
     smp = (lambda u, v, l: _sample_gray(tx, u, v, l)) if gray else tx.sample
     if tp["proj"] != "cubic":
-        u, v, _k, _x = _tex_uv(tx, tp, Q, per, hext, scene)
+        u, v, _k, _x = _tex_uv(tx, tp, Q, per, hext, scene, nl)
         return smp(u, v, lod)
+    fit3 = bool(tp.get("fit")) and hext is not None
     wt3 = np.abs(nl) ** 4                                   # "cubic": üç düzlemli, normale göre ağırlıklı
     wt3 /= wt3.sum(1, keepdims=True)
     tcol = np.zeros(n) if gray else np.zeros((n, 3))
@@ -195,7 +221,13 @@ def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=Fals
     for axx, (a_, b_) in enumerate(_PLANE):
         sl = np.nonzero(wt3[:, axx] > 0.02)[0]
         if len(sl):
-            sv = smp(Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect), lod[sl])
+            if fit3:
+                su = _face_sign(axx, nl[sl])
+                uu = (su * Q[sl, a_] / np.maximum(2.0 * hext[sl, a_], 1e-9) + 0.5) / float(tx.span)
+                vv = (0.5 - Q[sl, b_] / np.maximum(2.0 * hext[sl, b_], 1e-9)) / float(tx.span)
+            else:
+                uu, vv = Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect)
+            sv = smp(uu, vv, lod[sl])
             tcol[sl] += (wt3[sl, axx] * sv) if gray else (wt3[sl, axx][:, None] * sv)
             wsum[sl] += wt3[sl, axx]
     return tcol / np.maximum(wsum, 1e-9) if gray else tcol / np.maximum(wsum, 1e-9)[:, None]
@@ -308,6 +340,10 @@ def _bump_normal(scene, layers, nrm, height, ctx):
             eps = np.minimum(eps, sz / 40.0)
         else:
             sz = np.full(n, ly["tw"] * float(np.mean(tp["s"])))
+            if tp.get("fit"):
+                _Q, _nl, hext = _tex_space(scene, tp, Pc, ng, tid)
+                if hext is not None:
+                    sz = 2.0 * np.sort(hext, axis=1)[:, 1:].mean(1) * float(np.mean(tp["s"]))
             eps = np.minimum(eps, sz * ly["tx"].span / ly["tx"].w)
         size_ref += sz / len(layers)
     eps = np.maximum(eps, 0.5 * foot)
