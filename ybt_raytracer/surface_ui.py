@@ -105,12 +105,13 @@ def render_preview(mat, w=280, h=210, shape="sphere"):
     sc = _preview_scene(mat, shape)
     saved = {k: getattr(S, k) for k in ("LIGHTS", "AMBIENT", "AMBIENT_COLOR", "FLOOR", "AA", "BOUNCES", "GLASS", "SMOOTH",
                                         "THREADS", "REFLECT_GLASS", "REFLECT_SURF", "IOR", "REFLECTIONS", "REFRACTION", "SPEC", "SHININESS",
-                                        "AO", "SOFT_SHADOW", "TONEMAP", "EXPOSURE")}
+                                        "AO", "SOFT_SHADOW", "TONEMAP", "EXPOSURE", "ENV_MODE")}
     try:
         S.LIGHTS = [dict(on=True, h=-35.0, v=45.0, color=(1, 1, 1), power=0.85, shadow=True),
                     dict(on=True, h=50.0, v=-5.0, color=(1, 1, 1), power=0.25, shadow=False),
                     dict(on=True, h=180.0, v=25.0, color=(1, 1, 1), power=0.4, shadow=False)]
         S.AMBIENT, S.AMBIENT_COLOR = 0.3, (1.0, 1.0, 1.0)
+        S.ENV_MODE = "off"
         S.AO, S.SOFT_SHADOW, S.TONEMAP, S.EXPOSURE = False, 0.0, "none", 1.0      # önizleme hep hızlı: ana pencerenin AO / yumuşak gölge ayarları yansımasın
         S.FLOOR, S.AA, S.BOUNCES, S.GLASS, S.SMOOTH, S.THREADS = False, 0, 3, True, True, 1
         S.REFLECT_GLASS, S.REFLECT_SURF, S.IOR = 1.0, 0.0, 1.5

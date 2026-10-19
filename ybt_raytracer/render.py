@@ -8,6 +8,7 @@ import time
 from . import settings as S
 from .materials import shininess as _shin
 from .i18n import T
+from . import envmap
 from .textures import load as load_texture, sample_gray as _sample_gray
 from .procedural import evaluate as _proc_eval
 from .core import _any, _closest, _closest_sorted, _dot, _norm, camera_basis
@@ -19,10 +20,16 @@ def _acc(acc, idx, vals):
     np.add.at(acc, idx, vals)
 
 
+def _rot_z(v, deg):
+    a = np.radians(deg)
+    c, s = np.cos(a), np.sin(a)
+    return np.stack([c * v[:, 0] - s * v[:, 1], s * v[:, 0] + c * v[:, 1], v[:, 2]], 1)
+
+
 def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
     """AO'yu seyrek örneklerden tüm piksellere yayan + gürültüyü azaltan bilateral süzgeç: yalnız ışın atılmış (have),
     aynı nesnedeki, benzer derinlik ve normaldeki komşular ağırlıkla karışır."""
-    h, w = ao.shape
+    h, w = ao.shape[:2]
     hit = ids >= 0
     obj = np.where(hit, np.where(ids == fid, -2, oid[np.minimum(ids, len(oid) - 1)]), -3).astype(np.int32)
     obj = np.where(hit & (ids != fid) & (obj < 0), ids + 1000000, obj)          # nesnesiz (oid=-1) üçgen: kendi kimliği
@@ -31,8 +38,9 @@ def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
     P = R
     pad = lambda a, v: np.pad(a, ((P, P), (P, P)) + ((0, 0),) * (a.ndim - 2), constant_values=v)
     ob_p, tt_p, ao_p, hv_p = pad(obj, -9), pad(tt, 0.0), pad(ao.astype(np.float32), 0.0), pad(have.astype(np.float32), 0.0)
+    mc = ao.ndim == 3
     nr_p = np.pad(nrm, ((P, P), (P, P), (0, 0)))
-    acc = np.zeros((h, w), dtype=np.float32)
+    acc = np.zeros(ao.shape, dtype=np.float32)
     wsum = np.zeros((h, w), dtype=np.float32)
     tol = np.maximum(tt * 0.02, 1e-9)
     sig2 = 2.0 * (R * 0.55) ** 2
@@ -42,9 +50,12 @@ def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
             same = (ob_p[sl] == obj) & hit & (np.abs(tt_p[sl] - tt) < tol * (1.0 + 0.5 * np.hypot(dx, dy)))
             nd = (nr_p[sl] * nrm).sum(2)
             wgt = same * hv_p[sl] * np.clip((nd - 0.7) / 0.3, 0.0, 1.0) * np.float32(np.exp(-(dx * dx + dy * dy) / sig2))
-            acc += wgt * ao_p[sl]
+            acc += (wgt[..., None] if mc else wgt) * ao_p[sl]
             wsum += wgt
-    return np.where(hit & (wsum > 1e-6), acc / np.maximum(wsum, 1e-6), 0.0)
+    ok_ = hit & (wsum > 1e-6)
+    if mc:
+        return np.where(ok_[..., None], acc / np.maximum(wsum, 1e-6)[..., None], 0.0)
+    return np.where(ok_, acc / np.maximum(wsum, 1e-6), 0.0)
 
 
 def _soft_blur(v0, Tb, valid, oid, foot, ndl, tan_t, rmax=48):
@@ -383,8 +394,18 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     else:
         half_x, half_y = base, base / aspect
 
+    env = None
+    try:
+        env = envmap.get_env(S)
+    except Exception:
+        env = None
+    env_i = float(S.ENV_INTENSITY) if env is not None else 0.0
+    env_rot = float(S.ENV_ROT)
+    env_light = env is not None and bool(S.ENV_LIGHT)
+    env_bg = env is not None and bool(S.ENV_BACKGROUND)
+    env_refl = env is not None and bool(S.ENV_REFLECT)
     lights = []                                              # (yön, doğrusal renk, güç, gölge?)
-    for lt in list(S.LIGHTS)[:3]:
+    for lt in ([] if (env_light and not bool(S.ENV_KEEP_LIGHTS)) else list(S.LIGHTS)[:3]):
         if not lt.get("on", True) or float(lt["power"]) <= 0.0:
             continue
         if "dir" in lt:
@@ -396,6 +417,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             Ld = _norm(-fwd * (np.cos(vv) * np.cos(hh)) + right * (np.cos(vv) * np.sin(hh)) + up * np.sin(vv))
         lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
                        bool(lt.get("shadow", False)) and shadows))
+    if env_light and bool(S.ENV_SUN) and env.sun is not None:
+        sd = env.sun["dir"]
+        a_ = np.radians(env_rot)                              # harita dönüşü: lookup'taki boylam kaymasıyla uyumlu
+        c_, s_ = np.cos(a_), np.sin(a_)
+        sd = np.array([c_ * sd[0] - s_ * sd[1], s_ * sd[0] + c_ * sd[1], sd[2]])
+        lights.append((_norm(sd), np.maximum(env.sun["power"], 0.0) * env_i, 1.0, shadows))
     soft_r = float(S.SOFT_SHADOW)
     soft_fast = str(S.SOFT_METHOD) != "sampled"
     soft_on = soft_r > 0.0 and shadows and any(lt[3] for lt in lights) and (soft_fast or scene.count <= int(S.SOFT_MAX_TRIS))
@@ -421,6 +448,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             ds_.append(_norm(Ld_ + u_ * rr_ * np.cos(th_) + v_ * rr_ * np.sin(th_)))
         sample_dirs[li_] = ds_
     amb = float(S.AMBIENT) * np.array(S.AMBIENT_COLOR, dtype=np.float64) ** 2.2
+    if env_light:
+        amb = amb * 0.0                                       # gökyüzü ışığı ortam terimini değiştirir
     eps = scene.diag * 1e-5
 
     alpha_t = scene.alpha if S.GLASS else np.ones(scene.count)   # 1 = opak
@@ -563,6 +592,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     grids[(li, si)] = gcache[gk]
     clusters = None
     ao_on = bool(S.AO) and not brute and scene.count > 0 and int(S.AO_SAMPLES) > 0 and float(S.AO_STRENGTH) > 0.0
+    env_vis = env_light and not brute and scene.count > 0 and int(S.ENV_SAMPLES) > 0
+    ao_on = ao_on or env_vis
     if (secondary or ao_on) and not brute:
         say(T("yansıma/saydamlık hızlandırıcısı hazırlanıyor..."))
         if "clusters" not in cache:
@@ -588,6 +619,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         img = np.zeros((h, w, 3), dtype=np.float64)
     xs = ((np.arange(w) + 0.5) / w * 2.0 - 1.0) * half_x
     top_l, bot_l = top ** 2.2, bot ** 2.2
+    hz_l = env.horizon * env_i if (env is not None and env_bg) else bot_l
 
     def prim_rays(px, py, sx, sy):
         """Birincil ışınlar: piksel (px,py) içindeki (sx,sy) konumundan. Döner O ((3,) ya da (n,3)), D (n,3)."""
@@ -627,6 +659,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     else:
         ss_buf = None
     ao_buf = mkbuf(np.float64, 0.0) if ao_on else None
+    env_bufs = [mkbuf(np.float64, 0.0) for _ in range(3)] if (ao_on and env_vis) else None
     ao_have = mkbuf(np.float64, 0.0) if ao_on else None        # AO ışını atılan pikseller (kalanlar süzgeçle doldurulur)
     ao_step = max(1, int(S.AO_STEP))
 
@@ -740,10 +773,14 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             miss = np.nonzero(ti < 0)[0]
             if len(miss):
                 sky = np.clip(RD[miss][:, 2:3] * 0.5 + 0.5, 0, 1)
-                env = np.where(RP[miss][:, None], bg_lin[pix[miss]], top_l * sky + bot_l * (1 - sky))
+                env_c = np.where(RP[miss][:, None], bg_lin[pix[miss]], top_l * sky + bot_l * (1 - sky))
+                if env is not None and (env_bg or env_refl):
+                    em = (RP[miss] & env_bg) | (~RP[miss] & env_refl)
+                    if em.any():
+                        env_c[em] = env.lookup(RD[miss][em], 0.0, env_rot) * env_i
                 if f_on:
-                    env = np.where(RF[miss][:, None], env * S.FLOOR_SKY_REFL, env)   # gökyüzü zeminde düz mavi ayna gibi durmasın
-                _acc(acc, pix[miss], RW[miss][:, None] * env)
+                    env_c = np.where(RF[miss][:, None], env_c * S.FLOOR_SKY_REFL, env_c)   # gökyüzü zeminde düz mavi ayna gibi durmasın
+                _acc(acc, pix[miss], RW[miss][:, None] * env_c)
 
             hi = np.nonzero(ti >= 0)[0]
             if len(hi) == 0:
@@ -837,6 +874,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 lit = amb[None, :] * (1.0 - float(S.AO_STRENGTH) * ao_buf[py[pix[hi]], px[pix[hi]]])[:, None]
             else:
                 lit = np.tile(amb, (len(hi), 1))
+            if env_light:                                       # gökyüzü ışığı: birincilde görünürlük tamponu, ikincilde SH
+                if env_bufs is not None and depth == 0:
+                    qy_, qx_ = py[pix[hi]], px[pix[hi]]
+                    lit += np.stack([b_[qy_, qx_] for b_ in env_bufs], 1) * env_i
+                else:
+                    lit += env.sh_light(_rot_z(nrm, -env_rot)) * env_i
             spec_sum = np.zeros((len(hi), 3))
             for li, (Ld, lcol, power, cast) in enumerate(lights):
                 ndl = np.clip(_dot(nrm, Ld), 0, None)
@@ -881,7 +924,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if isf.any() and persp:                         # ufka doğru hafif sis (yalnız perspektif; ortografikte atmosfer derinliği yok) (kameraya göre sahne merkezinin gerisinde başlar)
                     depth_c = np.clip(((P[isf] - pos) * fwd).sum(1) - cam_dist, 0.0, None)
                     haze = (1.0 - np.exp(-depth_c / (S.FLOOR_HAZE * scene.diag)))[:, None]
-                    surf[isf] = surf[isf] * (1.0 - haze) + bot_l * haze
+                    surf[isf] = surf[isf] * (1.0 - haze) + hz_l * haze
 
             glass = a < 0.999
             cosv = np.clip(-_dot(nrm, Dh), 0, 1)
@@ -1120,6 +1163,13 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     if pre_on:
         tmax_ao = float(S.AO_RADIUS) * scene.diag
         m_ao = max(1, int(S.AO_SAMPLES))
+        if env_vis:
+            m_ao = max(m_ao, int(S.ENV_SAMPLES))
+            tmax_ray = scene.diag * 200.0
+            _lv0 = env.levels[0].shape
+            env_level = max(0.0, 0.5 * np.log2((2.0 * np.pi / m_ao) / ((2.0 * np.pi / _lv0[1]) * (np.pi / _lv0[0]))))
+        else:
+            tmax_ray = tmax_ao
 
         def vis_band(ty):
             r0, r1 = ty * tile, min(ty * tile + tile, h)
@@ -1219,8 +1269,20 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     chunks_d.append(d_)
                 Ao = np.concatenate(chunks_o)
                 Ad = np.concatenate(chunks_d)
-                t_, i_ = _closest_general(scene, clusters, Ao, Ad, tk, tmax_ao)
-                v_ = np.where(i_ >= 0, 1.0 - np.minimum(t_ / tmax_ao, 1.0), 0.0)
+                t_, i_ = _closest_general(scene, clusters, Ao, Ad, tk, tmax_ray)
+                if env_vis:
+                    v_ = np.where((i_ >= 0) & (t_ < tmax_ao), 1.0 - np.minimum(t_ / tmax_ao, 1.0), 0.0) if bool(S.AO) else np.zeros(len(i_))
+                    free = np.nonzero(i_ < 0)[0]
+                    rad = np.zeros((len(i_), 3))
+                    if len(free):
+                        rad[free] = env.lookup(Ad[free], env_level, env_rot)
+                    rad = rad.reshape(m_ao, len(idx), 3).mean(0)
+                    for c_ in range(3):
+                        e_ = np.zeros(nrow * w)
+                        e_[idx] = rad[:, c_]
+                        env_bufs[c_][r0:r1] = e_.reshape(nrow, w)
+                else:
+                    v_ = np.where(i_ >= 0, 1.0 - np.minimum(t_ / tmax_ao, 1.0), 0.0)
                 occ = v_.reshape(m_ao, len(idx)).mean(0)
                 out[idx] = occ
             ao_buf[r0:r1] = out.reshape(nrow, w)
@@ -1232,6 +1294,11 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
               return None
           ao_buf[:] = _ao_blur(np.array(ao_buf), np.array(ao_have), np.array(vis[(0.5, 0.5)][1]), np.array(vis[(0.5, 0.5)][0]), n_ext,
                              fid if f_on else -1, scene.oid, 2 * ao_step + 1)
+          if env_bufs is not None:
+              eb_ = _ao_blur(np.stack([np.array(b_) for b_ in env_bufs], 2), np.array(ao_have), np.array(vis[(0.5, 0.5)][1]),
+                             np.array(vis[(0.5, 0.5)][0]), n_ext, fid if f_on else -1, scene.oid, 2 * ao_step + 1)
+              for c_ in range(3):
+                  env_bufs[c_][:] = eb_[:, :, c_]
         say(T("ışınlar izleniyor..."))
 
     # ---- 1. geçiş: piksel başına 1 örnek (piksel merkezi), bant bant ----
