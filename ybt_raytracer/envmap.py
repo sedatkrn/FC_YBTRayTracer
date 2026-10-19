@@ -151,7 +151,8 @@ class Env(object):
                 p = p * (SUN_CAP / lp)
             self.sun = dict(dir=np.array(sun["dir"], dtype=np.float64), power=p)
         h, w = self.img.shape[:2]
-        hz = np.array([[np.cos(t), np.sin(t), 0.0] for t in np.linspace(0, 2 * np.pi, 16, endpoint=False)])
+        ce, se = np.cos(np.radians(6.0)), np.sin(np.radians(6.0))                 # ufkun hemen üstü (tam ufuk çizgisi zemin/gökyüzü sınırında koyu çıkabilir)
+        hz = np.array([[ce * np.cos(t), ce * np.sin(t), se] for t in np.linspace(0, 2 * np.pi, 16, endpoint=False)])
         self.horizon = self.lookup(hz).mean(0)                    # ufuk rengi (zemin sisi için)
 
     # -- güneşi ayır
@@ -259,6 +260,29 @@ def sky_env(sun_elev=45.0, sun_az=135.0, glow=True):
 _CACHE = {}
 
 
+def _disk_cache(path, reader):
+    """Büyük HDR'lerin (8k+) ilk okunması yavaş: küçültülmüş hali geçici klasöre .npy olarak saklanır, sonraki açılış anlık."""
+    import hashlib
+    import tempfile
+    try:
+        st = os.stat(path)
+        key = hashlib.md5(("%s|%d|%d" % (path, st.st_size, int(st.st_mtime))).encode("utf-8", "ignore")).hexdigest()
+        cf = os.path.join(tempfile.gettempdir(), "ybt_env_%s.npy" % key)
+    except OSError:
+        return reader(path)
+    if os.path.isfile(cf):
+        try:
+            return np.load(cf)
+        except Exception:
+            pass
+    arr = _shrink(np.asarray(reader(path), dtype=np.float32), 2048)
+    try:
+        np.save(cf, arr)
+    except Exception:
+        pass
+    return arr
+
+
 def get_env(S):
     """Ayarlardan (settings) ortam nesnesi; kapalıysa None. Dosya/parametre aynıysa önbellekten."""
     mode = str(getattr(S, "ENV_MODE", "off"))
@@ -282,7 +306,7 @@ def get_env(S):
         _CACHE.clear()
         try:
             if path.lower().endswith(".hdr") or path.lower().endswith(".pic"):
-                arr = read_hdr(path)
+                arr = _disk_cache(path, read_hdr)
             else:
                 arr = read_ldr(path)
         except Exception:
