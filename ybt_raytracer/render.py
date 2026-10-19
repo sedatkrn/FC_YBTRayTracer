@@ -8,7 +8,7 @@ import time
 from . import settings as S
 from .materials import shininess as _shin
 from .i18n import T
-from .textures import load as load_texture
+from .textures import load as load_texture, sample_gray as _sample_gray
 from .core import _any, _closest, _closest_sorted, _dot, _norm, camera_basis
 from .parallel import _Ticker, _limit_blas
 from .accel import _Clusters, _LightGrid, _closest_general, _screen_bins, _screen_boxes, band_sel, raster_rows
@@ -122,8 +122,8 @@ def _tex_params(m):
                 R=None if ident else R, world=bool(m.get("tex_world", False)))
 
 
-def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
-    """Doku rengi (n,3) doğrusal. Pc: sahne merkezine göre vuruş noktaları; ng: geometrik normal; tid: üçgen kimliği."""
+def _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
+    """Ortak hazırlık: doku uzayı koordinatları Q, dönmüş normal, mip düzeyi, nesne boyutu."""
     n = len(Pc)
     if tp["world"]:
         C = np.tile(-scene.center, (n, 1))
@@ -148,9 +148,15 @@ def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
     cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
     foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
     lod = np.log2(np.maximum(foot / (tw * float(np.mean(tp["s"])) / tx.base_w), 1.0))
+    return Q, nl, lod, per, hext
+
+
+def _tex_uv(tx, tp, Q, per, hext, scene):
+    """Silindirik/küresel/düzlemsel için (u, v) ve türev yardımcıları. Döner: (u, v, kind, aux)."""
+    n = len(Q)
     proj, ax = tp["proj"], tp["axis"]
+    a_, b_ = _PLANE[ax]
     if proj in ("cylindrical", "spherical"):
-        a_, b_ = _PLANE[ax]
         ang = np.arctan2(Q[:, b_], Q[:, a_]) / (2.0 * np.pi)
         sav = float(np.mean(tp["s"]))
         if hext is None:
@@ -161,25 +167,90 @@ def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
             R0 = hext.max(1)
         rep = np.maximum(1.0, np.round(2.0 * np.pi * R0 / (sav * per)))
         if proj == "cylindrical":
-            u, v = ang * rep, Q[:, ax] / (per * tx.aspect)
-        else:
-            rr = np.maximum(np.sqrt((Q * Q).sum(1)), 1e-12)
-            lat = np.arcsin(np.clip(Q[:, ax] / rr, -1.0, 1.0)) / np.pi + 0.5
-            u, v = ang * rep, lat * rep / 2.0 / tx.aspect
-        return tx.sample(u, v, lod)
-    if proj == "planar":
-        a_, b_ = _PLANE[ax]
-        return tx.sample(Q[:, a_] / per, Q[:, b_] / (per * tx.aspect), lod)
+            return ang * rep, Q[:, ax] / (per * tx.aspect), "cyl", rep
+        rr = np.maximum(np.sqrt((Q * Q).sum(1)), 1e-12)
+        lat = np.arcsin(np.clip(Q[:, ax] / rr, -1.0, 1.0)) / np.pi + 0.5
+        return ang * rep, lat * rep / 2.0 / tx.aspect, "sph", (rep, rr)
+    return Q[:, a_] / per, Q[:, b_] / (per * tx.aspect), "plane", None
+
+
+def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=False):
+    """Doku değeri: renk (n,3) doğrusal ya da gray=True ise parlaklık (n,) 0..1."""
+    Q, nl, lod, per, hext = _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang)
+    n = len(Pc)
+    smp = (lambda u, v, l: _sample_gray(tx, u, v, l)) if gray else tx.sample
+    if tp["proj"] != "cubic":
+        u, v, _k, _x = _tex_uv(tx, tp, Q, per, hext, scene)
+        return smp(u, v, lod)
     wt3 = np.abs(nl) ** 4                                   # "cubic": üç düzlemli, normale göre ağırlıklı
     wt3 /= wt3.sum(1, keepdims=True)
-    tcol = np.zeros((n, 3))
+    tcol = np.zeros(n) if gray else np.zeros((n, 3))
     wsum = np.zeros(n)
     for axx, (a_, b_) in enumerate(_PLANE):
         sl = np.nonzero(wt3[:, axx] > 0.02)[0]
         if len(sl):
-            tcol[sl] += wt3[sl, axx][:, None] * tx.sample(Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect), lod[sl])
+            sv = smp(Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect), lod[sl])
+            tcol[sl] += (wt3[sl, axx] * sv) if gray else (wt3[sl, axx][:, None] * sv)
             wsum[sl] += wt3[sl, axx]
-    return tcol / np.maximum(wsum, 1e-9)[:, None]
+    return tcol / np.maximum(wsum, 1e-9) if gray else tcol / np.maximum(wsum, 1e-9)[:, None]
+
+
+def _tex_grad(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
+    """Bump: yükseklik haritasının dünya uzayındaki eğimi ∇h (n,3), 1/mm. Dört yönlü sonlu fark; örnek aralığı mip düzeyine bağlı."""
+    Q, nl, lod, per, hext = _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang)
+    n = len(Pc)
+    fct = 2.0 ** lod
+    eu, ev = fct / tx.w, fct / tx.h                        # bir texel (u ve v birimiyle)
+
+    def hgrad(u, v, l, ee_u, ee_v):
+        du = (_sample_gray(tx, u + ee_u, v, l) - _sample_gray(tx, u - ee_u, v, l)) / (2.0 * ee_u)
+        dv = (_sample_gray(tx, u, v + ee_v, l) - _sample_gray(tx, u, v - ee_v, l)) / (2.0 * ee_v)
+        return du, dv
+    gQ = np.zeros((n, 3))
+    if tp["proj"] == "cubic":
+        wt3 = np.abs(nl) ** 4
+        wt3 /= wt3.sum(1, keepdims=True)
+        wsum = np.zeros(n)
+        for axx, (a_, b_) in enumerate(_PLANE):
+            sl = np.nonzero(wt3[:, axx] > 0.02)[0]
+            if len(sl):
+                du, dv = hgrad(Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect), lod[sl], eu[sl], ev[sl])
+                w_ = wt3[sl, axx]
+                gQ[sl, a_] += w_ * du / per
+                gQ[sl, b_] += w_ * dv / (per * tx.aspect)
+                wsum[sl] += w_
+        gQ /= np.maximum(wsum, 1e-9)[:, None]
+    else:
+        u, v, kind, aux = _tex_uv(tx, tp, Q, per, hext, scene)
+        du, dv = hgrad(u, v, lod, eu, ev)
+        ax = tp["axis"]
+        a_, b_ = _PLANE[ax]
+        if kind == "plane":
+            gQ[:, a_] = du / per
+            gQ[:, b_] = dv / (per * tx.aspect)
+        else:
+            th = np.arctan2(Q[:, b_], Q[:, a_])
+            et_a, et_b = -np.sin(th), np.cos(th)           # çevresel (teğet) yön, a-b düzleminde
+            if kind == "cyl":
+                rxy = np.maximum(np.sqrt(Q[:, a_] ** 2 + Q[:, b_] ** 2), 1e-9)
+                gt = du * aux / (2.0 * np.pi * rxy)
+                gQ[:, a_] = gt * et_a
+                gQ[:, b_] = gt * et_b
+                gQ[:, ax] = dv / (per * tx.aspect)
+            else:
+                rep, rr = aux
+                rxy = np.maximum(np.sqrt(Q[:, a_] ** 2 + Q[:, b_] ** 2), 1e-9)
+                gt = du * rep / (2.0 * np.pi * rxy)
+                gl = dv * (rep / 2.0 / tx.aspect) / (np.pi * rr)         # meridyen yönü
+                ca, cb = Q[:, a_] / rxy, Q[:, b_] / rxy
+                sl_ = Q[:, ax] / rr
+                gQ[:, a_] = gt * et_a - gl * sl_ * ca
+                gQ[:, b_] = gt * et_b - gl * sl_ * cb
+                gQ[:, ax] = gl * rxy / rr
+    gP = (gQ / tp["s"])
+    if tp["R"] is not None:
+        gP = gP @ tp["R"].T
+    return gP
 
 
 def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, tick=None, stage=None):
@@ -252,7 +323,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     r_glass = float(S.REFLECT_GLASS) if (S.GLASS and refl_on) else 0.0
     r_surf = float(S.REFLECT_SURF) if refl_on else 0.0
     bounces = int(S.BOUNCES)
-    has_glass = bool((alpha_t < 0.999).any())
+    has_glass = bool((alpha_t < 0.999).any())   # (kanal dokusuyla saydamlık eklenirse aşağıda güncellenir)
     ior = float(min(max(S.IOR, 1.0), 4.0)) if S.REFRACTION else 1.0
     # malzeme tabloları (indeks 0 = malzemesiz üçgen/zemin -> genel ayarlar)
     mt_ = scene.mtable
@@ -273,16 +344,34 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 w_ = float(m_.get("tex_scale", 0.0))
                 w_ = w_ if w_ > 0 else t_.rel * scene.diag
                 tex_mats[i_ + 1] = (t_, max(w_, 1e-6 * scene.diag), float(m_.get("tex_mix", 1.0)), _tex_params(m_))
-    if tex_mats and any(not t_[3]["world"] for t_ in tex_mats.values()):
+    # kanal dokuları: malzeme indeksi -> {kanal: (Texture, tekrar genişliği, karışım, ters, yerleşim, bump gücü)}
+    ch_mats = {}
+    for i_, m_ in enumerate(mt_):
+        for chn_, sp_ in (m_.get("tex_ch") or {}).items():
+            if not sp_.get("tex"):
+                continue
+            t_ = load_texture(sp_["tex"])
+            if t_ is None:
+                continue
+            w_ = float(sp_.get("tex_scale", 0.0))
+            w_ = w_ if w_ > 0 else t_.rel * scene.diag
+            ch_mats.setdefault(i_ + 1, {})[chn_] = (t_, max(w_, 1e-6 * scene.diag), float(sp_.get("tex_mix", 1.0)),
+                                                    bool(sp_.get("tex_invert", False)), _tex_params(sp_), float(sp_.get("tex_strength", 1.0)))
+    gloss_tab = np.array([0.28] + [m["gloss"] for m in mt_])
+    ch_refl = any(("refl" in d_) for d_ in ch_mats.values())
+    ch_tr = any(("transp" in d_) for d_ in ch_mats.values())
+    if any(not t_[3]["world"] for t_ in tex_mats.values()) or any(not v_[4]["world"] for d_ in ch_mats.values() for v_ in d_.values()):
         scene.obj_bounds()                                    # çatallanmadan önce hesapla (işçiler paylaşır)
     pix_ang_g = 2.0 * (np.tan(cam["size"] / 2.0) if bool(cam["persp"]) else cam["size"] / 2.0) / max(h, 1)
+    has_glass = has_glass or ch_tr
     refr = bool(S.GLASS and has_glass and float(ior_tab.max()) > 1.0005)   # kırılma: Snell yasası, çıkışta tam iç yansıma
     f_on = bool(S.FLOOR)
     f_alpha = float(min(max(S.FLOOR_OPACITY, 0.0), 1.0))
     f_refl = float(min(max(S.FLOOR_REFLECT, 0.0), 1.0))
     if f_on and f_alpha <= S.INVISIBLE_ALPHA:
         f_on = False                                           # görünmez zemin
-    secondary = has_glass or r_surf > 0.0 or float(refl_tab.max()) > 0.0 or (f_on and (f_refl > 0.0 or f_alpha < 0.999))
+    has_glass = has_glass or ch_tr
+    secondary = has_glass or ch_refl or r_surf > 0.0 or float(refl_tab.max()) > 0.0 or (f_on and (f_refl > 0.0 or f_alpha < 0.999))
     if f_on and f_refl > 0.0:
         bounces = max(bounces, 1)                              # zemin yansıması en az 1 sekme ister
     fid = scene.count                                          # zeminin 'üçgen' numarası (hızlandırıcılara girmez)
@@ -622,10 +711,47 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     tcol = _tex_sample(scene, tx, tw, tp, P[ix], ngeo[ix], Dh[ix], tid[ix],
                                        tb[hi][ix] if persp else np.ones(len(ix)), RN[hi][ix], pix_ang_g)
                     albedo[ix] = (1.0 - mix) * albedo[ix] + mix * tcol
+            dif_h = spec_h = shin_h = lum_h = refl_h = None
+            if has_mat:                                         # nokta başına malzeme değerleri (kanal dokuları üzerine yazar)
+                dif_h, spec_h, shin_h, lum_h, refl_h = dif_tab[mt], spec_tab[mt], shin_tab[mt], lum_tab[mt], refl_tab[mt]
+            if ch_mats and has_mat:
+                for k_, chd in ch_mats.items():
+                    ix = np.nonzero(mt == k_)[0]
+                    if len(ix) == 0:
+                        continue
+                    dist_i = tb[hi][ix] if persp else np.ones(len(ix))
+                    for chn_, (tx, tw, op, inv, tp, stg) in chd.items():
+                        if chn_ == "bump":
+                            if stg <= 0.0:
+                                continue
+                            gP = _tex_grad(scene, tx, tw, tp, P[ix], ngeo[ix], Dh[ix], tid[ix], dist_i, RN[hi][ix], pix_ang_g)
+                            hrel = stg * 0.03 * tw                          # kabartı yüksekliği (mm): doku tekrarının %3'ü x güç
+                            nb = nrm[ix] - hrel * (gP - _dot(gP, nrm[ix])[:, None] * nrm[ix])
+                            nb /= np.maximum(np.sqrt(_dot(nb, nb)), 1e-12)[:, None]
+                            if nrm is ngeo:
+                                nrm = nrm.copy()
+                            nrm[ix] = nb
+                            continue
+                        g = _tex_sample(scene, tx, tw, tp, P[ix], ngeo[ix], Dh[ix], tid[ix], dist_i, RN[hi][ix], pix_ang_g, gray=True)
+                        if inv:
+                            g = 1.0 - g
+                        if chn_ == "diffuse":
+                            dif_h[ix] = (1.0 - op) * dif_h[ix] + op * g
+                        elif chn_ == "spec":
+                            spec_h[ix] = (1.0 - op) * spec_h[ix] + op * g
+                        elif chn_ == "gloss":
+                            gl = (1.0 - op) * gloss_tab[k_] + op * g
+                            shin_h[ix] = 2.0 + 600.0 * gl * gl
+                        elif chn_ == "refl":
+                            refl_h[ix] = (1.0 - op) * refl_h[ix] + op * (g if refl_on else 0.0)
+                        elif chn_ == "lum":
+                            lum_h[ix] = (1.0 - op) * lum_h[ix] + op * g
+                        elif chn_ == "transp":
+                            a[ix] = 1.0 - ((1.0 - op) * (1.0 - a[ix]) + op * g)
             albedo_raw = albedo
             if has_mat:
-                albedo = albedo * dif_tab[mt][:, None]
-                spec_k, shin_k, metal_k = spec_tab[mt], shin_tab[mt], metal_tab[mt]
+                albedo = albedo * dif_h[:, None]
+                spec_k, shin_k, metal_k = spec_h, shin_h, metal_tab[mt]
             else:
                 spec_k, shin_k, metal_k = float(spec_tab[0]), float(shin_tab[0]), 0.0
 
@@ -669,7 +795,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 spec_sum = spec_sum * (1.0 - metal_k[:, None] + metal_k[:, None] * np.minimum(albedo_raw * 1.4, 1.0))
             surf = albedo * lit + spec_sum
             if has_mat:
-                lm = lum_tab[mt]
+                lm = lum_h
                 if lm.any():                                    # kendi ışığı: ışıktan bağımsız
                     surf = surf + lm[:, None] * albedo_raw * 1.5
             if f_on:
@@ -681,8 +807,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
 
             glass = a < 0.999
             cosv = np.clip(-_dot(nrm, Dh), 0, 1)
-            rg_k = np.where(mt > 0, refl_tab[mt], r_glass) if has_mat else r_glass
-            r_op = refl_tab[mt] if has_mat else r_surf
+            rg_k = np.where(mt > 0, refl_h, r_glass) if has_mat else r_glass
+            r_op = refl_h if has_mat else r_surf
             if fresnel_on:                                      # opak parlak yüzey: yansıma kaydırma açısında artar (Schlick, F0 = malzeme yansıması)
                 r_op = np.where(r_op > 0.0, np.clip(r_op + (1.0 - r_op) * (1 - cosv) ** 5, 0, 0.95), r_op)
             R = np.where(glass, np.clip(rg_k * (0.15 + 0.85 * (1 - cosv) ** 5), 0, 0.95), r_op)

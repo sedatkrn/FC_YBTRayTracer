@@ -19,6 +19,11 @@ Bir malzeme sözlüğü:
   tex_sx/sy/sz     eksen başına doku ölçeği çarpanı (1 = tex_scale genişliği)
   tex_px/py/pz     doku konumu (mm; koordinat orijinine göre kayma)
   tex_rx/ry/rz     doku dönmesi (derece, X sonra Y sonra Z)
+  tex_invert       gri tonlu kanallarda dokuyu ters çevir (yalnız renk dışı kanallar)
+  tex_strength     bump kanalı: yükseklik çarpanı (1 = %100)
+  tex_ch           {kanal: doku ayarı}: diffuse/spec/gloss/refl/transp/lum/bump kanallarının dokuları. Her doku ayarı yukarıdaki tex* alanlarını
+                   aynı adlarla taşır; renk kanalının dokusu malzemenin kendi tex* alanlarıdır. Gri tonlu kanalda değer = doku parlaklığı
+                   (0..1), tex_mix ile malzeme değerine karışır; bump kanalında doku yükseklik haritasıdır.
   tex_world        False: nesne koordinatı (doku nesnenin sınır kutusu merkezine bağlı, nesneyle birlikte gider); True: dünya koordinatı
 Atama nesnenin 'YBTMaterial' (metin) özelliğinde saklanır; belgeyle birlikte kaydolur.
 "Render'a dahil et" işareti nesnenin 'YBTInclude' (mantıksal) özelliğinde saklanır; özellik yoksa nesne dahildir.
@@ -32,7 +37,11 @@ INC_PROP = "YBTInclude"
 DEFAULT = dict(color=None, diffuse=1.0, spec=0.30, gloss=0.28, metal=0.0, refl=0.0, transp=0.0, ior=1.0, lum=0.0,
                tex="", tex_scale=0.0, tex_mix=1.0,
                tex_proj="cubic", tex_axis=2, tex_sx=1.0, tex_sy=1.0, tex_sz=1.0,
-               tex_px=0.0, tex_py=0.0, tex_pz=0.0, tex_rx=0.0, tex_ry=0.0, tex_rz=0.0, tex_world=False)
+               tex_px=0.0, tex_py=0.0, tex_pz=0.0, tex_rx=0.0, tex_ry=0.0, tex_rz=0.0, tex_world=False,
+               tex_invert=False, tex_strength=1.0, tex_ch={})
+CHANNELS = ("color", "diffuse", "spec", "gloss", "refl", "transp", "lum", "bump")
+GRAY_CHANNELS = CHANNELS[1:]
+SPEC_KEYS = tuple(k for k in DEFAULT if k.startswith("tex") and k != "tex_ch")
 KEYS = tuple(DEFAULT.keys())
 
 
@@ -252,6 +261,43 @@ def save_user(lib):
                   f, ensure_ascii=False, indent=1)
 
 
+def spec_default():
+    """Boş doku ayarı (tüm kanallar için ortak alanlar)."""
+    return {k: DEFAULT[k] for k in SPEC_KEYS}
+
+
+def _norm_spec(out):
+    """Doku ayarı alanlarını (yerinde) geçerli aralıklara getirir."""
+    out["tex"] = str(out.get("tex") or "")
+    out["tex_scale"] = min(max(float(out.get("tex_scale", 0.0)), 0.0), 1e9)
+    out["tex_mix"] = min(max(float(out.get("tex_mix", 1.0)), 0.0), 1.0)
+    out["tex_proj"] = out.get("tex_proj") if out.get("tex_proj") in ("cubic", "planar", "cylindrical", "spherical") else "cubic"
+    try:
+        out["tex_axis"] = min(max(int(out.get("tex_axis", 2)), 0), 2)
+    except Exception:
+        out["tex_axis"] = 2
+    for k in ("tex_sx", "tex_sy", "tex_sz"):
+        out[k] = min(max(float(out.get(k, 1.0)), 0.01), 1000.0)
+    for k in ("tex_px", "tex_py", "tex_pz"):
+        out[k] = min(max(float(out.get(k, 0.0)), -1e9), 1e9)
+    for k in ("tex_rx", "tex_ry", "tex_rz"):
+        out[k] = min(max(float(out.get(k, 0.0)), -360.0), 360.0)
+    out["tex_world"] = bool(out.get("tex_world", False))
+    out["tex_invert"] = bool(out.get("tex_invert", False))
+    out["tex_strength"] = min(max(float(out.get("tex_strength", 1.0)), 0.0), 20.0)
+    return out
+
+
+def spec_of(mat, chan):
+    """Kanalın doku ayarı sözlüğü (canlı başvuru: değiştirilince malzeme değişir). Renk kanalı = malzemenin kendisi."""
+    if chan == "color":
+        return mat
+    chs = mat.setdefault("tex_ch", {})
+    if chan not in chs:
+        chs[chan] = spec_default()
+    return chs[chan]
+
+
 def normalize(d):
     """Eksik/bozuk alanları varsayılanla tamamla, aralıklara sıkıştır."""
     out = dict(DEFAULT)
@@ -264,19 +310,16 @@ def normalize(d):
                tex_scale=(0, 1e9), tex_mix=(0, 1))
     for k, (lo, hi) in lim.items():
         out[k] = min(max(float(out[k]), lo), hi)
-    out["tex"] = str(out["tex"] or "")
-    out["tex_proj"] = out["tex_proj"] if out["tex_proj"] in ("cubic", "planar", "cylindrical", "spherical") else "cubic"
-    try:
-        out["tex_axis"] = min(max(int(out["tex_axis"]), 0), 2)
-    except Exception:
-        out["tex_axis"] = 2
-    for k in ("tex_sx", "tex_sy", "tex_sz"):
-        out[k] = min(max(float(out[k]), 0.01), 1000.0)
-    for k in ("tex_px", "tex_py", "tex_pz"):
-        out[k] = min(max(float(out[k]), -1e9), 1e9)
-    for k in ("tex_rx", "tex_ry", "tex_rz"):
-        out[k] = min(max(float(out[k]), -360.0), 360.0)
-    out["tex_world"] = bool(out["tex_world"])
+    _norm_spec(out)
+    chs = {}
+    raw = d.get("tex_ch") if isinstance(d.get("tex_ch"), dict) else {}
+    for chn in GRAY_CHANNELS:
+        sp = raw.get(chn)
+        if isinstance(sp, dict):
+            t = _norm_spec(dict(spec_default(), **{k: v for k, v in sp.items() if k in SPEC_KEYS and v is not None}))
+            if t["tex"]:                                   # dokusuz kanal saklanmaz
+                chs[chn] = t
+    out["tex_ch"] = chs
     return out
 
 

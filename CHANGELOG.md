@@ -3,6 +3,10 @@
 ```
 v1.5.0 (hazırlanıyor):
 
+- **Kanal başına doku (T düğmesi)**: Surface penceresinde Renk, Diffuse, Specular, Glossiness, Reflection, Transparency ve Luminosity değerlerinin yanında "T"; dokusu olan kanalın düğmesi vurgulu. Gri tonlu kanallarda doku parlaklığı değer olur ("Doku payı", "Ters çevir"). Her kanalın kendi projeksiyonu / yerleşimi vardır (aşağıdaki madde).
+- **Bump haritası**: gri tonlu doku yükseklik haritası olarak yüzey normalini eğer (geometri değişmez; UV gerekmez; küp / düzlemsel / silindirik / küresel); "Bump yüksekliği" %.
+- Not: saydamlık dokusu gölgeyi etkilemez (gölge malzemenin sabit saydamlığına göre).
+- Surface'ta yapılan değişiklikler seçili nesnelere otomatik uygulanır (kutu ile kapatılabilir).
 - **Doku yönü ve yerleşimi** (Surface penceresi, "Doku yönü ve yerleşimi" grubu): projeksiyon (Küp 3 yönlü / Düzlemsel / Silindirik / Küresel), eksen (X/Y/Z), eksen başına ölçek, konum (mm), dönme, "Dünya koordinatları" kutusu. Varsayılan nesne koordinatı: doku nesnenin sınır kutusu merkezine bağlıdır, nesneyle birlikte gider. UV gerekmez.
 
 v1.4.0:

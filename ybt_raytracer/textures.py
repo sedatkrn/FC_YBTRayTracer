@@ -206,6 +206,12 @@ class Texture(object):
         return out
 
 
+def sample_gray(tex, u, v, lod):
+    """Doku parlaklığı 0..1 (sRGB kodlu gri değer: harita pikselinin değeri). Gri tonlu kanallar ve bump yüksekliği için."""
+    c = tex.sample(u, v, lod)
+    return np.clip(0.2126 * c[:, 0] + 0.7152 * c[:, 1] + 0.0722 * c[:, 2], 0.0, 1.0) ** (1.0 / 2.2)
+
+
 def register_custom(path, rgb8, mode="mirror"):
     """Arayüzün (QImage ile) okuduğu kendi görüntüyü kaydeder; ayarlarda doku adı olarak yol kullanılır."""
     _CUSTOM[path] = (np.ascontiguousarray(rgb8[:, :, :3], dtype=np.uint8), mode)
