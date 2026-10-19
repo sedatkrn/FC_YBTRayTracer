@@ -909,7 +909,12 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                         ndl[lit_idx] *= vis_l
                         vfac = np.ones(len(ndl))
                         vfac[lit_idx] = vis_l
-                lit += (power * ndl)[:, None] * lcol
+                if (not cast) and ao_buf is not None and depth == 0 and bool(S.AO) and not env_vis:
+                    # gölge atmayan (dolgu) ışıklar ortam ışığı gibi davranır: köşe/temas kararması onlara da uygulanır
+                    ndl_f = ndl * (1.0 - float(S.AO_STRENGTH) * ao_buf[py[pix[hi]], px[pix[hi]]])
+                    lit += (power * ndl_f)[:, None] * lcol
+                else:
+                    lit += (power * ndl)[:, None] * lcol
                 Hh = _norm(Ld - Dh)
                 sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * lit_pos
                 if vfac is not None:
