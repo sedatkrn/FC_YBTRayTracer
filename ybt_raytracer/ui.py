@@ -8,6 +8,7 @@ from . import textures as _textures
 from .parallel import _Cancelled
 from .render import render
 from .output import pick_out_path, write_png
+from . import paths as _paths
 from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 from . import materials as _mats
 from . import theme as _theme
@@ -399,6 +400,9 @@ def main(lang=None):
     er1.addWidget(btn_envf)
     evb.addLayout(er1)
     evb.addWidget(lbl_envf)
+    cb_hd = QtGui.QComboBox()                                   # HDRI klasöründeki dosyalar (Klasörler bölümünden beslenir)
+    cb_hd.setToolTip(T("HDRI klasöründeki dosyalar"))
+    evb.addWidget(cb_hd)
     er2 = QtGui.QHBoxLayout()
     for t_, w_ in ((T("Şiddet"), sp_ei), (T("Dönüş"), sp_er), (T("Işın"), sp_en)):
         er2.addWidget(QtGui.QLabel(t_))
@@ -423,13 +427,15 @@ def main(lang=None):
         on_ = i_ > 0
         btn_envf.setVisible(i_ == 2)
         lbl_envf.setVisible(i_ == 2)
+        cb_hd.setVisible(i_ == 2 and cb_hd.count() > 1)
         for wd in (sp_ei, sp_er, sp_en, ck_ebg, ck_eli, ck_ere, ck_esu, ck_ekl):
             wd.setEnabled(on_)
         sp_ee.setEnabled(i_ == 1)
         sp_ea.setEnabled(i_ == 1)
 
     def pick_env():
-        res = QtGui.QFileDialog.getOpenFileName(dlg, T("HDRI / ortam haritası seç"), os.path.dirname(env_state["file"]) or os.path.expanduser("~"),
+        res = QtGui.QFileDialog.getOpenFileName(dlg, T("HDRI / ortam haritası seç"),
+                                                _paths.hdri_dir() or os.path.dirname(env_state["file"]) or os.path.expanduser("~"),
                                                 T("Ortam haritası (*.hdr *.pic *.png *.jpg *.jpeg)"))
         path = res[0] if isinstance(res, (tuple, list)) else res
         if path:
@@ -495,7 +501,7 @@ def main(lang=None):
     def on_tex(idx):
         data = cb_ft.itemData(idx)
         if data == "__file__":
-            res = QtGui.QFileDialog.getOpenFileName(dlg, T("Zemin dokusu seç"), os.path.expanduser("~"),
+            res = QtGui.QFileDialog.getOpenFileName(dlg, T("Zemin dokusu seç"), _paths.texture_dir() or os.path.expanduser("~"),
                                                     T("Görüntü (*.png *.jpg *.jpeg *.bmp)"))
             path = res[0] if isinstance(res, (tuple, list)) else res
             img = QtGui.QImage(path) if path else None
@@ -523,6 +529,89 @@ def main(lang=None):
     cb_ft.currentIndexChanged.connect(on_tex)
     ck_fl.toggled.connect(sync_floor)
     sync_floor()
+
+    # ---- Klasörler: çıktı / doku / HDRI ----
+    dbox = QtGui.QGroupBox(T("Klasörler"))
+    dgl = QtGui.QGridLayout(dbox)
+    dir_edits = {}
+
+    def dir_row(r, key, label, tip, placeholder):
+        le = QtGui.QLineEdit(str(getattr(S, key, "") or ""))
+        le.setPlaceholderText(placeholder)
+        le.setToolTip(tip)
+        bt = QtGui.QPushButton("\u2026")
+        bt.setFixedWidth(32)
+        bt.setToolTip(T("Klasör seç"))
+
+        def browse():
+            cur_ = os.path.expanduser(le.text().strip())
+            p_ = QtGui.QFileDialog.getExistingDirectory(dlg, label, cur_ if os.path.isdir(cur_) else os.path.expanduser("~"))
+            if p_:
+                le.setText(p_)
+                refresh_dirs()
+        bt.clicked.connect(browse)
+        le.editingFinished.connect(lambda: refresh_dirs())
+        dgl.addWidget(QtGui.QLabel(label), r, 0)
+        dgl.addWidget(le, r, 1)
+        dgl.addWidget(bt, r, 2)
+        dir_edits[key] = le
+
+    dir_row(0, "DIR_OUT", T("Çıktı klasörü"),
+            T("Render görüntülerinin kaydedileceği klasör. Boş = belgenin yanı. Tam yol = sabit klasör. Yalnız ad (ör. render) = belgenin yanında bu alt klasör. "
+              "Klasör yoksa oluşturulur."), T("Belgenin yanı"))
+    dir_row(1, "DIR_TEX", T("Doku klasörü"),
+            T("Doku dosya seçicileri buradan açılır, klasördeki görüntüler doku listelerinde görünür. Belgedeki bir doku dosyası bu bilgisayarda yoksa aynı adlı dosya burada aranır."),
+            T("(ayarsız)"))
+    dir_row(2, "DIR_HDRI", T("HDRI klasörü"),
+            T("HDRI dosya seçicisi buradan açılır, klasördeki dosyalar HDRI listesinde görünür. Belgedeki HDRI dosyası bu bilgisayarda yoksa aynı adlı dosya burada aranır."),
+            T("(ayarsız)"))
+    lv.addWidget(dbox)
+
+    def apply_dirs():
+        for k_, le_ in dir_edits.items():
+            g[k_] = le_.text().strip()
+
+    def fill_hdri_list():
+        folder = _paths.hdri_dir()
+        cb_hd.blockSignals(True)
+        cb_hd.clear()
+        cb_hd.addItem(T("HDRI klasöründen seç…"), "")
+        for n_ in _paths.list_files(folder, _paths.HDRI_EXT):
+            cb_hd.addItem(n_, os.path.join(folder, n_))
+        cb_hd.setCurrentIndex(max(0, cb_hd.findData(env_state["file"])))
+        cb_hd.blockSignals(False)
+        sync_env()
+
+    def on_hd(i_):
+        data = cb_hd.itemData(i_)
+        if data:
+            env_state["file"] = data
+            lbl_envf.setText(os.path.basename(data))
+    cb_hd.currentIndexChanged.connect(on_hd)
+
+    def fill_floor_tex_list():
+        """Doku klasöründeki görüntüleri zemin dokusu listesine (hazır dokulardan sonra) ekler."""
+        for i_ in range(cb_ft.count() - 1, -1, -1):
+            if cb_ft.itemData(i_, QtCore.Qt.UserRole + 1):
+                cb_ft.removeItem(i_)
+        folder = _paths.texture_dir()
+        pos = 1 + len(_textures.PRESETS)
+        cb_ft.blockSignals(True)
+        for n_ in _paths.list_files(folder, _paths.IMG_EXT):
+            p_ = os.path.join(folder, n_)
+            cb_ft.insertItem(pos, T("Klasör: ") + n_, p_)
+            cb_ft.setItemData(pos, True, QtCore.Qt.UserRole + 1)
+            pos += 1
+        k_ = cb_ft.findData(ft_state["key"])
+        if k_ >= 0:
+            cb_ft.setCurrentIndex(k_)
+        cb_ft.blockSignals(False)
+
+    def refresh_dirs():
+        apply_dirs()
+        fill_hdri_list()
+        fill_floor_tex_list()
+    refresh_dirs()
 
     def sync_lights(*_a):
         for wd in light_widgets:
@@ -591,6 +680,7 @@ def main(lang=None):
     collapsible(fbox, T("Sanal Zemin"))
     collapsible(lbox, T("Işık Ayarları"))
     collapsible(ebox, T("Ortam / HDRI"))
+    collapsible(dbox, T("Klasörler"))
     lv.addStretch(1)
 
     sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
@@ -1186,6 +1276,7 @@ def main(lang=None):
         g["FLOOR_OFFSET"] = float(sp_fz.value())
         g["FLOOR_TEXTURE"] = ft_state["key"]
         g["FLOOR_TEX_SCALE"] = float(sp_fs.value())
+        apply_dirs()
 
     def apply_manual_lights():
         g["AMBIENT"] = sp_amb.value() / 100.0
@@ -1285,7 +1376,9 @@ def main(lang=None):
         if state["out"] is None:
             return
         try:
-            start = state["path"] or pick_out_path(FreeCAD.ActiveDocument.FileName if FreeCAD.ActiveDocument else "")
+            fn_ = FreeCAD.ActiveDocument.FileName if FreeCAD.ActiveDocument else ""
+            apply_dirs()
+            start = pick_out_path(fn_) if _paths.out_dir(fn_) else (state["path"] or pick_out_path(fn_))
         except Exception:
             start = "render.png"
         res = QtGui.QFileDialog.getSaveFileName(dlg, T("Render'ı kaydet"), start, "PNG (*.png)")
@@ -1382,6 +1475,6 @@ def main(lang=None):
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, soft_scale=sp_softk, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
-                                                            refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc),
+                                                            refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc, dirs=dir_edits, hdri_list=cb_hd, floor_tex=cb_ft),
                              status=lbl_st, bar=bar, pct=pct, state=state,
                              open_mats=open_mats, open_defaults=open_defaults)       # eklenti komutları (commands.py) bunlarla açar

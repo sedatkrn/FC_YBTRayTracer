@@ -295,6 +295,9 @@ def get_env(S):
             _CACHE[key] = sky_env(float(S.ENV_SUN_ELEV), float(S.ENV_SUN_AZ))
         return _CACHE[key]
     path = str(getattr(S, "ENV_FILE", "") or "")
+    if path and not os.path.isfile(path):
+        from . import paths as _paths
+        path = _paths.resolve(path, "hdri")                 # belge başka bilgisayardan geldiyse HDRI klasöründe aynı adı ara
     if not path or not os.path.isfile(path):
         return None
     try:

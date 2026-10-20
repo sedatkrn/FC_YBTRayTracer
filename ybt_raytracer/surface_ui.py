@@ -9,6 +9,7 @@ from .i18n import T
 from .core import Scene
 from . import theme as _theme
 from . import textures as _tex
+from . import paths as _paths
 from . import procedural as _proc
 
 PREVIEW_DELAY_MS = 1000     # parametre (sürgü/sayı) değişiminden sonra önizleme bu kadar sessizlik beklenince yenilenir
@@ -25,6 +26,7 @@ _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
 ]
 
 
+_preset_keys = {p_[0] for p_ in _tex.PRESETS}                      # hazır doku anahtarları (klasör dosyalarından ayırmak için)
 _LAST_DIR = {}                                                # son görüntü klasörü
 _LAYER_CLIP = {}                                             # doku katmanı panosu (kanallar ve malzemeler arasında ortak)
 _T_CSS = "QPushButton { padding: 0px; margin: 0px; min-width: 28px; max-width: 28px; min-height: 14px; max-height: 14px; font-size: 9px; font-weight: bold; }"
@@ -597,6 +599,9 @@ def open_surface(on_change=None, is_busy=None):
         cb_img.addItem(T("(yok)"), "")
         for k_, nm_, _fn, _md, _rl in _tex.PRESETS:
             cb_img.addItem(T(nm_), k_)
+        _tdir = _paths.texture_dir()
+        for n_ in _paths.list_files(_tdir, _paths.IMG_EXT):          # doku klasöründeki görüntüler
+            cb_img.addItem(T("Klasör: ") + n_, os.path.join(_tdir, n_))
         cb_img.addItem(T("Dosyadan yükle..."), "__file__")
         gi.addWidget(cb_img, 1, 1)
         b_load = QtGui.QPushButton(T("Görüntü yükle..."))
@@ -941,15 +946,17 @@ def open_surface(on_change=None, is_busy=None):
             update_preview()
             schedule(PREVIEW_DELAY_MS)
 
-        def load_external():
-            """Bilgisayardan görüntü dosyası seç ve seçili katmanın dokusu yap."""
+        def load_external(path=None):
+            """Bilgisayardan (path verilmişse o dosyayı, yoksa seçtirerek) görüntü al ve seçili katmanın dokusu yap."""
             L = cur_layer()
             if L is None:
                 return
-            start = os.path.dirname(L["tex"]) if L.get("tex") and os.path.isfile(L["tex"]) else _LAST_DIR.get("p", os.path.expanduser("~"))
-            res = QtGui.QFileDialog.getOpenFileName(d, T("Doku görüntüsü seç"), start,
-                                                    T("Görüntü (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp)"))
-            path = res[0] if isinstance(res, (tuple, list)) else res
+            if path is None:
+                start = _paths.texture_dir() or (os.path.dirname(L["tex"]) if L.get("tex") and os.path.isfile(L["tex"])
+                                                 else _LAST_DIR.get("p", os.path.expanduser("~")))
+                res = QtGui.QFileDialog.getOpenFileName(d, T("Doku görüntüsü seç"), start,
+                                                        T("Görüntü (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp)"))
+                path = res[0] if isinstance(res, (tuple, list)) else res
             ok = False
             if path:
                 _LAST_DIR["p"] = os.path.dirname(path)
@@ -973,8 +980,12 @@ def open_surface(on_change=None, is_busy=None):
         def on_img(_i):
             if cur["lock"]:
                 return
-            if cb_img.currentData() == "__file__":
+            data_ = cb_img.currentData()
+            if data_ == "__file__":
                 load_external()
+                return
+            if data_ and data_ not in _preset_keys and os.path.isabs(str(data_)):     # doku klasöründeki dosya: kendi görüntüsü gibi yüklenir
+                load_external(data_)
                 return
             on_edit()
 

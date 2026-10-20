@@ -58,6 +58,13 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 Panelin sağ üstündeki "Dil / Language" kutusundan Türkçe veya English seçilir; seçim hatırlanır (ilk açılışta FreeCAD arayüz dili Türkçeyse Türkçe, değilse English).
 The UI language (Türkçe / English) is chosen at the top-right of the panel; it is remembered (first run follows FreeCAD's locale).
 
+## Klasörler
+
+Panelde **Klasörler** bölümü: **Çıktı klasörü** (boş = belgenin yanı; tam yol = sabit klasör; yalnız ad, ör. `render` = belgenin yanında bu alt klasör, yoksa oluşturulur),
+**Doku klasörü** ve **HDRI klasörü**. Dosya seçiciler bu klasörlerden açılır, klasördeki görüntüler/HDRI dosyaları listelerde görünür.
+Belgeye gömülü bir doku ya da HDRI yolu bu bilgisayarda yoksa aynı dosya adı ilgili klasörde aranır (belgeyi başka bilgisayara taşırken işe yarar).
+Klasör ayarları makineye özgüdür: *Varsayılanlar* ile kaydedilir, belgeye yazılmaz.
+
 ## Kurulum
 
 **Eklenti olarak (önerilen):** depoyu FreeCAD'in `Mod/` klasörüne kopyalayın (Linux: `~/.local/share/FreeCAD/Mod/FC_YBTRayTracer`; sürüme göre `v1-1/Mod/` olabilir)
@@ -151,6 +158,13 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - **Procedural textures**: turbulence, fractal noise, veins, marble, wood, checker, grid, dots, bricks, ripples (no image needed)
 - **Stored with the document**: panel settings and the definitions of the materials in use are saved inside the FCStd and restored on any machine
 - Settings panel opens first; progress bar, stop button, save-as; windows show in the taskbar and can be minimised
+
+### Folders
+
+The panel has a **Folders** section: **Output folder** (empty = next to the document; full path = fixed folder; name only, e.g. `render` = that subfolder next to the document, created if missing),
+**Texture folder** and **HDRI folder**. File pickers open in these folders and their images / HDRI files appear in the lists.
+If a texture or HDRI path stored in the document does not exist on this computer, a file with the same name is looked up in the matching folder (handy when moving a document between computers).
+Folder settings are per machine: they are saved with *Defaults* and are not written into the document.
 
 ### Install
 

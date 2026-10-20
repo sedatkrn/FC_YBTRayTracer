@@ -3,6 +3,7 @@ import os
 import struct
 import zlib
 from . import settings as S
+from . import paths as _paths
 
 
 def write_png(path, arr):
@@ -23,11 +24,19 @@ def write_png(path, arr):
 
 
 def pick_out_path(doc_filename):
-    """Yazılabilir bir klasör seç: belge klasörü -> ~/Pictures -> ev dizini -> geçici klasör."""
+    """Yazılabilir bir klasör seç: ayarlı çıktı klasörü (DIR_OUT) -> belge klasörü -> ~/Pictures -> ev dizini -> geçici klasör."""
     if S.OUT_NAME:
         return S.OUT_NAME
     name = (os.path.splitext(os.path.basename(doc_filename))[0] + "_render.png"
             if doc_filename else "FreeCAD_render.png")
+    od = _paths.out_dir(doc_filename)                        # ayarlı çıktı klasörü (yoksa oluşturulur) en başta denenir
+    if od:
+        try:
+            os.makedirs(od, exist_ok=True)
+        except OSError:
+            od = ""
+        if od and os.access(od, os.W_OK):
+            return os.path.join(od, name)
     dirs = []
     if doc_filename:
         dirs.append(os.path.dirname(doc_filename))

@@ -271,10 +271,16 @@ def load(key, tile=None):
                     tex = Texture(_read_fast(p), force or mode)
                     tex.rel = rel
                 break
-    if tex is None and key not in _CUSTOM and os.path.isfile(key):      # doğrudan dosya yolu (kullanıcı görüntüsü; yeniden başlatınca da çalışır)
-        try:
-            tex = Texture(load_image_file(key), force or "mirror")
-        except Exception:
-            tex = None
-    _CACHE[ck] = tex
+    if tex is None and key not in _CUSTOM:
+        fp = key
+        if not os.path.isfile(fp):
+            from . import paths as _paths
+            fp = _paths.resolve(key, "tex")                              # belge başka bilgisayardan geldiyse doku klasöründe aynı adı ara
+        if os.path.isfile(fp):                                           # doğrudan dosya yolu (kullanıcı görüntüsü; yeniden başlatınca da çalışır)
+            try:
+                tex = Texture(load_image_file(fp), force or "mirror")
+            except Exception:
+                tex = None
+    if tex is not None:                                                  # bulunamayan doku önbelleğe alınmaz (klasör sonradan ayarlanabilir)
+        _CACHE[ck] = tex
     return tex
