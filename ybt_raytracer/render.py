@@ -735,7 +735,16 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         Ld = sample_dirs[li][si]
         out = np.zeros(len(Pl), dtype=np.int8)
         if lpos[li] is not None:                                # konumlu ışık: noktadan ışık konumuna gölge ışını
-            dv = Ld - Pl
+            if si > 0:                                          # yumuşak gölge: örnek deseni her noktada rastgele döndürülür (basamaklanma yerine ince gürültü)
+                off = Ld - lpos[li]
+                hs_ = np.sin(Pl @ np.array([12.9898, 78.233, 37.719]) / max(scene.diag, 1e-9) * 1000.0) * 43758.5453
+                ph_ = (hs_ - np.floor(hs_)) * (2.0 * np.pi)
+                c_, s_ = np.cos(ph_), np.sin(ph_)
+                Lq = np.stack([lpos[li][0] + c_ * off[0] - s_ * off[1], lpos[li][1] + s_ * off[0] + c_ * off[1],
+                               np.full(len(Pl), lpos[li][2] + off[2])], 1)
+            else:
+                Lq = Ld
+            dv = Lq - Pl
             dd = np.sqrt(_dot(dv, dv))
             Dn = dv / np.maximum(dd, 1e-12)[:, None]
             tmx = np.maximum(dd - eps * 2.0, 0.0)
