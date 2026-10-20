@@ -81,7 +81,10 @@ def make_camera(pos, target=None, up=(0.0, 0.0, 1.0), fov=40.0, ortho_height=Non
 
 
 def _as_camera(cam):
-    """Kullanıcı sözlüğünü render'ın beklediği biçime çevirir (target/fov kısayolları kabul edilir)."""
+    """Kullanıcı sözlüğünü render'ın beklediği biçime çevirir (target/fov kısayolları kabul edilir).
+    camera_from_view() çıktısı olan (kamera, oran) çifti de kabul edilir (oran yok sayılır; render_document'ta ayrıca aspect= verin)."""
+    if isinstance(cam, (tuple, list)) and cam and isinstance(cam[0], dict):
+        cam = cam[0]
     if "fwd" in cam and "persp" in cam and "size" in cam and "up" in cam:
         return cam
     c = dict(cam)
@@ -137,10 +140,17 @@ def orbit_cameras(scene, frames=72, elevation=20.0, start_azimuth=0.0, fov=35.0,
 
 
 def camera_from_view(view=None):
-    """Aktif 3B görünümün kamerası (yalnız arayüzlü FreeCAD'de). Döner (kamera, en/boy oranı)."""
-    import FreeCADGui as Gui
+    """Aktif 3B görünümün kamerası (yalnız arayüzlü FreeCAD'de). Döner (kamera, en/boy oranı) ÇİFTİ:
+        cam, aspect = api.camera_from_view()
+        api.render_document(doc, "a.png", width=1280, camera=cam, aspect=aspect)"""
+    try:
+        import FreeCADGui as Gui
+    except Exception:
+        raise RuntimeError("camera_from_view: arayüzsüz FreeCAD'de aktif görünüm yoktur; make_camera / fit_camera kullanın.")
     from .freecad_scene import read_camera
     if view is None:
+        if Gui.ActiveDocument is None or Gui.ActiveDocument.ActiveView is None:
+            raise RuntimeError("camera_from_view: aktif 3B görünüm yok (bir belge ve 3B görünüm açık olmalı).")
         view = Gui.ActiveDocument.ActiveView
     return read_camera(view)
 
@@ -222,6 +232,9 @@ def render_document(doc=None, out_path=None, width=None, height=None, camera=Non
     doc = _doc(doc)
     values = dict(settings or {})
     values.update(kw)
+    if isinstance(camera, (tuple, list)) and len(camera) == 2 and isinstance(camera[0], dict):
+        aspect = aspect or float(camera[1])                  # camera_from_view() çifti doğrudan verilebilir
+        camera = camera[0]
     if camera is None:                                      # arayüzlü FreeCAD: aktif görünümün kamerası
         try:
             import FreeCADGui as Gui
