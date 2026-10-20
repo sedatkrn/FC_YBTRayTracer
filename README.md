@@ -61,10 +61,11 @@ The UI language (Türkçe / English) is chosen at the top-right of the panel; it
 ## Kurulum
 
 **Eklenti olarak (önerilen):** depoyu FreeCAD'in `Mod/` klasörüne kopyalayın (Linux: `~/.local/share/FreeCAD/Mod/FC_YBTRayTracer`; sürüme göre `v1-1/Mod/` olabilir)
-ve FreeCAD'i yeniden başlatın. Her tezgâhta *Macro* araç çubuğunda ve *Macro* menüsünde üç komut görünür: **YBT Raytracer** (ayar paneli), **YBT Malzemeler**, **YBT Varsayılanlar**.
+ve FreeCAD'i yeniden başlatın. Tezgâh listesinde kendi ikonuyla **YBT Raytracer** tezgâhı çıkar; araç çubuğunda ve menüsünde üç komut vardır: **YBT Raytracer** (ayar paneli), **YBT Malzemeler**, **YBT Varsayılanlar**.
+Aynı komutlar her tezgâhta *Macro* menüsünde ve *Macro* araç çubuğunda da bulunur (araç çubuğu gizliyse *View > Toolbars > Macro*).
 Eski makro kopyası makro klasöründe duruyorsa silin (iki kopya karışmasın).
-İsteğe bağlı ayrı tezgâh: *Edit > Preferences > Advanced* (parametre düzenleyici) içinde `User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer` altında
-`SeparateWorkbench` (Boolean) = true; Macro araç çubuğuna eklemeyi kapatmak için `ShowInAllWorkbenches` = false. Değişiklik için FreeCAD'i yeniden başlatın.
+Ayarlar *Edit > Preferences > Advanced* (parametre düzenleyici) içinde `User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer` altındadır:
+`SeparateWorkbench` (Boolean, varsayılan true) = false yapılırsa ayrı tezgâh gösterilmez; `ShowInAllWorkbenches` (Boolean, varsayılan true) = false yapılırsa Macro araç çubuğu/menüsüne eklenmez. Değişiklik için FreeCAD'i yeniden başlatın.
 
 **Makro olarak:**
 1. `FC_ybt_raytracer.FCMacro` dosyasını **ve** `ybt_raytracer/` klasörünü FreeCAD makro klasörüne birlikte kopyalayın
@@ -154,10 +155,11 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 ### Install
 
 **As an add-on (recommended):** copy the repository into FreeCAD's `Mod/` folder (Linux: `~/.local/share/FreeCAD/Mod/FC_YBTRayTracer`, or `v1-1/Mod/` depending on the version) and restart FreeCAD.
-Three commands appear in the *Macro* toolbar and *Macro* menu of every workbench: **YBT Raytracer** (settings panel), **YBT Materials**, **YBT Defaults**.
+A **YBT Raytracer** workbench with its own icon, toolbar and menu appears in the workbench list; it holds three commands: **YBT Raytracer** (settings panel), **YBT Materials**, **YBT Defaults**.
+The same commands are also in the *Macro* menu and *Macro* toolbar of every workbench (if the toolbar is hidden: *View > Toolbars > Macro*).
 Remove any old macro copy from the macro folder so the two copies don't clash.
-Optional separate workbench: in the parameter editor, under `User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer`, set `SeparateWorkbench` (Boolean) = true;
-set `ShowInAllWorkbenches` = false to stop adding the commands to the Macro toolbar/menu. Restart FreeCAD after changing either.
+Options live in the parameter editor under `User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer`:
+`SeparateWorkbench` (Boolean, default true) = false hides the separate workbench; `ShowInAllWorkbenches` (Boolean, default true) = false stops adding the commands to the Macro toolbar/menu. Restart FreeCAD after changing either.
 
 **As a macro:**
 1. Copy `FC_ybt_raytracer.FCMacro` **and** the `ybt_raytracer/` folder together into your FreeCAD macro folder (shown in *Macro > Macros...*); the launcher and the folder must sit side by side.

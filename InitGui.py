@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # FC YBT Raytracer -- FreeCAD eklentisi, arayüz başlangıcı.
 #   * Komutlar: YBT_Render, YBT_Materials, YBT_Defaults  (ybt_raytracer/commands.py)
+#   * "YBT Raytracer" tezgâhı: tezgâh listesinde kendi adı, ikonu, araç çubuğu ve menüsüyle görünür.
+#     Kapatmak için parametre Mod/FCYBTRayTracer/SeparateWorkbench = false (FreeCAD'i yeniden başlatmak gerekir).
 #   * Her tezgâhta: standart "Macro" araç çubuğu ve menüsü (FreeCAD 1.0+; kapatmak için parametre
 #     Mod/FCYBTRayTracer/ShowInAllWorkbenches = false)
-#   * İsteğe bağlı ayrı tezgâh "YBT Raytracer": parametre Mod/FCYBTRayTracer/SeparateWorkbench = true
-#     (FreeCAD'i yeniden başlatmak gerekir; manipulator'ü olmayan eski FreeCAD'lerde zorunlu açıktır)
 import os
 import FreeCAD
 import FreeCADGui as Gui

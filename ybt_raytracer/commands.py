@@ -6,9 +6,10 @@ InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Materials   Malzemeler (Surface) penceresini açar
   YBT_Defaults    panelin 'Varsayılanlar' penceresini açar (gerekirse paneli de açar)
 
-Her tezgâhta görünmesi için FreeCAD 1.0+ `Gui.addWorkbenchManipulator` ile standart "Macro" araç çubuğuna ve
-"Macro" menüsüne eklenir (manipulator yeni araç çubuğu yaratamaz, yalnız var olanlara ekler). İsteğe bağlı ayrı
-"YBT Raytracer" tezgâhı kendi araç çubuğu ve menüsüyle InitGui.py içinde tanımlanır (`separate_workbench_enabled`).
+Komutların asıl yeri tezgâh listesindeki "YBT Raytracer" tezgâhıdır (kendi araç çubuğu ve menüsüyle, InitGui.py içinde
+tanımlanır; `separate_workbench_enabled`, varsayılan açık). Her tezgâhtan erişilebilmesi için ayrıca FreeCAD 1.0+
+`Gui.addWorkbenchManipulator` ile standart "Macro" araç çubuğuna ve "Macro" menüsüne eklenir (manipulator yeni araç
+çubuğu yaratamaz, yalnız var olanlara ekler; `ShowInAllWorkbenches`, varsayılan açık).
 Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu katmandan etkilenmez.
 """
 import os
@@ -124,15 +125,16 @@ class _Manipulator(object):
 
 
 def separate_workbench_enabled():
-    """Ayrı tezgâh: kullanıcı parametresi 'SeparateWorkbench' (varsayılan kapalı). FreeCAD'de manipulator yoksa (0.21) zorunlu açık."""
+    """Ayrı "YBT Raytracer" tezgâhı: kullanıcı parametresi 'SeparateWorkbench' (varsayılan AÇIK; kapatmak için false).
+    FreeCAD'de manipulator yoksa (0.21) tezgâh zorunlu açık."""
     try:
         import FreeCAD
         import FreeCADGui as Gui
         if not hasattr(Gui, "addWorkbenchManipulator"):
             return True
-        return bool(FreeCAD.ParamGet(_PARAM).GetBool("SeparateWorkbench", False))
+        return bool(FreeCAD.ParamGet(_PARAM).GetBool("SeparateWorkbench", True))
     except Exception:
-        return False
+        return True
 
 
 def global_toolbar_enabled():
