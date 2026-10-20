@@ -244,6 +244,12 @@ def run():
             if not alive_:
                 commands.open_materials()
                 sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+                if sd is None:
+                    return
+                t_w = time.time()                                 # pencere nesne listesini bir sonraki olay turunda doldurur: bitmesini bekle
+                while not sd._ybt_api["state"].get("items") and time.time() - t_w < 15.0:
+                    QtCore.QCoreApplication.processEvents()
+                    time.sleep(0.02)
             if sd is None:
                 return
             sd._ybt_api["pick"](hit[0], ctrl)
