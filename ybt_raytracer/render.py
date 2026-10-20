@@ -722,6 +722,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         ss_foot = mkbuf(np.float64, 1.0)
     else:
         ss_buf = None
+    dofp = cam.get("dof") if persp else None                   # alan derinliği: kamera nesnesinden (odak, diyafram); derinlik tamponu gerekir
+    zbuf = mkbuf(np.float64, np.inf) if dofp else None
     ao_buf = mkbuf(np.float64, 0.0) if ao_on else None
     env_bufs = [mkbuf(np.float64, 0.0) for _ in range(3)] if (ao_on and env_vis) else None
     ao_have = mkbuf(np.float64, 0.0) if ao_on else None        # AO ışını atılan pikseller (kalanlar süzgeçle doldurulur)
@@ -848,6 +850,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
 
             if f_on:                                           # analitik zemin düzlemi: nesnelerden yakınsa onun yerine
                 floor_apply(RO, RD, tb, ti)
+            if zbuf is not None and depth == 0:                # DOF: birincil ışının derinliği (kamera ekseni boyunca)
+                zbuf[py, px] = np.where(ti >= 0, tb, np.inf) * _dot(D0, fwd)
 
             miss = np.nonzero(ti < 0)[0]
             if len(miss):
@@ -1491,4 +1495,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
 
         if run_parallel(starts, aa_job, aa_done) is False:
             return None
+    if zbuf is not None:
+        say(T("alan derinliği uygulanıyor..."))
+        from . import dof as _dof
+        img = _dof.apply(np.array(img), np.array(zbuf), float(dofp["focus"]), float(dofp["focal"]), float(dofp["fstop"]),
+                         float(dofp["sensor"]), tick=tk)
     return (np.clip(img, 0, 1) * 255.0 + 0.5).astype(np.uint8)

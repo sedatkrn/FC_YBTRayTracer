@@ -5,6 +5,9 @@ InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Render      ayar panelini açar (render panelin 'Render' düğmesiyle başlar)
   YBT_NewScene    ağaçta yeni "YBTray0N" sahnesi yaratır (ışıklar altında durur)
   YBT_DistantLight  sahneye Distant (güneş tipi) ışık nesnesi ekler
+  YBT_Camera      sahneye 3B görünümün bakışıyla yeni kamera nesnesi ekler (etkin kamera olur; render bundan alınır)
+  YBT_LookThrough 3B görünümü seçili / etkin kameranın bakışına getirir
+  YBT_CameraUpdate  seçili / etkin kamerayı şu anki 3B görünüme eşitler
   YBT_PointLight  sahneye Point (konumlu, her yöne yayılan) ışık ekler
   YBT_SpotLight   sahneye Spot (konumlu, koni içine yayılan) ışık ekler
   YBT_LightProperties  Işık Özellikleri panelini açar
@@ -19,7 +22,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_PointLight", "YBT_SpotLight", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
+COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_PointLight", "YBT_SpotLight", "YBT_Camera", "YBT_LookThrough", "YBT_CameraUpdate", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -160,6 +163,65 @@ def add_distant_light():
     return add_light("distant")
 
 
+def _selected_camera(doc):
+    from . import cameraobj
+    try:
+        import FreeCADGui as Gui
+        for o in Gui.Selection.getSelection():
+            if cameraobj.is_camera(o):
+                return o
+    except Exception:
+        pass
+    return cameraobj.active_camera(doc) or (cameraobj.scene_cameras(doc) or [None])[0]
+
+
+def add_camera():
+    """Sahneye (YBTray) şu anki 3B görünümün bakışıyla kamera ekler."""
+    import FreeCAD
+    from . import cameraobj, sceneobj
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None
+    doc.openTransaction("Add camera")
+    try:
+        sc = sceneobj.target_scene(doc)
+        obj = cameraobj.create(doc, from_view=True)
+        sc.addObject(obj)
+        for o in cameraobj.cameras_in_scene(doc, sc):       # sahnede tek etkin kamera: yeni kamera etkin olur
+            if o is not obj and o.Active:
+                o.Active = False
+        obj.Active = True
+    finally:
+        doc.commitTransaction()
+    return obj
+
+
+def look_through_camera():
+    import FreeCAD
+    from . import cameraobj
+    o = _selected_camera(FreeCAD.ActiveDocument)
+    if o is None:
+        FreeCAD.Console.PrintWarning(_tr("YBT: kamera yok; önce 'YBT Kamera' ile bir kamera ekleyin.\n"))
+        return
+    cameraobj.look_through(o)
+
+
+def update_camera_from_view():
+    import FreeCAD
+    from . import cameraobj
+    doc = FreeCAD.ActiveDocument
+    o = _selected_camera(doc)
+    if o is None:
+        FreeCAD.Console.PrintWarning(_tr("YBT: kamera yok; önce 'YBT Kamera' ile bir kamera ekleyin.\n"))
+        return
+    doc.openTransaction("Update camera from view")
+    try:
+        cameraobj.update_from_view(o)
+    finally:
+        doc.commitTransaction()
+    doc.recompute()
+
+
 def add_point_light():
     return add_light("point")
 
@@ -194,6 +256,9 @@ def _commands():
         "YBT_DistantLight": _Cmd("distant_light.svg", "YBT Distant Light", "Sahneye güneş tipi (paralel) ışık ekler", add_distant_light),
         "YBT_PointLight": _Cmd("point_light.svg", "YBT Point Light", "Sahneye konumlu, her yöne yayılan ışık ekler (uzaklıkla söner)", add_point_light),
         "YBT_SpotLight": _Cmd("spot_light.svg", "YBT Spot Light", "Sahneye konumlu, koni içine yayılan ışık ekler", add_spot_light),
+        "YBT_Camera": _Cmd("camera.svg", "YBT Kamera", "Sahneye 3B görünümün bakışıyla kamera ekler; etkin kameradan render alınır", add_camera),
+        "YBT_LookThrough": _Cmd("look_camera.svg", "YBT Kameradan Bak", "3B görünümü seçili (ya da etkin) kameranın bakışına getirir", look_through_camera),
+        "YBT_CameraUpdate": _Cmd("camera_from_view.svg", "YBT Kamerayı Görünüme Eşitle", "Seçili (ya da etkin) kamerayı şu anki 3B görünümle aynı yapar", update_camera_from_view),
         "YBT_LightProperties": _Cmd("light_props.svg", "YBT Işık Özellikleri", "Işık nesnelerinin özelliklerini düzenler (renk, şiddet, gölge)", open_light_properties),
         "YBT_Materials": _Cmd("materials.svg", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),
         "YBT_Options": _Cmd("options.svg", "YBT Seçenekler", "İçerik klasörü ve varsayılan ayarlar", open_options),

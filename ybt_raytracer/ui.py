@@ -14,6 +14,7 @@ from . import materials as _mats
 from . import theme as _theme
 from . import lightpresets as _lp
 from . import lightobj as _lobj
+from . import cameraobj as _cam
 from . import userdefaults as _ud
 from . import __version__ as _VER
 
@@ -1416,6 +1417,10 @@ def main(lang=None):
             d = Gui.ActiveDocument.Document
             view = Gui.ActiveDocument.ActiveView
             cam, aspect = read_camera(view)
+            _co = _cam.active_camera(d)                         # sahnede etkin kamera nesnesi varsa render ondan alınır
+            if _co is not None:
+                cam, aspect = _cam.render_camera(_co)
+                FreeCAD.Console.PrintMessage(T("RayTrace: kamera nesnesi kullanılıyor: %s\n") % _co.Label)
             apply_basic()
             try:
                 apply_all()
