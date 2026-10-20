@@ -12,7 +12,7 @@ from . import textures as _tex
 from . import paths as _paths
 from . import procedural as _proc
 
-PREVIEW_DELAY_MS = 1000     # parametre (sürgü/sayı) değişiminden sonra önizleme bu kadar sessizlik beklenince yenilenir
+PREVIEW_DELAY_MS = 600    # parametre (sürgü/sayı) değişiminden sonra önizleme bu kadar sessizlik beklenince yenilenir
 
 _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
     ("diffuse", "Yayılı (diffuse)", 0.0, 1.0, "Mat ışık çarpanı"),
@@ -101,8 +101,9 @@ def _preview_scene(mat, shape="sphere"):
     return Scene(tris, cols, alps, mids, [mat], oid=oids, onames=["preview"])
 
 
-def render_preview(mat, w=280, h=210, shape="sphere"):
-    """Malzemeyi küre (shape="cube": küp) üzerinde çizer. Döner: (h,w,3) uint8. Genel ayarlar geçici olarak değiştirilip geri yüklenir."""
+def render_preview(mat, w=280, h=210, shape="sphere", fast=False):
+    """Malzemeyi küre (shape="cube": küp) üzerinde çizer. Döner: (h,w,3) uint8. Genel ayarlar geçici olarak değiştirilip geri yüklenir.
+    fast=True: sürgü sürüklenirken anlık geri bildirim için tek sekmeli (1 yansıma/kırılma), gölgesiz taslak (çağıran küçük w, h verir)."""
     from .render import render
     sc = _preview_scene(mat, shape)
     saved = {k: getattr(S, k) for k in ("LIGHTS", "AMBIENT", "AMBIENT_COLOR", "FLOOR", "AA", "BOUNCES", "GLASS", "SMOOTH",
@@ -115,13 +116,13 @@ def render_preview(mat, w=280, h=210, shape="sphere"):
         S.AMBIENT, S.AMBIENT_COLOR = 0.3, (1.0, 1.0, 1.0)
         S.ENV_MODE = "off"
         S.AO, S.SOFT_SHADOW, S.TONEMAP, S.EXPOSURE = False, 0.0, "none", 1.0      # önizleme hep hızlı: ana pencerenin AO / yumuşak gölge ayarları yansımasın
-        S.FLOOR, S.AA, S.BOUNCES, S.GLASS, S.SMOOTH, S.THREADS = False, 0, 3, True, True, 1
+        S.FLOOR, S.AA, S.BOUNCES, S.GLASS, S.SMOOTH, S.THREADS = False, 0, (1 if fast else 3), True, True, 1
         S.REFLECT_GLASS, S.REFLECT_SURF, S.IOR = 1.0, 0.0, 1.5
         S.REFLECTIONS, S.REFRACTION = True, True
         pos = np.array([0.0, -5.2, 2.6])
         tgt = np.array([0.0, 0.0, 0.85])
         cam = dict(pos=pos, fwd=(tgt - pos), up=np.array([0.0, 0.0, 1.0]), persp=True, size=np.radians(38))
-        return render(sc, cam, w, h, shadows=True, tile=S.TILE)
+        return render(sc, cam, w, h, shadows=not fast, tile=S.TILE)
     finally:
         for k, v in saved.items():
             setattr(S, k, v)
@@ -389,19 +390,28 @@ def open_surface(on_change=None, is_busy=None, select=None, add=False):
     timer = QtCore.QTimer(dlg)
     timer.setSingleShot(True)
 
-    def do_preview():
+    def do_preview(fast=False):
         if is_busy is not None and is_busy():
             return
         try:
-            img = render_preview(M.normalize(st["mat"]), 280, 210, cb_shape.currentData() or "sphere")
+            if fast:
+                img = render_preview(M.normalize(st["mat"]), 140, 105, cb_shape.currentData() or "sphere", fast=True)
+            else:
+                img = render_preview(M.normalize(st["mat"]), 280, 210, cb_shape.currentData() or "sphere")
         except Exception as ex:
             msg("önizleme: %s" % ex)
             return
         a = np.ascontiguousarray(img)
         qi = QtGui.QImage(a.data, a.shape[1], a.shape[0], 3 * a.shape[1], QtGui.QImage.Format_RGB888).copy()
-        prev.setPixmap(QtGui.QPixmap.fromImage(qi))
+        pm = QtGui.QPixmap.fromImage(qi)
+        if fast:
+            pm = pm.scaled(280, 210, QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
+        prev.setPixmap(pm)
 
-    timer.timeout.connect(do_preview)
+    timer.timeout.connect(lambda: do_preview(False))
+    fast_timer = QtCore.QTimer(dlg)                      # sürüklerken: tam kaliteyi beklemeden hızlı taslak (kısıtlı: en çok ~12 kez/sn)
+    fast_timer.setSingleShot(True)
+    fast_timer.timeout.connect(lambda: do_preview(True))
 
     auto_timer = QtCore.QTimer(dlg)
     auto_timer.setSingleShot(True)
@@ -409,6 +419,8 @@ def open_surface(on_change=None, is_busy=None, select=None, add=False):
 
     def schedule(delay=150, user=True):
         timer.start(delay)
+        if delay >= PREVIEW_DELAY_MS and not fast_timer.isActive():
+            fast_timer.start(80)                         # kullanıcı değer değiştirdi: önce hızlı taslak, durunca tam kalite
         if user and not st["lock"]:                      # kullanıcı bir değer değiştirdi: seçili nesnelere otomatik uygula
             st["auto_names"] = [it.data(0, QtCore.Qt.UserRole) for it in tree.selectedItems()]   # hedef: değişiklik anındaki seçim
             auto_timer.start(600)
@@ -1606,6 +1618,7 @@ def open_surface(on_change=None, is_busy=None, select=None, add=False):
         try:
             cached = rescan()
             refresh_tree()
+            fast_timer.stop()
             timer.stop()                                        # açılışta bekleyen önizleme zamanlayıcısı varsa ikinci kez çizme
             do_preview()
         finally:
