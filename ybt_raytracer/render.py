@@ -444,7 +444,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             half_ = np.radians(max(0.5, min(float(lt.get("cone", 45.0)), 178.0)) / 2.0)
             in_ = max(0.0, half_ - np.radians(max(0.0, float(lt.get("edge", 10.0)))))
             ls_ = dict(spot=lt.get("kind") == "spot", axis=ax_, co=float(np.cos(half_)), ci=float(np.cos(in_)),
-                       fall=str(lt.get("falloff", "inverse_square")), ref=max(1e-6, float(lt.get("ref", scene.diag))),
+                       fall=str(lt.get("falloff", "inverse_square")),
+                       ref=(float(lt.get("ref", 0.0)) if float(lt.get("ref", 0.0)) > 0.0 else max(1e-6, float(np.linalg.norm(lp_)))),   # 0 = otomatik: ışığın sahne merkezine uzaklığı
                        rad=max(0.0, float(lt.get("radius", 0.0))))
         elif "wdir" in lt:
             Ld = _norm(np.array(lt["wdir"], dtype=np.float64))   # ışık nesnesi: dünya uzayında ışığa doğru yön

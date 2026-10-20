@@ -11,7 +11,7 @@ Nesne bir App::GeometryPython'dır; konumu/yönü FreeCAD'in Yerleşim (Placemen
   Shadows        gölge düşürsün
   Softness       (Distant) gölge yumuşaklığı: ışığın görünür açısı (derece; güneş ~0,5; 0 = sert gölge)
   Falloff        (Point/Spot) uzaklıkla sönme: InverseSquare (ters kare) / Linear / None
-  ReferenceDistance  (Point/Spot) şiddetin tam değerinde olduğu uzaklık (mm); sönme bu uzaklığa göre ölçülür
+  ReferenceDistance  (Point/Spot) şiddetin tam değerinde olduğu uzaklık (mm); sönme bu uzaklığa göre ölçülür; 0 = otomatik (ışığın sahne merkezine uzaklığı)
   ShadowRadius   (Point/Spot) ışığın boyutu (mm): gölge kenarı yumuşaklığı; 0 = sert gölge
   ConeAngle / EdgeAngle  (Spot) koninin tam açısı ve kenarındaki yumuşak geçiş açısı (derece)
 Render, `collect(doc)` ile bu nesneleri okur; `apply_to_settings(doc)` sonucu settings._OBJ_LIGHTS'a yazar.
@@ -100,7 +100,7 @@ def collect(doc):
                 d["wpos"] = (pl.Base.x, pl.Base.y, pl.Base.z)
                 d["axis"] = (-to_light.x, -to_light.y, -to_light.z)           # ışığın gittiği yön
                 d["falloff"] = _FALL_KEY.get(str(o.Falloff), "inverse_square")
-                d["ref"] = max(1e-3, float(getattr(o.ReferenceDistance, "Value", o.ReferenceDistance)))
+                d["ref"] = max(0.0, float(getattr(o.ReferenceDistance, "Value", o.ReferenceDistance)))
                 d["radius"] = max(0.0, float(getattr(o.ShadowRadius, "Value", o.ShadowRadius)))
                 if kind == "spot":
                     d["cone"] = float(getattr(o.ConeAngle, "Value", o.ConeAngle))
@@ -156,7 +156,7 @@ class _Light(object):
                 obj.addProperty("App::PropertyEnumeration", "Falloff", "Light", "Uzaklıkla sönme: ters kare (gerçekçi), doğrusal ya da yok")
                 obj.Falloff = list(FALLOFFS)
                 obj.Falloff = "InverseSquare"
-            add("App::PropertyLength", "ReferenceDistance", "Light", "Şiddetin tam değerinde olduğu uzaklık (sönme buna göre ölçülür)", 1000.0)
+            add("App::PropertyLength", "ReferenceDistance", "Light", "Şiddetin tam değerinde olduğu uzaklık (sönme buna göre ölçülür). 0 = otomatik: ışığın sahne merkezine uzaklığı (ışığı yaklaştırınca sahne patlamaz)", 0.0)
             add("App::PropertyLength", "ShadowRadius", "Light", "Işık kaynağının boyu: gölge kenarı yumuşaklığı (0 = sert gölge)", 0.0)
         if kind == "spot":
             add("App::PropertyAngle", "ConeAngle", "Light", "Koninin tam açısı", 45.0)
@@ -322,7 +322,7 @@ def change_type(obj, kind):
     _Light.add_props(obj, kind)
     if is_positional(kind) and not is_positional(was):
         _, diag = _scene_anchor(doc)
-        obj.ReferenceDistance = max(10.0, diag)
+        obj.ReferenceDistance = 0.0
         obj.ShadowRadius = diag * 0.02
         obj.SymbolSize = max(50.0, diag * (0.3 if kind == "spot" else 0.12))
     elif not is_positional(kind) and is_positional(was):
@@ -353,7 +353,7 @@ def create(doc, kind="distant"):
         v = center - lp
         rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, -1), v)                  # yerel -Z, merkeze doğru
         obj.Placement = FreeCAD.Placement(lp, rot)
-        obj.ReferenceDistance = max(10.0, v.Length)
+        obj.ReferenceDistance = 0.0                                          # otomatik
         obj.ShadowRadius = diag * 0.02
         obj.SymbolSize = max(50.0, diag * (0.3 if kind == "spot" else 0.12))
     else:

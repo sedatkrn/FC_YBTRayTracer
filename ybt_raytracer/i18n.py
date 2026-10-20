@@ -676,6 +676,8 @@ EN = {
     'Yüzey rengini aydınlat (Diffuse)': 'Illuminate surface colour (Diffuse)',
     'Geçerli ışık': 'Current light',
     'Işık türü': 'Light type',
+    'Otomatik': 'Auto',
+    'Işığın şiddetinin tam değerinde olduğu uzaklık. Daha yakında parlar, daha uzakta söner. Otomatik (0) = ışığın sahne merkezine uzaklığı': 'Distance at which the light has its full intensity. Closer it is brighter, farther it fades. Auto (0) = distance from the light to the scene centre',
     'RayTrace: alan derinliği yalnız perspektif kamerada çalışır (Projection = Perspective yapın).\n': 'RayTrace: depth of field only works with a perspective camera (set Projection = Perspective).\n',
     'Etkin kamera yap': 'Make active camera',
     'Kameradan bak': 'Look through camera',
