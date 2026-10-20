@@ -1497,6 +1497,23 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
 
         def aa_job(s0):
             cy, cx = ey[s0:s0 + chunk], ex_[s0:s0 + chunk]
+            if k == 2 and len(cy):
+                # kademeli: önce 2 çapraz örnek; ikisi de merkez pikselden belirgin farklı değilse (doku/gölge tanesi gibi sahte kenar) piksel
+                # düzdür ve biter; farklıysa gerçek kenar: kalan 2 örnek de alınır (eskisiyle aynı sonuç)
+                c0 = img[cy, cx].copy()
+                a1 = trace(cx, cy, 0.25, 0.25)
+                a2 = trace(cx, cy, 0.75, 0.75)
+                s1, s2 = to_srgb(a1), to_srgb(a2)
+                thr = float(S.AA_THRESH)
+                flat = (np.abs(s1 - c0).max(1) <= thr) & (np.abs(s2 - c0).max(1) <= thr)
+                res_ = (c0 + s1 + s2) / 3.0
+                bi = np.nonzero(~flat)[0]
+                if len(bi):
+                    a3 = trace(cx[bi], cy[bi], 0.75, 0.25)
+                    a4 = trace(cx[bi], cy[bi], 0.25, 0.75)
+                    res_[bi] = to_srgb((a1[bi] + a2[bi] + a3 + a4) / 4.0)
+                img[cy, cx] = res_
+                return
             tot = np.zeros((len(cy), 3))
             for oy in offs_s:
                 for ox in offs_s:

@@ -246,7 +246,7 @@ def run():
         ov.set_status(T("hazırlanıyor..."))
         QtCore.QCoreApplication.processEvents()
         _apply_settings(doc)
-        saved.update({k: getattr(S, k) for k in ("WIDTH", "AA", "SOFT_SAMPLES")})      # iki geçiş bunları geçici değiştirir
+        saved.update({k: getattr(S, k) for k in ("WIDTH", "AA", "SOFT_SAMPLES", "AO")})      # iki geçiş bunları geçici değiştirir
         t0 = time.time()
         last = [0.0]
 
@@ -285,6 +285,7 @@ def run():
             rough = (w, aa, label) != passes[-1]
             S.SOFT_SAMPLES = min(int(saved["SOFT_SAMPLES"]), 8) if rough else saved["SOFT_SAMPLES"]   # kaba önizlemede az gölge örneği
             S.QUICK_PASS = rough                                  # ışık başına örnek sayısı da en çok 8 olur
+            S.AO = False if rough else saved["AO"]                # kaba önizlemede ortam tıkanıklığı (pahalı) yok
 
             def show(img, rows, frac=None, label=label, w=w, h=h):
                 if not alive():
