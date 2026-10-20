@@ -742,6 +742,9 @@ def open_surface(on_change=None, is_busy=None):
         right_w.setContentsMargins(0, 0, 0, 0)
         hl.addWidget(right_w, 1)                                  # sağ ayar bölümü: kalan genişliği alır (kaydırma çubuğu yok, her şey görünür)
 
+        for _cb in d.findChildren(QtGui.QComboBox):                # uzun girdili listeler (dosya adları) paneli genişletmesin
+            _cb.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            _cb.setMinimumContentsLength(12)
         common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_tile, cb_img, cb_pt, b_c1, b_c2, b_world, b_auto, sp_size] + ax_b + \
             list(pw.values()) + list(tsp.values())
         BL_LETTER = dict(normal="N", add="+", sub="-", mul="x", div="/", diff="D", screen="S", max="L", min="K")
