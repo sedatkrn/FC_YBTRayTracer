@@ -55,6 +55,7 @@ def load_settings(doc):
     m = _meta(doc) if doc is not None else None
     raw = (m or {}).get(K_SET)
     if not raw:
+        _ud.apply({"LIGHT_MODE": "objects"})                     # ayarı olmayan (yeni) belge: önceki belgenin eski modu geçmesin
         return False
     try:
         vals = {k: v for k, v in json.loads(raw).items() if k not in _SKIP}
