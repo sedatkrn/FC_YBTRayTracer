@@ -480,6 +480,7 @@ def open_surface(on_change=None, is_busy=None):
         d.setWindowTitle(T("Doku Düzenleyici") + " - " + T(_CH_TITLE[chan]))
         _theme.apply(d)
         d.setMinimumSize(520, 400)
+        d.resize(730, 770)                                         # makul varsayılan boyut: sol liste + dar sağ panel
         hl = QtGui.QHBoxLayout(d)
 
         # ---------------- sol: katman listesi
@@ -507,10 +508,15 @@ def open_surface(on_change=None, is_busy=None):
         b_dn = QtGui.QPushButton("▼")
         b_up.setToolTip(T("Katmanı üste taşı"))
         b_dn.setToolTip(T("Katmanı alta taşı"))
+        row2.setSpacing(3)
         for _w in (b_cp, b_ps):
+            _w.setMinimumWidth(0)
+            _w.setStyleSheet("padding: 3px 4px;")                 # dar sol bölümde düğmeler birbirine girmesin
+            _w.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Fixed)
             row2.addWidget(_w, 2)
         for _w in (b_up, b_dn):
-            _w.setFixedWidth(32)
+            _w.setFixedWidth(26)
+            _w.setStyleSheet("padding: 3px 2px;")
             row2.addWidget(_w)
         left_.addLayout(row2)
         tree_l = QtGui.QTreeWidget()
@@ -527,7 +533,7 @@ def open_surface(on_change=None, is_busy=None):
         left_.addWidget(lb_hint)
         left_w = QtGui.QWidget()                                  # sol bölüm yatayda daralabilsin (sağ panel öncelikli)
         left_w.setLayout(left_)
-        left_w.setMinimumWidth(140)
+        left_w.setMinimumWidth(170)
         left_w.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Preferred)
         left_.setContentsMargins(0, 0, 0, 0)
         hl.addWidget(left_w, 2)
@@ -675,9 +681,11 @@ def open_surface(on_change=None, is_busy=None):
         b_auto.setCheckable(True)
         b_auto.setToolTip(T("Açıkken görüntü nesnenin yüzüne tam oturur (tek kez, nesnenin boyutuna gerilir). Kapalıyken doku döşenir (tekrar eder). Açınca ölçek 1, konum 0 olur."))
         cb_tile = QtGui.QComboBox()
-        for k_, nm_ in (("auto", "Otomatik (dokunun kendi modu)"), ("repeat", "Tekrar (düz döşeme)"), ("mirror", "Ayna (kenarlar aynalanır)")):
+        for k_, nm_ in (("auto", "Otomatik (dokunun kendi modu)"), ("repeat", "Tekrar (düz döşeme)"), ("mirror", "Ayna (kenarlar aynalanır)"),
+                      ("once", "Tek kez (dışı boş)"), ("edge", "Kenarı uzat"),
+                      ("stochastic", "Stokastik (tekrarı gizler)")):
             cb_tile.addItem(T(nm_), k_)
-        cb_tile.setToolTip(T("Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur."))
+        cb_tile.setToolTip(T("Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez); Tek kez = görüntü bir kez, nesne merkezinde, dışı etkisiz; Kenarı uzat = tek görüntü, kenar pikselleri uzar (düzlemsel/küp için); Stokastik = her bölgeye rastgele öteleme + yumuşak karışım, tekrar deseni görünmez (zemin/çim/çakıl için). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur."))
         gp2.addWidget(lab("Döşeme"), 3, 0)
         gp2.addWidget(cb_tile, 3, 1, 1, 3)
         gp2.addWidget(b_world, 1, 1, 1, 3)

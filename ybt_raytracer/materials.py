@@ -304,7 +304,7 @@ def norm_layer(src):
         d[k] = min(max(float(d[k]), -360.0), 360.0)
     d["tex_world"] = bool(d["tex_world"])
     d["tex_fit"] = bool(d["tex_fit"])
-    d["tile"] = d["tile"] if d["tile"] in ("auto", "repeat", "mirror") else "auto"
+    d["tile"] = d["tile"] if d["tile"] in ("auto", "repeat", "mirror", "edge", "once", "stochastic") else "auto"
     d["ptype"] = d["ptype"] if d["ptype"] in PROC_KEYS else "turbulence"
     d["pvalue"] = min(max(float(d["pvalue"]), 0.0), 1.0)
     d["pfreq"] = min(max(int(d["pfreq"]), 1), 8)

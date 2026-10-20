@@ -157,6 +157,11 @@ class Texture(object):
     """Kesintisiz tekrarlanan doku + mip piramidi (doğrusal renk, float32)."""
 
     def __init__(self, rgb8, mode="repeat"):
+        self.stoch = False                                        # stokastik döşeme (hex-tiling): load(key, "stochastic") açar
+        self.once = (mode == "once")                              # "once": görüntü dışı etkisiz (maske render'da)
+        self.clamp = mode in ("edge", "once")                     # "edge": kenar pikselleri uzar; "once": tek kez (dışı etkisiz, render'da maskelenir)
+        if self.clamp:
+            mode = "repeat"
         a = (np.asarray(rgb8, dtype=np.float32) / 255.0) ** 2.2
         self.rel = 0.4                                            # otomatik genişlik (sahne köşegeni oranı)
         self.base_w = a.shape[1]                                  # orijinal görüntü genişliği (texel)
@@ -172,6 +177,7 @@ class Texture(object):
             self.levels.append((b[0::2, 0::2] + b[1::2, 0::2] + b[0::2, 1::2] + b[1::2, 1::2]) * 0.25)
         self.h, self.w = a.shape[:2]
         self.aspect = self.h / float(self.w)
+        self.mean = self.levels[-1].reshape(-1, 3).mean(0).astype(np.float64)   # varyans korumalı karışım için ortalama renk
 
     def _bilinear(self, lv, u, v, idx):
         t = self.levels[lv]
@@ -185,8 +191,49 @@ class Texture(object):
         x0, y0 = x0 % w, y0 % h
         return ((t[y0, x0] * (1 - fx) + t[y0, x1] * fx) * (1 - fy) + (t[y1, x0] * (1 - fx) + t[y1, x1] * fx) * fy)
 
-    def sample(self, u, v, lod):
-        """u,v: doku koordinatı (1.0 = tüm doku, tekrarlı); lod: mip düzeyi (kesirli). Döner (n,3) doğrusal renk."""
+    def sample(self, u, v, lod, stoch=True):
+        """u,v: doku koordinatı (1.0 = tüm doku, tekrarlı); lod: mip düzeyi (kesirli). Döner (n,3) doğrusal renk.
+        stoch=False: stokastik döşeme açık olsa da düz örnekle (nesneye sığdır gibi tek görüntü kullanımları)."""
+        if self.stoch and stoch and not self.clamp:
+            return self._sample_hex(u, v, lod)
+        return self._sample_plain(u, v, lod)
+
+    @staticmethod
+    def _hash2(ix, iy):
+        a = np.sin(ix * 127.1 + iy * 311.7) * 43758.5453
+        b = np.sin(ix * 269.5 + iy * 183.3) * 43758.5453
+        return a - np.floor(a), b - np.floor(b)
+
+    def _sample_hex(self, u, v, lod):
+        """Stokastik döşeme (Mikkelsen hex-tiling + Heitz varyans korumalı karışım): üçgen ızgara, her köşe rastgele öteleme,
+        üç örnek ağırlıkla karışır; tekrar deseni görünmez, kontrast korunur. Dikiş yok (öteleme doku periyodunun tam katı değil, doku kendi modunda sarar)."""
+        x, y = u * 3.4641016, v * 3.4641016
+        s0 = x
+        s1 = -0.57735027 * x + 1.15470054 * y
+        bx, by = np.floor(s0), np.floor(s1)
+        fx, fy = s0 - bx, s1 - by
+        fz = 1.0 - fx - fy
+        up = fz > 0
+        w1 = np.where(up, fz, -fz)
+        w2 = np.where(up, fy, 1.0 - fy)
+        w3 = np.where(up, fx, 1.0 - fx)
+        v1 = (np.where(up, bx, bx + 1), np.where(up, by, by + 1))
+        v2 = (np.where(up, bx, bx + 1), np.where(up, by + 1, by))
+        v3 = (np.where(up, bx + 1, bx), np.where(up, by, by + 1))
+        ws = [np.power(np.maximum(w, 1e-6), 3.0) for w in (w1, w2, w3)]
+        tot = ws[0] + ws[1] + ws[2]
+        ws = [w / tot for w in ws]
+        acc = np.zeros((len(u), 3))
+        for w, (vx, vy) in zip(ws, (v1, v2, v3)):
+            ox, oy = self._hash2(vx, vy)
+            acc += w[:, None] * (self._sample_plain(u + ox, v + oy, lod) - self.mean)
+        norm = np.sqrt(ws[0] ** 2 + ws[1] ** 2 + ws[2] ** 2)
+        return np.maximum(self.mean + acc / norm[:, None], 0.0)
+
+    def _sample_plain(self, u, v, lod):
+        if self.clamp:
+            u = np.clip(u, 0.0, 1.0 - 1e-7)
+            v = np.clip(v, 0.0, 1.0 - 1e-7)
         u = u - np.floor(u)
         v = v - np.floor(v)
         n = len(u)
@@ -206,9 +253,9 @@ class Texture(object):
         return out
 
 
-def sample_gray(tex, u, v, lod):
+def sample_gray(tex, u, v, lod, stoch=True):
     """Doku parlaklığı 0..1 (sRGB kodlu gri değer: harita pikselinin değeri). Gri tonlu kanallar ve bump yüksekliği için."""
-    c = tex.sample(u, v, lod)
+    c = tex.sample(u, v, lod, stoch)
     return np.clip(0.2126 * c[:, 0] + 0.7152 * c[:, 1] + 0.0722 * c[:, 2], 0.0, 1.0) ** (1.0 / 2.2)
 
 
@@ -252,11 +299,15 @@ def _read_fast(path):
 
 def load(key, tile=None):
     """Anahtar (hazır doku adı) ya da kayıtlı özel yol -> Texture; bulunamazsa None.
-    tile: None/"auto" = dokunun kendi modu (hazır dokularda listedeki, kendi dosyalarda ayna); "repeat" = düz tekrar; "mirror" = aynalı tekrar."""
+    tile: None/"auto" = dokunun kendi modu (hazır dokularda listedeki, kendi dosyalarda ayna); "repeat" = düz tekrar; "mirror" = aynalı tekrar;
+    "edge" = tek görüntü, kenar pikselleri uzar; "once" = tek görüntü, dışı etkisiz."""
     if not key:
         return None
-    force = tile if tile in ("repeat", "mirror") else None
+    stoch = (tile == "stochastic")
+    force = tile if tile in ("repeat", "mirror", "edge", "once") else None
     ck = key if force is None else (key, force)
+    if stoch:
+        ck = (key, "stochastic")
     if ck in _CACHE:
         return _CACHE[ck]
     tex = None
@@ -281,6 +332,8 @@ def load(key, tile=None):
                 tex = Texture(load_image_file(fp), force or "mirror")
             except Exception:
                 tex = None
+    if tex is not None and stoch:
+        tex.stoch = True
     if tex is not None:                                                  # bulunamayan doku önbelleğe alınmaz (klasör sonradan ayarlanabilir)
         _CACHE[ck] = tex
     return tex
