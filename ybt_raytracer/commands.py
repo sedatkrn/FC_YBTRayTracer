@@ -134,7 +134,10 @@ def new_scene():
         return None
     doc.openTransaction("New YBT scene")
     try:
+        from . import lightobj
         obj = sceneobj.create(doc, make_active=True)
+        if not lightobj.lights_in_scene(obj):             # yeni sahne boş başlamasın: bir Distant Light ile gelir
+            obj.addObject(lightobj.create(doc, "distant"))
     finally:
         doc.commitTransaction()
     try:
@@ -228,6 +231,11 @@ def register():
     for name, cmd in _commands().items():
         Gui.addCommand(name, cmd)
     _state["registered"] = True
+    try:
+        from . import viewlight
+        viewlight.start()                                 # görünümde ışık önizlemesi (YBT sahnesi olan belgede)
+    except Exception:
+        pass
     if global_toolbar_enabled() and hasattr(Gui, "addWorkbenchManipulator"):
         try:
             Gui.addWorkbenchManipulator(_Manipulator())

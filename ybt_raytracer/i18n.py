@@ -653,6 +653,8 @@ EN = {
     'İçerik klasörü ayarı kaldırıldı; eski saklama yerleri kullanılıyor.': 'Content directory cleared; the old storage locations are in use.',
 'YBT Malzemeler': 'YBT Materials',
     'YBT Seçenekler': 'YBT Options',
+    '3B görünümü bu ışıklarla aydınlat': 'Light the 3D view with these lights',
+    "Açıkken YBT sahnesi olan belgelerde FreeCAD'in kendi görünüm ışıkları kapanır ve ışık nesneleri 3B görünümde önizlenir (gölge ve yumuşaklık yalnız render'da). Kapanınca FreeCAD'in ayarları geri gelir.": "When on, in documents with a YBT scene FreeCAD's own view lights are switched off and the light objects are previewed in the 3D view (shadows and softness only in the render). When off, FreeCAD's settings come back.",
     'Etkin sahne yap': 'Make active scene',
     'YBT Yeni Sahne': 'YBT New Scene',
     'Ağaçta yeni bir YBT sahnesi (YBTray01...) yaratır; ışıklar bunun altına eklenir': 'Creates a new YBT scene (YBTray01...) in the tree; lights are added under it',

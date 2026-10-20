@@ -86,4 +86,5 @@ TIE_LAST = False       # eşitlikte False: ids içinde ilk (küçük indeks), Tr
 _MAXPAIR = 2_000_000   # bir seferde işlenen (ışın x üçgen) çifti üst sınırı (bellek)
 USE_FC_LIGHTS = False   # arayüz: "FreeCAD ışık ayarlarını kullan" işareti (dil değişiminde korunur)
 LIGHT_MODE = "objects"  # "objects": ışıklar sahnedeki ışık nesnelerinden gelir (yoksa panelin varsayılan ışıkları); "legacy": makro dönemi aydınlatma (3 ışık + isteğe bağlı FreeCAD ışıkları)
+VIEW_LIGHTS = True    # 3B görünümde ışık nesneleriyle önizleme (FreeCAD ışıkları kapanır; viewlight.py)
 _OBJ_LIGHTS = None      # render sırasında lightobj.apply_to_settings doldurur (kaydedilmez); None = panelin klasik ışıkları

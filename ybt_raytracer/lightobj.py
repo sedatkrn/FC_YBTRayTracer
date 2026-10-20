@@ -45,6 +45,10 @@ def lights_in(doc):
     return out
 
 
+def lights_in_scene(scene):
+    return [o for o in getattr(scene, "Group", []) if _is_light(o)]
+
+
 def active_lights(doc):
     """Render'ın kullanacağı ışık nesneleri: belgede YBT sahnesi varsa etkin sahnenin ışıkları, yoksa tüm (serbest) ışıklar."""
     from . import sceneobj

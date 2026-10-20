@@ -10,6 +10,7 @@ import FreeCAD
 from .i18n import T
 from . import lightobj as L
 from . import theme as _theme
+from . import settings as S
 
 _KEY = "_ybt_light_dlg"
 
@@ -132,6 +133,12 @@ def _build(QtCore, QtGui):
     sl.addWidget(sp_soft, 1, 1)
     sl.setRowStretch(2, 1)
     root.addWidget(tabs)
+    ck_view = QtGui.QCheckBox(T("3B görünümü bu ışıklarla aydınlat"))
+    ck_view.setToolTip(T("Açıkken YBT sahnesi olan belgelerde FreeCAD'in kendi görünüm ışıkları kapanır ve ışık nesneleri 3B görünümde önizlenir "
+                         "(gölge ve yumuşaklık yalnız render'da). Kapanınca FreeCAD'in ayarları geri gelir."))
+    ck_view.setChecked(bool(getattr(S, "VIEW_LIGHTS", True)))
+    ck_view.toggled.connect(lambda v: setattr(S, "VIEW_LIGHTS", bool(v)))
+    root.addWidget(ck_view)
     hint = QtGui.QLabel(T("Konum ve yön: ışık nesnesinin Yerleşim (Placement) özelliği. Işık yerel -Z yönüne yayılır."))
     hint.setWordWrap(True)
     hint.setStyleSheet("color: #85858a;")
