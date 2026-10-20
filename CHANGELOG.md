@@ -1,7 +1,7 @@
 # Değişiklik geçmişi / Changelog
 
 ```
-v1.5.0 (hazırlanıyor):
+v1.5.0 (2026-10-20):
 
 - AO şiddeti varsayılanı %30 → %50.
 - **AO iyileştirmesi**: AO artık gölge atmayan dolgu ışıklarına (Stüdyo ön ayarındaki yan/arka ışıklar) ve HDRI/gökyüzü ışığına da uygulanır; önceden yalnız ortam ışığını kısıyordu, bu yüzden iç mekanda etkisi çok zayıf kalıyordu.
