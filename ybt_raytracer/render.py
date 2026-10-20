@@ -446,7 +446,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             ls_ = dict(spot=lt.get("kind") == "spot", axis=ax_, co=float(np.cos(half_)), ci=float(np.cos(in_)),
                        fall=str(lt.get("falloff", "inverse_square")),
                        ref=(float(lt.get("ref", 0.0)) if float(lt.get("ref", 0.0)) > 0.0 else max(1e-6, float(np.linalg.norm(lp_)))),   # 0 = otomatik: ışığın sahne merkezine uzaklığı
-                       rad=max(0.0, float(lt.get("radius", 0.0))))
+                       rad=max(0.0, float(lt.get("radius", 0.0))),
+                       samples=int(lt["samples"]) if lt.get("samples") else None)
         elif "wdir" in lt:
             Ld = _norm(np.array(lt["wdir"], dtype=np.float64))   # ışık nesnesi: dünya uzayında ışığa doğru yön
         elif "dir" in lt:
@@ -480,7 +481,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         Ld_ = lt_[0]
         if lpos[li_] is not None:                            # konumlu ışık: örnekler ışık konumları (yarıçaplı kürenin içi)
             R_ = lsp[li_]["rad"]
-            K_ = max(4, min(32, int(S.SOFT_SAMPLES)))
+            K_ = max(4, min(32, int(lsp[li_]["samples"] or S.SOFT_SAMPLES)))      # ışığın kendi örnek sayısı (yoksa genel ayar)
+            if bool(getattr(S, "QUICK_PASS", False)):
+                K_ = min(K_, 8)                                   # Hızlı Render kaba önizlemesi
             if not lt_[3] or R_ <= 0.0:
                 sample_dirs[li_] = [lpos[li_]]
             else:

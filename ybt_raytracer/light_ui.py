@@ -141,7 +141,13 @@ def _build(QtCore, QtGui):
     lb_rad = lab("Işık boyu (yarıçap)")
     sl.addWidget(lb_rad, 2, 0)
     sl.addWidget(sp_rad, 2, 1)
-    sl.setRowStretch(3, 1)
+    sp_smp = QtGui.QSpinBox()
+    sp_smp.setRange(4, 32)
+    sp_smp.setToolTip(T("Yumuşak gölge kalitesi: yarı gölge için örnek sayısı. Yüksek = pürüzsüz ama yavaş; 8-12 çoğu sahnede yeterli"))
+    lb_smp = lab("Gölge kalitesi (örnek)")
+    sl.addWidget(lb_smp, 3, 0)
+    sl.addWidget(sp_smp, 3, 1)
+    sl.setRowStretch(4, 1)
     # Falloff sekmesi (Point / Spot)
     pg_fall = QtGui.QWidget()
     fl = QtGui.QGridLayout(pg_fall)
@@ -188,7 +194,7 @@ def _build(QtCore, QtGui):
     hint.setStyleSheet("color: #85858a;")
     root.addWidget(hint)
 
-    inputs = [cb_type, ck_on, bt_col, sp_int, ck_dif, ck_spc, ck_sh, sp_soft, sp_rad, cb_fall, sp_ref, sp_cone, sp_edge] + sp_rgb
+    inputs = [cb_type, ck_on, bt_col, sp_int, ck_dif, ck_spc, ck_sh, sp_soft, sp_rad, sp_smp, cb_fall, sp_ref, sp_cone, sp_edge] + sp_rgb
 
     def paint_color(rgb):
         bt_col.setStyleSheet("background-color: rgb(%d,%d,%d); border: 1px solid #26262a;" % tuple(rgb))
@@ -213,7 +219,7 @@ def _build(QtCore, QtGui):
     def snapshot(o):
         try:
             return (bool(o.Enabled), tuple(o.Color)[:3], float(o.Intensity), bool(o.Shadows), val(o, "Softness"),
-                    bool(o.AffectDiffuse), bool(o.AffectSpecular), val(o, "ShadowRadius"), str(getattr(o, "Falloff", "")),
+                    bool(o.AffectDiffuse), bool(o.AffectSpecular), val(o, "ShadowRadius"), val(o, "ShadowSamples", 12), str(getattr(o, "Falloff", "")),
                     val(o, "ReferenceDistance"), val(o, "ConeAngle"), val(o, "EdgeAngle"), kind_of(o))
         except Exception:
             return None
@@ -223,7 +229,7 @@ def _build(QtCore, QtGui):
         pos = L.is_positional(kind)
         for w in (lb_soft, sp_soft):
             w.setVisible(not pos)
-        for w in (lb_rad, sp_rad):
+        for w in (lb_rad, sp_rad, lb_smp, sp_smp):
             w.setVisible(pos)
         tabs.setTabEnabled(tabs.indexOf(pg_fall), pos)
         for w in (lb_cone, sp_cone, lb_edge, sp_edge):
@@ -252,6 +258,7 @@ def _build(QtCore, QtGui):
             show_for(kd)
             sp_soft.setValue(val(o, "Softness"))
             sp_rad.setValue(val(o, "ShadowRadius"))
+            sp_smp.setValue(int(val(o, "ShadowSamples", 12)))
             k2 = cb_fall.findData(str(getattr(o, "Falloff", "InverseSquare")))
             if k2 >= 0:
                 cb_fall.setCurrentIndex(k2)
@@ -313,6 +320,8 @@ def _build(QtCore, QtGui):
             return
         o = st["obj"]
         try:
+            if name not in o.PropertiesList:                      # eski ışık nesnesi: eksik özellikleri tamamla
+                L._Light.add_props(o, kind_of(o))
             setattr(o, name, value)
             st["snap"] = snapshot(o)
         except Exception as ex:
@@ -325,6 +334,7 @@ def _build(QtCore, QtGui):
     sp_int.valueChanged.connect(lambda v: put("Intensity", float(v)))
     sp_soft.valueChanged.connect(lambda v: put("Softness", float(v)))
     sp_rad.valueChanged.connect(lambda v: put("ShadowRadius", float(v)))
+    sp_smp.valueChanged.connect(lambda v: put("ShadowSamples", int(v)))
     sp_ref.valueChanged.connect(lambda v: put("ReferenceDistance", float(v)))
     sp_cone.valueChanged.connect(lambda v: put("ConeAngle", float(v)))
     sp_edge.valueChanged.connect(lambda v: put("EdgeAngle", float(v)))

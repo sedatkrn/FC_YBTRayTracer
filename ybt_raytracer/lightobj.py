@@ -102,6 +102,7 @@ def collect(doc):
                 d["falloff"] = _FALL_KEY.get(str(o.Falloff), "inverse_square")
                 d["ref"] = max(0.0, float(getattr(o.ReferenceDistance, "Value", o.ReferenceDistance)))
                 d["radius"] = max(0.0, float(getattr(o.ShadowRadius, "Value", o.ShadowRadius)))
+                d["samples"] = max(4, min(32, int(getattr(o, "ShadowSamples", 12))))
                 if kind == "spot":
                     d["cone"] = float(getattr(o.ConeAngle, "Value", o.ConeAngle))
                     d["edge"] = float(getattr(o.EdgeAngle, "Value", o.EdgeAngle))
@@ -158,6 +159,7 @@ class _Light(object):
                 obj.Falloff = "InverseSquare"
             add("App::PropertyLength", "ReferenceDistance", "Light", "Şiddetin tam değerinde olduğu uzaklık (sönme buna göre ölçülür). 0 = otomatik: ışığın sahne merkezine uzaklığı (ışığı yaklaştırınca sahne patlamaz)", 0.0)
             add("App::PropertyLength", "ShadowRadius", "Light", "Işık kaynağının boyu: gölge kenarı yumuşaklığı (0 = sert gölge)", 0.0)
+            add("App::PropertyInteger", "ShadowSamples", "Light", "Yumuşak gölge kalitesi: yarı gölge için örnek sayısı (4-32). Yüksek = pürüzsüz ama yavaş", 12)
         if kind == "spot":
             add("App::PropertyAngle", "ConeAngle", "Light", "Koninin tam açısı", 45.0)
             add("App::PropertyAngle", "EdgeAngle", "Light", "Koni kenarındaki yumuşak geçiş açısı", 10.0)

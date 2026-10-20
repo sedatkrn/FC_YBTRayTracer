@@ -253,6 +253,7 @@ def run():
             S.AA = aa
             rough = (w, aa, label) != passes[-1]
             S.SOFT_SAMPLES = min(int(saved["SOFT_SAMPLES"]), 8) if rough else saved["SOFT_SAMPLES"]   # kaba önizlemede az gölge örneği
+            S.QUICK_PASS = rough                                  # ışık başına örnek sayısı da en çok 8 olur
 
             def show(img, rows, frac=None, label=label, w=w, h=h):
                 if not alive():
@@ -284,4 +285,5 @@ def run():
     finally:
         for k, v in saved.items():
             setattr(S, k, v)
+        S.QUICK_PASS = False
         _running["on"] = False

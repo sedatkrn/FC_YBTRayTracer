@@ -756,6 +756,8 @@ EN = {
     'Spot koninin tam açısı': 'Full angle of the spot cone',
     'Sönme / Koni': 'Falloff / Cone',
     'Işık boyu (yarıçap)': 'Light size (radius)',
+    'Gölge kalitesi (örnek)': 'Shadow quality (samples)',
+    'Yumuşak gölge kalitesi: yarı gölge için örnek sayısı. Yüksek = pürüzsüz ama yavaş; 8-12 çoğu sahnede yeterli': 'Soft shadow quality: number of penumbra samples. Higher = smoother but slower; 8-12 is enough for most scenes',
     'Koni açısı': 'Cone angle',
     'Kenar yumuşaklığı': 'Edge softness',
     'Sönme': 'Falloff',
