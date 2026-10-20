@@ -96,7 +96,8 @@ def _sync_ambient():
 
 
 def _activate():
-    _save_state()
+    if not _backup_get():                                   # yedek zaten varsa (ilk asıl değerler) üzerine yazma
+        _save_state()
     g = _grp(_PARAM_VIEW)
     for k in _ENABLE:
         g.SetBool(k, False)
