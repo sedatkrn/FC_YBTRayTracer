@@ -1629,4 +1629,5 @@ def main(lang=None):
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, soft_scale=sp_softk, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
                                                             refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc, hdri_list=cb_hd, floor_tex=cb_ft),
                              status=lbl_st, bar=bar, pct=pct, state=state,
-                             open_mats=open_mats, open_options=open_options, refresh_light_mode=refresh_light_mode, apply_all=apply_all)       # eklenti komutları (commands.py) bunlarla açar
+                             open_mats=open_mats, open_options=open_options, refresh_light_mode=refresh_light_mode, apply_all=apply_all,
+                             reset_scene=lambda: state.__setitem__("scene", None))       # eklenti komutları (commands.py) bunlarla açar

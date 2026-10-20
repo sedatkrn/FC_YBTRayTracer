@@ -89,15 +89,30 @@ def quick_render():
     quickrender.run()
 
 
-def open_materials():
+def open_materials(select=None, add=False):
+    """select: açılışta seçilecek nesne adı (pencere zaten açıksa doğrudan seçer)."""
+    import FreeCAD
+    sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+    try:
+        alive = sd is not None and sd.isVisible()
+    except Exception:
+        alive = False
+    if alive and select:
+        sd._ybt_api["pick"](select, add)
+        sd.raise_()
+        sd.activateWindow()
+        return
     api = getattr(_panel(), "_raytrace_api", None)
-    if api and api.get("open_mats"):
+    if api and api.get("open_mats") and not select:
         api["open_mats"]()                              # panel açıksa onun geri çağrılarıyla (sahne önbelleği sıfırlanır)
         return
     from .i18n import init_lang
     init_lang()
     from .surface_ui import open_surface
-    open_surface()
+    on_change = None
+    if api and api.get("reset_scene"):
+        on_change = api["reset_scene"]
+    open_surface(on_change=on_change, select=select, add=add)
 
 
 def open_options():

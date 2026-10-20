@@ -161,7 +161,8 @@ def _renderable(doc):
     return out
 
 
-def open_surface(on_change=None, is_busy=None):
+def open_surface(on_change=None, is_busy=None, select=None, add=False):
+    """select: pencere açılıp nesne listesi dolunca seçilecek nesne adı (ör. Hızlı Render'da çift tıklanan yüzey)."""
     import FreeCAD
     import FreeCADGui as Gui
     from PySide import QtGui, QtCore
@@ -1610,5 +1611,7 @@ def open_surface(on_change=None, is_busy=None):
         finally:
             QtGui.QApplication.restoreOverrideCursor()
         msg(T("Hazır: %d nesne listelendi.") % len(st["items"]) + " (%.1f %s%s)" % (time.time() - t0, T("sn"), ", " + T("önbellek") if cached else ""))
+        if select:
+            on_pick(select, add)                                # liste hazır: istenen nesneyi seç
     QtCore.QTimer.singleShot(0, finish_open)
     return dlg

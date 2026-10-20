@@ -236,30 +236,9 @@ def run():
             if hit is None:
                 ov.set_status(T("Tıklanan yerde nesne yok (arka plan ya da zemin)."))
                 return
-            sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
-            try:
-                alive_ = sd is not None and sd.isVisible()
-            except Exception:
-                alive_ = False
-            if not alive_:
-                commands.open_materials()
-                sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
-                if sd is None:
-                    return
-                t_w = time.time()                                 # pencere nesne listesini bir sonraki olay turunda doldurur: bitmesini bekle
-                while not sd._ybt_api["state"].get("items") and time.time() - t_w < 15.0:
-                    QtCore.QCoreApplication.processEvents()
-                    time.sleep(0.02)
-            if sd is None:
-                return
-            sd._ybt_api["pick"](hit[0], ctrl)
+            commands.open_materials(select=hit[0], add=ctrl)      # pencere kapalıysa açılış bitince, açıksa hemen seçer
             o = doc.getObject(hit[0])
             ov.set_status(T("Seçildi: %s") % (o.Label if o is not None else hit[0]))
-            try:
-                sd.raise_()
-                sd.activateWindow()
-            except Exception:
-                pass
 
         ov = _Overlay(host, rect, on_close, on_save)
         ov.on_double = on_double
