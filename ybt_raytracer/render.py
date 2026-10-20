@@ -1130,7 +1130,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         v0 = _vis_of(lights_blocked(Pq, li, 0))
         if n == 1:
             return v0
-        npr = min(9, n)
+        # kademeli örnekleme: önce 5 örnek (eskiden 9); hepsi aynıysa nokta tam aydınlık/tam gölgededir, biter. Uyuşmayanlar tüm örneklerle yeniden değerlendirilir
+        npr = min(5, n)
         acc, vmin, vmax = v0.copy(), v0.copy(), v0.copy()
         for si in range(1, npr):
             v = _vis_of(lights_blocked(Pq, li, si))
