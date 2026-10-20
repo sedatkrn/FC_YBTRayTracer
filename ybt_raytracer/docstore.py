@@ -60,6 +60,8 @@ def load_settings(doc):
         vals = {k: v for k, v in json.loads(raw).items() if k not in _SKIP}
     except Exception:
         return False
+    if "LIGHT_MODE" not in vals and ("LIGHTS" in vals or "USE_FC_LIGHTS" in vals):
+        vals["LIGHT_MODE"] = "legacy"                            # ışık nesneleri öncesi (makro dönemi) belge: eski aydınlatmayla açılır
     return _ud.apply(vals) > 0
 
 

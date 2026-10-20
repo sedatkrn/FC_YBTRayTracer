@@ -85,3 +85,5 @@ TIE_TOL = 2e-6         # çakışan yüzeylerde 'eşit uzaklık' toleransı (sah
 TIE_LAST = False       # eşitlikte False: ids içinde ilk (küçük indeks), True: son
 _MAXPAIR = 2_000_000   # bir seferde işlenen (ışın x üçgen) çifti üst sınırı (bellek)
 USE_FC_LIGHTS = False   # arayüz: "FreeCAD ışık ayarlarını kullan" işareti (dil değişiminde korunur)
+LIGHT_MODE = "objects"  # "objects": ışıklar sahnedeki ışık nesnelerinden gelir (yoksa panelin varsayılan ışıkları); "legacy": makro dönemi aydınlatma (3 ışık + isteğe bağlı FreeCAD ışıkları)
+_OBJ_LIGHTS = None      # render sırasında lightobj.apply_to_settings doldurur (kaydedilmez); None = panelin klasik ışıkları

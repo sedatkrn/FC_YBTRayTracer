@@ -427,10 +427,15 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     env_bg = env is not None and bool(S.ENV_BACKGROUND)
     env_refl = env is not None and bool(S.ENV_REFLECT)
     lights = []                                              # (yön, doğrusal renk, güç, gölge?)
-    for lt in ([] if (env_light and not bool(S.ENV_KEEP_LIGHTS)) else list(S.LIGHTS)[:3]):
+    soft_deg = []                                            # ışık başına yumuşak gölge açısı (derece; 0 = sert)
+    _obj_l = getattr(S, "_OBJ_LIGHTS", None)                  # ışık nesneleri (lightobj.apply_to_settings); None = panelin klasik ışıkları
+    _src = list(_obj_l) if _obj_l is not None else list(S.LIGHTS)[:3]
+    for lt in ([] if (env_light and not bool(S.ENV_KEEP_LIGHTS) and _obj_l is None) else _src[:16]):
         if not lt.get("on", True) or float(lt["power"]) <= 0.0:
             continue
-        if "dir" in lt:
+        if "wdir" in lt:
+            Ld = _norm(np.array(lt["wdir"], dtype=np.float64))   # ışık nesnesi: dünya uzayında ışığa doğru yön
+        elif "dir" in lt:
             # FreeCAD'in ışık yönü: kamera uzayında, ışığın GİTTİĞİ yön (x sağ, y yukarı, z gözlemciye doğru)
             dx, dy, dz = lt["dir"]
             Ld = _norm(-dx * right - dy * up + dz * fwd)
@@ -439,23 +444,25 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             Ld = _norm(-fwd * (np.cos(vv) * np.cos(hh)) + right * (np.cos(vv) * np.sin(hh)) + up * np.sin(vv))
         lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
                        bool(lt.get("shadow", False)) and shadows))
+        soft_deg.append(float(lt.get("soft", S.SOFT_SHADOW)))
     if env_light and bool(S.ENV_SUN) and env.sun is not None:
         sd = env.sun["dir"]
         a_ = np.radians(env_rot)                              # harita dönüşü: lookup'taki boylam kaymasıyla uyumlu
         c_, s_ = np.cos(a_), np.sin(a_)
         sd = np.array([c_ * sd[0] - s_ * sd[1], s_ * sd[0] + c_ * sd[1], sd[2]])
         lights.append((_norm(sd), np.maximum(env.sun["power"], 0.0) * env_i, 1.0, shadows))
+        soft_deg.append(float(S.SOFT_SHADOW))
     soft_r = float(S.SOFT_SHADOW)
     soft_fast = str(S.SOFT_METHOD) != "sampled"
-    soft_on = soft_r > 0.0 and shadows and any(lt[3] for lt in lights) and (soft_fast or scene.count <= int(S.SOFT_MAX_TRIS))
+    soft_on = shadows and any(lt[3] and soft_deg[i_] > 0.0 for i_, lt in enumerate(lights)) and (soft_fast or scene.count <= int(S.SOFT_MAX_TRIS))
     sample_dirs = {}                                         # ışık -> gölge örnek yönleri (0 = merkez); yumuşak gölgede ışık diski üzerinde
     for li_, lt_ in enumerate(lights):
         Ld_ = lt_[0]
-        if not (soft_on and lt_[3]) or soft_fast:
+        if not (soft_on and lt_[3] and soft_deg[li_] > 0.0) or soft_fast:
             sample_dirs[li_] = [Ld_]
             continue
         K_ = max(4, min(48, int(S.SOFT_SAMPLES)))
-        tn_ = np.tan(np.radians(min(soft_r, 30.0))) * max(0.1, float(S.SOFT_SCALE))
+        tn_ = np.tan(np.radians(min(soft_deg[li_], 30.0))) * max(0.1, float(S.SOFT_SCALE))
         u_ = np.cross(Ld_, np.array([0.0, 0.0, 1.0]) if abs(Ld_[2]) < 0.9 else np.array([1.0, 0.0, 0.0]))
         u_ = u_ / np.linalg.norm(u_)
         v_ = np.cross(Ld_, u_)
@@ -667,7 +674,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     if raster:
         vis[(0.5, 0.5)] = (mkbuf(np.float64, np.inf), mkbuf(np.int64, -1))
     ao_on = ao_on and raster
-    ss_lights = [li_ for li_, lt_ in enumerate(lights) if lt_[3]] if (soft_on and soft_fast and raster) else []
+    ss_lights = [li_ for li_, lt_ in enumerate(lights) if lt_[3] and soft_deg[li_] > 0.0] if (soft_on and soft_fast and raster) else []
     ss_on = bool(ss_lights)
     pre_on = ao_on or ss_on                                    # görünürlük tamponu en baştan çıkarılsın
     oid_ext = np.concatenate([scene.oid, [-2]]) if f_on else scene.oid
@@ -1213,7 +1220,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             return None
 
         if ss_on:
-            tan_soft = float(np.tan(np.radians(min(float(S.SOFT_SHADOW), 30.0)))) * max(0.1, float(S.SOFT_SCALE))
+            tan_soft_of = lambda li_: float(np.tan(np.radians(min(soft_deg[li_], 30.0)))) * max(0.1, float(S.SOFT_SCALE))
 
             def ss_band(ty):
                 r0, r1 = ty * tile, min(ty * tile + tile, h)
@@ -1260,7 +1267,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 valid_a = (oid_a != -3) & (nd_a > 0)
                 v0_a = np.array(ss_v0[li_])
                 v0_a = np.where(oid_a == -3, 1.0, v0_a)
-                ss_buf[li_][:] = _soft_blur(v0_a, np.array(ss_T[li_]), valid_a, oid_a, foot_a, nd_a, tan_soft, max(48, int(0.12 * w)))
+                ss_buf[li_][:] = _soft_blur(v0_a, np.array(ss_T[li_]), valid_a, oid_a, foot_a, nd_a, tan_soft_of(li_), max(48, int(0.12 * w)))
 
         def ao_band(ty):
             r0, r1 = ty * tile, min(ty * tile + tile, h)

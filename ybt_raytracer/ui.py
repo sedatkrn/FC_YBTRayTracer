@@ -13,6 +13,7 @@ from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 from . import materials as _mats
 from . import theme as _theme
 from . import lightpresets as _lp
+from . import lightobj as _lobj
 from . import userdefaults as _ud
 from . import __version__ as _VER
 
@@ -179,6 +180,15 @@ def main(lang=None):
         bt.clicked.connect(pick2)
         return bt
 
+    ck_leg = QtGui.QCheckBox(T("Eski aydınlatma (makro dönemi)"))
+    ck_leg.setChecked(str(S.LIGHT_MODE) == "legacy")
+    ck_leg.setToolTip(T("Kapalı: ışıklar sahneye eklediğiniz ışık nesnelerinden gelir (ışık nesnesi yoksa aşağıdaki varsayılan ışıklar kullanılır). "
+                        "Açık: makro dönemindeki gibi paneldeki üç ışık (veya FreeCAD'in ışık ayarları) kullanılır. Eski belgelerde otomatik açılır."))
+    lvb.addWidget(ck_leg)
+    lb_lobj = QtGui.QLabel("")
+    lb_lobj.setWordWrap(True)
+    lb_lobj.setStyleSheet("color: #85858a;")
+    lvb.addWidget(lb_lobj)
     ck_fc = QtGui.QCheckBox(T("FreeCAD ışık ayarlarını kullan"))
     ck_fc.setChecked(bool(getattr(S, "USE_FC_LIGHTS", False)))
     ck_fc.setToolTip(T("İşaretliyse Tercihler > Display > Light Sources ayarları kullanılır; aşağıdaki ayarlar devre dışı kalır"))
@@ -446,7 +456,8 @@ def main(lang=None):
     sync_env()
     lv.addWidget(lbox)
     lv.addWidget(ebox)
-    light_widgets = [wd for row in lrows for wd in row] + [cb_amb, sp_amb, cb_pre, bt_cust]
+    legacy_widgets = [wd for row in lrows for wd in row] + [cb_pre, bt_cust]
+    light_widgets = legacy_widgets + [cb_amb, sp_amb]
 
     # ---- Sanal Zemin ----
     fbox = QtGui.QGroupBox(T("Sanal Zemin"))
@@ -572,10 +583,34 @@ def main(lang=None):
         fill_floor_tex_list()
     refresh_content()
 
+    def light_count_text():
+        try:
+            n_ = len(_lobj.lights_in(FreeCAD.ActiveDocument))
+        except Exception:
+            n_ = 0
+        if ck_leg.isChecked():
+            return T("Eski aydınlatma açık; ışık nesneleri (%d adet) kullanılmaz.") % n_ if n_ else T("Eski aydınlatma açık.")
+        if n_:
+            return T("Sahnede %d ışık nesnesi var; aşağıdaki varsayılan ışıklar kullanılmaz.") % n_
+        return T("Sahnede ışık nesnesi yok: aşağıdaki varsayılan ışıklar kullanılır. Işık eklemek için araç çubuğundaki ışık düğmelerini kullanın.")
+
     def sync_lights(*_a):
-        for wd in light_widgets:
-            wd.setEnabled(not ck_fc.isChecked())
+        leg = ck_leg.isChecked()
+        ck_fc.setEnabled(leg)
+        for wd in legacy_widgets:
+            wd.setEnabled(leg and not ck_fc.isChecked())
+        for wd in (cb_amb, sp_amb):                       # ortam ışığı her iki modda da geçerli (yalnız FreeCAD ışıkları ayarı kendi değerini getirir)
+            wd.setEnabled(not (leg and ck_fc.isChecked()))
+        lb_lobj.setText(light_count_text())
+
+    def refresh_light_mode():
+        ck_leg.blockSignals(True)
+        ck_leg.setChecked(str(S.LIGHT_MODE) == "legacy")
+        ck_leg.blockSignals(False)
+        sync_lights()
     ck_fc.toggled.connect(sync_lights)
+    ck_leg.toggled.connect(sync_lights)
+    sync_lights()
 
     # ---- düğmeler ----
     btn_r = QtGui.QPushButton("Render")
@@ -1304,7 +1339,7 @@ def main(lang=None):
 
     def busy(on):
         state["busy"] = on
-        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao, cb_pre, bt_cust, ck_soft, sp_softr, sp_softk, cb_tm, sp_exp, ck_fr]:
+        for wd in light_widgets + floor_widgets + [ck_fl, ck_fc, ck_leg, btn_r, btn_y, sp_w, cb_q, cb_aa, ck_sh, ck_gl, ck_sm, ck_rf, ck_rr, ck_cull, sp_bn, cb_th, ck_sv, ck_ao, cb_pre, bt_cust, ck_soft, sp_softr, sp_softk, cb_tm, sp_exp, ck_fr]:
             wd.setEnabled(not on)
         btn_s.setEnabled(on)
         if not on:
@@ -1365,6 +1400,7 @@ def main(lang=None):
         apply_manual_lights()
         g["AA"] = 0 if cb_aa.currentIndex() == 0 else cb_aa.currentIndex() + 1
         g["USE_FC_LIGHTS"] = ck_fc.isChecked()
+        g["LIGHT_MODE"] = "legacy" if ck_leg.isChecked() else "objects"
 
     def do_render(*_a):
         if state["busy"]:
@@ -1388,7 +1424,12 @@ def main(lang=None):
                 FreeCAD.Console.PrintWarning("RayTrace: doc save: %s\n" % ex)
             fc_info = ""
             fc = None
-            if ck_fc.isChecked():
+            if not ck_leg.isChecked():                          # yeni sistem: ışıklar ışık nesnelerinden (yoksa panelin varsayılanları)
+                _m, _n, _u = _lobj.apply_to_settings(d)
+                FreeCAD.Console.PrintMessage(T("RayTrace: %d ışık nesnesi kullanılıyor.\n") % _u if _u else T("RayTrace: ışık nesnesi yok; varsayılan ışıklar kullanılıyor.\n"))
+            else:
+                S._OBJ_LIGHTS = None
+            if ck_leg.isChecked() and ck_fc.isChecked():
                 try:
                     fc = read_freecad_lights(lambda m: FreeCAD.Console.PrintMessage("RayTrace: " + m + "\n"))
                 except Exception as ex:
@@ -1551,4 +1592,4 @@ def main(lang=None):
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, soft_scale=sp_softk, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
                                                             refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc, hdri_list=cb_hd, floor_tex=cb_ft),
                              status=lbl_st, bar=bar, pct=pct, state=state,
-                             open_mats=open_mats, open_options=open_options)       # eklenti komutları (commands.py) bunlarla açar
+                             open_mats=open_mats, open_options=open_options, refresh_light_mode=refresh_light_mode)       # eklenti komutları (commands.py) bunlarla açar

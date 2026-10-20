@@ -3,6 +3,7 @@
 
 InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Render      ayar panelini açar (render panelin 'Render' düğmesiyle başlar)
+  YBT_DistantLight  sahneye Distant (güneş tipi) ışık nesnesi ekler
   YBT_Materials   Malzemeler (Surface) penceresini açar
   YBT_Options    panelin 'Seçenekler' penceresini açar (gerekirse paneli de açar)
 
@@ -14,7 +15,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_Materials", "YBT_Options")
+COMMANDS = ("YBT_Render", "YBT_DistantLight", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -92,6 +93,32 @@ def open_options():
         api["open_options"]()
 
 
+def add_light(kind):
+    """Etkin belgeye ışık nesnesi ekler. Belge eski (makro dönemi) aydınlatmadaysa yeni sisteme geçirilir."""
+    import FreeCAD
+    from . import lightobj, settings as S
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None
+    doc.openTransaction("Add light")
+    try:
+        obj = lightobj.create(doc, kind)
+    finally:
+        doc.commitTransaction()
+    if str(S.LIGHT_MODE) != "objects":
+        S.LIGHT_MODE = "objects"
+        FreeCAD.Console.PrintMessage(_tr("YBT: ışık nesnesi eklendi; bu belge artık ışık nesneleriyle aydınlatılır (eski aydınlatma kapandı).\n"))
+        dlg = _panel()
+        api = getattr(dlg, "_raytrace_api", None)
+        if api and api.get("refresh_light_mode"):
+            api["refresh_light_mode"]()
+    return obj
+
+
+def add_distant_light():
+    return add_light("distant")
+
+
 class _Cmd(object):
     def __init__(self, icon, text, tip, action, needs_doc=True):
         self._icon, self._text, self._tip, self._action, self._needs_doc = icon, text, tip, action, needs_doc
@@ -114,6 +141,7 @@ class _Cmd(object):
 def _commands():
     return {
         "YBT_Render": _Cmd("icon.png", "YBT Raytracer", "Render ayar panelini açar (Render düğmesiyle görüntü alınır)", open_panel),
+        "YBT_DistantLight": _Cmd("distant_light.svg", "YBT Distant Light", "Sahneye güneş tipi (paralel) ışık ekler", add_distant_light),
         "YBT_Materials": _Cmd("materials.svg", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),
         "YBT_Options": _Cmd("options.svg", "YBT Seçenekler", "İçerik klasörü ve varsayılan ayarlar", open_options),
     }
