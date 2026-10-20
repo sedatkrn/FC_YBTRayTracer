@@ -2,7 +2,7 @@
 """Işık nesneleri: sahneye eklenen, belgeyle birlikte saklanan FreeCAD nesneleri.
 
 1. aşama: Distant (güneş tipi, sonsuz uzaktan paralel ışık). Point / Spot sonraki aşamada.
-Nesne bir App::FeaturePython'dır; konumu/yönü FreeCAD'in Yerleşim (Placement) özelliğidir. Işık yerel -Z yönünde YAYILIR
+Nesne bir App::GeometryPython'dır; konumu/yönü FreeCAD'in Yerleşim (Placement) özelliğidir. Işık yerel -Z yönünde YAYILIR
 (dönüşsüz nesne = aşağı bakan güneş). Özellikler:
   Enabled        açık / kapalı
   Color          ışık rengi
@@ -222,7 +222,7 @@ def create(doc, kind="distant"):
     """Belgeye bir ışık nesnesi ekler (varsayılan: modelin üstünde, hafif eğik, aşağıya bakan)."""
     import FreeCAD
     names = dict(distant="DistantLight")
-    obj = doc.addObject("App::FeaturePython", names.get(kind, "Light"))
+    obj = doc.addObject("App::GeometryPython", names.get(kind, "Light"))
     _Light(obj, kind)
     obj.Label = TYPES[kind]["label"]
     pos, diag = _scene_anchor(doc)
