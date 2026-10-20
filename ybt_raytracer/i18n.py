@@ -676,6 +676,7 @@ EN = {
     'Yüzey rengini aydınlat (Diffuse)': 'Illuminate surface colour (Diffuse)',
     'Geçerli ışık': 'Current light',
     'Işık türü': 'Light type',
+    'RayTrace: alan derinliği yalnız perspektif kamerada çalışır (Projection = Perspective yapın).\n': 'RayTrace: depth of field only works with a perspective camera (set Projection = Perspective).\n',
     'Etkin kamera yap': 'Make active camera',
     'Kameradan bak': 'Look through camera',
     'Kamerayı 3B görünüme eşitle': 'Match camera to 3D view',

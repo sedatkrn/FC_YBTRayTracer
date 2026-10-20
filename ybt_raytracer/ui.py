@@ -1421,6 +1421,8 @@ def main(lang=None):
             if _co is not None:
                 cam, aspect = _cam.render_camera(_co)
                 FreeCAD.Console.PrintMessage(T("RayTrace: kamera nesnesi kullanılıyor: %s\n") % _co.Label)
+                if bool(_co.DepthOfField) and not cam["persp"]:
+                    FreeCAD.Console.PrintWarning(T("RayTrace: alan derinliği yalnız perspektif kamerada çalışır (Projection = Perspective yapın).\n"))
             apply_basic()
             try:
                 apply_all()
