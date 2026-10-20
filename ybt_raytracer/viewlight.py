@@ -147,7 +147,7 @@ def _sync_nodes():
                 if lt.get("diffuse", True))
     if sg is not _st["sg"]:
         _remove_nodes()
-        sep = coin.SoSeparator()
+        sep = coin.SoGroup()                                  # SoSeparator değil: ışıklar kardeş düğümlere (modellere) ulaşmalı
         sep.setName(_NAME)
         sg.insertChild(sep, 0)
         _st["sg"], _st["sep"], _st["sig"] = sg, sep, None
