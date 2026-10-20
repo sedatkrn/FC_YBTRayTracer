@@ -58,12 +58,12 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 Panelin sağ üstündeki "Dil / Language" kutusundan Türkçe veya English seçilir; seçim hatırlanır (ilk açılışta FreeCAD arayüz dili Türkçeyse Türkçe, değilse English).
 The UI language (Türkçe / English) is chosen at the top-right of the panel; it is remembered (first run follows FreeCAD's locale).
 
-## Klasörler
+## İçerik klasörü
 
-Panelde **Klasörler** bölümü: **Çıktı klasörü** (boş = belgenin yanı; tam yol = sabit klasör; yalnız ad, ör. `render` = belgenin yanında bu alt klasör, yoksa oluşturulur),
-**Doku klasörü** ve **HDRI klasörü**. Dosya seçiciler bu klasörlerden açılır, klasördeki görüntüler/HDRI dosyaları listelerde görünür.
-Belgeye gömülü bir doku ya da HDRI yolu bu bilgisayarda yoksa aynı dosya adı ilgili klasörde aranır (belgeyi başka bilgisayara taşırken işe yarar).
-Klasör ayarları makineye özgüdür: *Varsayılanlar* ile kaydedilir, belgeye yazılmaz.
+**⚙ Seçenekler…** penceresinin **Genel** sekmesinde tek bir **İçerik klasörü** seçilir (LightWave'deki Content Directory gibi); altında sabit adlı alt klasörler otomatik oluşturulur:
+`materials/` (malzeme kütüphanesi), `textures/` (dokular), `hdri/`, `settings/` (kayıtlı varsayılanlar), `renders/` (render çıktıları; istenirse çıktılar belgenin yanına da yazılabilir).
+Dosya seçiciler bu klasörlerden açılır, `textures/` ve `hdri/` içindeki dosyalar listelerde görünür. Belgeye gömülü bir doku ya da HDRI yolu bu bilgisayarda yoksa aynı dosya adı ilgili klasörde aranır (belgeyi başka bilgisayara taşırken işe yarar).
+İçerik klasörü ilk kez seçilince eski yerdeki malzeme kütüphanesi ve varsayılanlar yeni klasöre kopyalanır (eskiler silinmez). Ayar makineye özgüdür, belgeye yazılmaz; seçilmezse her şey eski yerlerinde kalır.
 
 ## Kurulum
 
@@ -159,17 +159,17 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - **Stored with the document**: panel settings and the definitions of the materials in use are saved inside the FCStd and restored on any machine
 - Settings panel opens first; progress bar, stop button, save-as; windows show in the taskbar and can be minimised
 
-### Folders
+### Content directory
 
-The panel has a **Folders** section: **Output folder** (empty = next to the document; full path = fixed folder; name only, e.g. `render` = that subfolder next to the document, created if missing),
-**Texture folder** and **HDRI folder**. File pickers open in these folders and their images / HDRI files appear in the lists.
-If a texture or HDRI path stored in the document does not exist on this computer, a file with the same name is looked up in the matching folder (handy when moving a document between computers).
-Folder settings are per machine: they are saved with *Defaults* and are not written into the document.
+In the **General** tab of **⚙ Options…** you pick one **Content directory** (like LightWave's); fixed sub-folders are created under it:
+`materials/` (material library), `textures/`, `hdri/`, `settings/` (saved defaults), `renders/` (render outputs; they can still go next to the document instead).
+File pickers open in these folders and the files in `textures/` and `hdri/` show up in the lists. If a texture or HDRI path stored in the document does not exist on this computer, a file with the same name is looked up in the matching folder.
+The first time a content directory is chosen, the material library and defaults from the old location are copied into it (originals are kept). The setting is per machine and is not written into the document; if unset, everything stays where it was.
 
 ### Install
 
 **As an add-on (recommended):** copy the repository into FreeCAD's `Mod/` folder (Linux: `~/.local/share/FreeCAD/Mod/FC_YBTRayTracer`, or `v1-1/Mod/` depending on the version) and restart FreeCAD.
-A **YBT Raytracer** workbench with its own icon, toolbar and menu appears in the workbench list; it holds three commands: **YBT Raytracer** (settings panel), **YBT Materials**, **YBT Defaults**.
+A **YBT Raytracer** workbench with its own icon, toolbar and menu appears in the workbench list; it holds three commands: **YBT Raytracer** (settings panel), **YBT Materials**, **YBT Options**.
 The same commands are also in the *Macro* menu and *Macro* toolbar of every workbench (if the toolbar is hidden: *View > Toolbars > Macro*).
 Remove any old macro copy from the macro folder so the two copies don't clash.
 Options live in the parameter editor under `User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer`:

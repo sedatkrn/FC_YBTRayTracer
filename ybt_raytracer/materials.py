@@ -235,13 +235,21 @@ def category_of(name):
     return ""
 
 
-def user_lib_path():
+def legacy_lib_path():
+    """Eski saklama yeri (içerik klasörü ayarlanmadan önceki): <FreeCAD kullanıcı verisi>/YBTRayTracer/materials.json."""
     try:
         import FreeCAD
         base = FreeCAD.getUserAppDataDir()
     except Exception:
         base = os.path.expanduser("~")
     return os.path.join(base, "YBTRayTracer", "materials.json")
+
+
+def user_lib_path():
+    """Kullanıcı kütüphanesi: içerik klasörü ayarlıysa <içerik>/materials/materials.json, değilse eski yer."""
+    from . import paths as _paths
+    d = _paths.materials_dir()
+    return os.path.join(d, "materials.json") if d else legacy_lib_path()
 
 
 def load_user():

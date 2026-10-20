@@ -1,54 +1,130 @@
 # -*- coding: utf-8 -*-
-"""Klasör ayarları: render çıktısı, dokular ve HDRI dosyaları nerede.
+"""İçerik klasörü (Content Directory) ve alt klasörleri.
 
-settings.py:
-  DIR_OUT   çıktı klasörü. Boş = belgenin yanı (eski davranış); mutlak yol = sabit klasör;
-            göreli ad (ör. "render") = belgenin yanında bu alt klasör. Klasör yoksa oluşturulur.
-  DIR_TEX   doku klasörü: dosya seçiciler buradan açılır, görüntüler dokular listesine eklenir.
-  DIR_HDRI  HDRI klasörü: dosya seçici buradan açılır, dosyalar HDRI listesinde görünür.
+Seçenekler penceresinde tek bir içerik klasörü seçilir; altında sabit adlı alt klasörler olur:
+
+  <içerik>/materials/   kullanıcı malzeme kütüphanesi (materials.json)
+  <içerik>/textures/    doku görüntüleri (dosya seçiciler buradan açılır, listelerde görünür)
+  <içerik>/hdri/        HDRI / ortam haritaları
+  <içerik>/settings/    kayıtlı varsayılanlar (ybt_raytracer_defaults.json)
+  <içerik>/renders/     render çıktıları (OUT_TO = "renders"; "document" = belgenin yanı)
+
+İçerik klasörünün yolu FreeCAD kullanıcı parametresinde tutulur (Mod/FCYBTRayTracer/ContentDir): ayar dosyaları
+klasörün içinde olduğundan yol onlarda saklanamaz. Klasör ayarsızsa her şey eski yerlerindedir (davranış değişmez).
+İlk kez ayarlanırken eski yerdeki malzeme kütüphanesi ve varsayılanlar silinmeden yeni klasöre kopyalanır
+(hedefte yoksa): migrate_to_content().
 
 Belgeye gömülü bir doku / HDRI yolu bu bilgisayarda yoksa (belge başka makineden geldi), aynı dosya adı
-ilgili klasörde (alt klasörler dahil) aranır: resolve().
+textures / hdri klasöründe (alt klasörler dahil) aranır: resolve().
 """
 import os
 import re
+import shutil
 import time
 from . import settings as S
 
+PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
+SUBDIRS = ("materials", "textures", "hdri", "settings", "renders")
 IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".gif", ".webp")
 HDRI_EXT = (".hdr", ".pic", ".png", ".jpg", ".jpeg")
 _MAX_WALK = 20000        # alt klasörlerde arama sınırı (dosya sayısı)
 _MAX_DEPTH = 4
+_mem = {"dir": ""}       # FreeCAD dışında (testler) parametre yerine
 
 
 def _expand(p):
     return os.path.expanduser(os.path.expandvars(str(p or "").strip()))
 
 
-def _dir(name):
-    """Ayar klasörü; ayarsız ya da klasör yoksa ''."""
-    d = _expand(getattr(S, name, ""))
+def content_dir():
+    """Ayarlı içerik klasörü ('' = ayarsız). Klasör henüz var olmayabilir."""
+    try:
+        import FreeCAD
+        v = FreeCAD.ParamGet(PARAM).GetString("ContentDir", "")
+    except Exception:
+        v = _mem["dir"]
+    return _expand(v)
+
+
+def set_content_dir(path):
+    """İçerik klasörünü ayarlar ve alt klasörlerini oluşturur ('' = ayarı kaldır). Oluşturulamazsa OSError."""
+    path = _expand(path)
+    if path:
+        for n in SUBDIRS:
+            os.makedirs(os.path.join(path, n), exist_ok=True)
+    try:
+        import FreeCAD
+        FreeCAD.ParamGet(PARAM).SetString("ContentDir", path)
+    except Exception:
+        pass
+    _mem["dir"] = path
+    _FOUND.clear()
+    return path
+
+
+def sub_dir(name):
+    """Alt klasörün yolu (içerik klasörü ayarsızsa '')."""
+    c = content_dir()
+    return os.path.join(c, name) if c else ""
+
+
+def _existing(name):
+    d = sub_dir(name)
     return d if d and os.path.isdir(d) else ""
 
 
 def texture_dir():
-    return _dir("DIR_TEX")
+    return _existing("textures")
 
 
 def hdri_dir():
-    return _dir("DIR_HDRI")
+    return _existing("hdri")
+
+
+def materials_dir():
+    """Malzeme kütüphanesi klasörü (içerik klasörü ayarlıysa; yoksa oluşturulur), değilse ''."""
+    return _ensure("materials")
+
+
+def settings_dir():
+    return _ensure("settings")
+
+
+def _ensure(name):
+    d = sub_dir(name)
+    if d:
+        try:
+            os.makedirs(d, exist_ok=True)
+        except OSError:
+            return ""
+    return d
 
 
 def out_dir(doc_filename=""):
-    """Ayarlanan çıktı klasörü (henüz var olmayabilir); ayarsızsa ya da göreli ad verilip belge kayıtsızsa ''."""
-    raw = _expand(getattr(S, "DIR_OUT", ""))
-    if not raw:
+    """Çıktı klasörü (henüz var olmayabilir): içerik klasörü ayarlı ve OUT_TO == "renders" ise <içerik>/renders, aksi halde ''
+    (yani belgenin yanı; pick_out_path eski zincire düşer)."""
+    if str(getattr(S, "OUT_TO", "renders")) != "renders":
         return ""
-    if os.path.isabs(raw):
-        return raw
-    if doc_filename:
-        return os.path.join(os.path.dirname(doc_filename), raw)
-    return ""
+    return sub_dir("renders")
+
+
+def migrate_to_content():
+    """İçerik klasörü ayarlandıktan sonra çağrılır: eski yerdeki malzeme kütüphanesi ve varsayılanlar, hedefte yoksa
+    KOPYALANIR (eskiler silinmez). Kopyalanan dosyaların adlarını döndürür."""
+    from . import materials as _m
+    from . import userdefaults as _u
+    copied = []
+    for src, dst in ((_m.legacy_lib_path(), os.path.join(sub_dir("materials"), "materials.json")),
+                     (_u.legacy_path(), os.path.join(sub_dir("settings"), "ybt_raytracer_defaults.json"))):
+        if not sub_dir("materials") or not os.path.isfile(src) or os.path.exists(dst):
+            continue
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+            copied.append(os.path.basename(dst))
+        except OSError:
+            pass
+    return copied
 
 
 def list_files(folder, exts, limit=400):

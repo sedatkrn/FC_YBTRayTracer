@@ -12,7 +12,7 @@ from . import userdefaults as _ud
 
 K_SET = "YBTSettings"
 K_MAT = "YBTMaterials"
-_SKIP = {"THREADS", "PARALLEL", "OUT_NAME", "DEBUG", "DIR_OUT", "DIR_TEX", "DIR_HDRI"}      # makineye / oturuma özgü
+_SKIP = {"THREADS", "PARALLEL", "OUT_NAME", "DEBUG", "OUT_TO"}      # makineye / oturuma özgü
 
 
 def _meta(doc):

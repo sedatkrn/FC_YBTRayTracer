@@ -530,47 +530,7 @@ def main(lang=None):
     ck_fl.toggled.connect(sync_floor)
     sync_floor()
 
-    # ---- Klasörler: çıktı / doku / HDRI ----
-    dbox = QtGui.QGroupBox(T("Klasörler"))
-    dgl = QtGui.QGridLayout(dbox)
-    dir_edits = {}
-
-    def dir_row(r, key, label, tip, placeholder):
-        le = QtGui.QLineEdit(str(getattr(S, key, "") or ""))
-        le.setPlaceholderText(placeholder)
-        le.setToolTip(tip)
-        bt = QtGui.QPushButton("\u2026")
-        bt.setFixedWidth(32)
-        bt.setToolTip(T("Klasör seç"))
-
-        def browse():
-            cur_ = os.path.expanduser(le.text().strip())
-            p_ = QtGui.QFileDialog.getExistingDirectory(dlg, label, cur_ if os.path.isdir(cur_) else os.path.expanduser("~"))
-            if p_:
-                le.setText(p_)
-                refresh_dirs()
-        bt.clicked.connect(browse)
-        le.editingFinished.connect(lambda: refresh_dirs())
-        dgl.addWidget(QtGui.QLabel(label), r, 0)
-        dgl.addWidget(le, r, 1)
-        dgl.addWidget(bt, r, 2)
-        dir_edits[key] = le
-
-    dir_row(0, "DIR_OUT", T("Çıktı klasörü"),
-            T("Render görüntülerinin kaydedileceği klasör. Boş = belgenin yanı. Tam yol = sabit klasör. Yalnız ad (ör. render) = belgenin yanında bu alt klasör. "
-              "Klasör yoksa oluşturulur."), T("Belgenin yanı"))
-    dir_row(1, "DIR_TEX", T("Doku klasörü"),
-            T("Doku dosya seçicileri buradan açılır, klasördeki görüntüler doku listelerinde görünür. Belgedeki bir doku dosyası bu bilgisayarda yoksa aynı adlı dosya burada aranır."),
-            T("(ayarsız)"))
-    dir_row(2, "DIR_HDRI", T("HDRI klasörü"),
-            T("HDRI dosya seçicisi buradan açılır, klasördeki dosyalar HDRI listesinde görünür. Belgedeki HDRI dosyası bu bilgisayarda yoksa aynı adlı dosya burada aranır."),
-            T("(ayarsız)"))
-    lv.addWidget(dbox)
-
-    def apply_dirs():
-        for k_, le_ in dir_edits.items():
-            g[k_] = le_.text().strip()
-
+    # ---- içerik klasörü listeleri: HDRI dosyaları ve doku görüntüleri (Seçenekler > Genel'deki klasörlerden) ----
     def fill_hdri_list():
         folder = _paths.hdri_dir()
         cb_hd.blockSignals(True)
@@ -607,11 +567,10 @@ def main(lang=None):
             cb_ft.setCurrentIndex(k_)
         cb_ft.blockSignals(False)
 
-    def refresh_dirs():
-        apply_dirs()
+    def refresh_content():
         fill_hdri_list()
         fill_floor_tex_list()
-    refresh_dirs()
+    refresh_content()
 
     def sync_lights(*_a):
         for wd in light_widgets:
@@ -680,7 +639,6 @@ def main(lang=None):
     collapsible(fbox, T("Sanal Zemin"))
     collapsible(lbox, T("Işık Ayarları"))
     collapsible(ebox, T("Ortam / HDRI"))
-    collapsible(dbox, T("Klasörler"))
     lv.addStretch(1)
 
     sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
@@ -710,15 +668,23 @@ def main(lang=None):
     def rebuild():
         QtCore.QTimer.singleShot(0, lambda: (dlg.close(), main(i18n.LANG)))
 
-    def open_defaults():
+    def open_options():
+        """Seçenekler penceresi: Genel (içerik klasörü ve alt klasörleri, çıktı konumu) + Varsayılanlar (kayıtlı ayarlar)."""
         if state["busy"]:
             return
         apply_all()                                   # panelin şu anki değerleri settings'e alınsın
         dd = QtGui.QDialog(dlg)
-        dd.setWindowTitle(T("Varsayılan ayarlar"))
+        dd.setWindowTitle(T("Seçenekler"))
         _theme.apply(dd)
-        dd.setMinimumWidth(520)
-        vl = QtGui.QVBoxLayout(dd)
+        dd.setMinimumWidth(560)
+        tabs = QtGui.QTabWidget()
+        outer_ = QtGui.QVBoxLayout(dd)
+        outer_.addWidget(tabs)
+        pg_gen = QtGui.QWidget()
+        pg_def = QtGui.QWidget()
+        tabs.addTab(pg_gen, T("Genel"))
+        tabs.addTab(pg_def, T("Varsayılanlar"))
+        vl = QtGui.QVBoxLayout(pg_def)
         info = QtGui.QLabel(T("Panelin şu anki değerlerini varsayılan olarak kaydedebilir, önceki kayıtlara dönebilirsiniz. "
                               "● işaretli kayıt, FreeCAD her açıldığında yüklenen varsayılandır."))
         info.setWordWrap(True)
@@ -915,12 +881,122 @@ def main(lang=None):
         b_cl.clicked.connect(dd.accept)
         lst.itemDoubleClicked.connect(lambda _i: do_load())
         refill()
+
+        # ---------------- Genel sekmesi: içerik klasörü (LightWave "Content Directory" gibi) ----------------
+        gv = QtGui.QVBoxLayout(pg_gen)
+        gtop = QtGui.QGridLayout()
+        b_cd = QtGui.QPushButton(T("İçerik klasörü"))
+        b_cd.setToolTip(T("Malzeme kütüphanesi, dokular, HDRI'ler, ayarlar ve render çıktıları bu klasörün alt klasörlerinde durur."))
+        le_cd = QtGui.QLineEdit(_paths.content_dir())
+        le_cd.setPlaceholderText(T("(ayarsız: eski saklama yerleri kullanılır)"))
+        b_cx = QtGui.QPushButton(T("Temizle"))
+        b_cx.setToolTip(T("İçerik klasörü ayarını kaldırır (klasördeki dosyalar silinmez)"))
+        gtop.addWidget(b_cd, 0, 0)
+        gtop.addWidget(le_cd, 0, 1)
+        gtop.addWidget(b_cx, 0, 2)
+        gv.addLayout(gtop)
+        gv.addWidget(QtGui.QLabel(T("Alt klasörler (içerik klasörü seçilince otomatik oluşturulur):")))
+        sub_rows = {}
+        sgl = QtGui.QGridLayout()
+        for r_, (nm_, lab_) in enumerate((("materials", T("Malzemeler")), ("textures", T("Dokular")), ("hdri", "HDRI"),
+                                          ("settings", T("Ayarlar")), ("renders", T("Çıktılar")))):
+            l1 = QtGui.QLabel(lab_)
+            l2 = QtGui.QLabel("")
+            l2.setStyleSheet("color: #85858a;")
+            l2.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            b_op = QtGui.QPushButton(T("Aç"))
+            b_op.setToolTip(T("Klasörü dosya yöneticisinde aç"))
+            b_op.setFixedWidth(52)
+
+            def _open(_c=False, n_=nm_):
+                d_ = _paths.sub_dir(n_)
+                if not d_ or not os.path.isdir(d_):
+                    return
+                try:
+                    QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(d_))
+                except Exception:
+                    st_g.setText(d_)
+            b_op.clicked.connect(_open)
+            sgl.addWidget(l1, r_, 0)
+            sgl.addWidget(l2, r_, 1)
+            sgl.addWidget(b_op, r_, 2)
+            sub_rows[nm_] = (l2, b_op)
+        sgl.setColumnStretch(1, 1)
+        gv.addLayout(sgl)
+        orow = QtGui.QHBoxLayout()
+        orow.addWidget(QtGui.QLabel(T("Render çıktıları")))
+        cb_out = QtGui.QComboBox()
+        cb_out.addItem(T("İçerik klasörü / renders"), "renders")
+        cb_out.addItem(T("Belgenin yanı"), "document")
+        cb_out.setCurrentIndex(0 if str(S.OUT_TO) == "renders" else 1)
+        cb_out.setToolTip(T("Otomatik kaydedilen render görüntülerinin yeri. İçerik klasörü ayarsızsa her zaman belgenin yanı."))
+        orow.addWidget(cb_out, 1)
+        gv.addLayout(orow)
+        gv.addStretch(1)
+        st_g = QtGui.QLabel("")
+        st_g.setWordWrap(True)
+        st_g.setStyleSheet("color: #85858a;")
+        gv.addWidget(st_g)
+        gclose = QtGui.QPushButton(T("Kapat"))
+        gclose.clicked.connect(dd.accept)
+        grow = QtGui.QHBoxLayout()
+        grow.addStretch(1)
+        grow.addWidget(gclose)
+        gv.addLayout(grow)
+        changed_ = {"content": False}
+
+        def refresh_sub_rows():
+            on_ = bool(_paths.content_dir())
+            for nm_, (l2, b_op) in sub_rows.items():
+                d_ = _paths.sub_dir(nm_)
+                l2.setText((("\u2713 " if os.path.isdir(d_) else "\u2013 ") + d_) if on_ else T("(içerik klasörü ayarsız)"))
+                b_op.setEnabled(on_ and os.path.isdir(d_))
+            cb_out.setEnabled(on_)
+            b_cx.setEnabled(on_)
+
+        def set_content(path_):
+            path_ = path_.strip()
+            try:
+                _paths.set_content_dir(path_)
+            except OSError as ex:
+                st_g.setText(T("Klasör oluşturulamadı: ") + str(ex))
+                le_cd.setText(_paths.content_dir())
+                return
+            msg_ = ""
+            if path_:
+                copied_ = _paths.migrate_to_content()
+                msg_ = T("İçerik klasörü ayarlandı.")
+                if copied_:
+                    msg_ += " " + T("Eski yerden kopyalandı (eskiler silinmedi): ") + ", ".join(copied_)
+            else:
+                msg_ = T("İçerik klasörü ayarı kaldırıldı; eski saklama yerleri kullanılıyor.")
+            le_cd.setText(_paths.content_dir())
+            st_g.setText(msg_)
+            changed_["content"] = True
+            refresh_sub_rows()
+            refill()                                   # Varsayılanlar sekmesinin geçmişi yeni yerden okunur
+
+        def browse_cd():
+            cur_ = _paths.content_dir()
+            p_ = QtGui.QFileDialog.getExistingDirectory(dd, T("İçerik klasörü"), cur_ if os.path.isdir(cur_) else os.path.expanduser("~"))
+            if p_:
+                set_content(p_)
+        b_cd.clicked.connect(browse_cd)
+        le_cd.editingFinished.connect(lambda: set_content(le_cd.text()) if le_cd.text().strip() != _paths.content_dir() else None)
+        b_cx.clicked.connect(lambda: set_content(""))
+
+        def on_out(_i):
+            g["OUT_TO"] = cb_out.currentData()
+        cb_out.currentIndexChanged.connect(on_out)
+        refresh_sub_rows()
+        dd.finished.connect(lambda *_a: refresh_content() if changed_["content"] else None)   # panelin HDRI / doku listeleri yenilenir
+
         _theme.fix_combos(dd)
         (dd.exec_ if hasattr(dd, "exec_") else dd.exec)()
 
-    btn_def = QtGui.QPushButton(T("⚙ Varsayılanlar…"))
-    btn_def.setToolTip(T("Varsayılan ayarları kaydet, geçmiş kayıtlara dön, fabrika ayarlarına dön"))
-    btn_def.clicked.connect(open_defaults)
+    btn_def = QtGui.QPushButton(T("⚙ Seçenekler…"))
+    btn_def.setToolTip(T("İçerik klasörü ve alt klasörleri; varsayılan ayarları kaydet, geçmiş kayıtlara dön, fabrika ayarlarına dön"))
+    btn_def.clicked.connect(open_options)
     hrow = QtGui.QHBoxLayout()
     hrow.addWidget(head)
     hrow.addStretch(1)
@@ -1276,7 +1352,6 @@ def main(lang=None):
         g["FLOOR_OFFSET"] = float(sp_fz.value())
         g["FLOOR_TEXTURE"] = ft_state["key"]
         g["FLOOR_TEX_SCALE"] = float(sp_fs.value())
-        apply_dirs()
 
     def apply_manual_lights():
         g["AMBIENT"] = sp_amb.value() / 100.0
@@ -1377,7 +1452,6 @@ def main(lang=None):
             return
         try:
             fn_ = FreeCAD.ActiveDocument.FileName if FreeCAD.ActiveDocument else ""
-            apply_dirs()
             start = pick_out_path(fn_) if _paths.out_dir(fn_) else (state["path"] or pick_out_path(fn_))
         except Exception:
             start = "render.png"
@@ -1475,6 +1549,6 @@ def main(lang=None):
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, soft_scale=sp_softk, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,
-                                                            refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc, dirs=dir_edits, hdri_list=cb_hd, floor_tex=cb_ft),
+                                                            refraction=ck_rr, bounces=sp_bn, autosave=ck_sv, aa=cb_aa, threads=cb_th, floor=ck_fl, floor_color=cb_fl, floor_opacity=sp_fo, floor_reflect=sp_fr, floor_offset=sp_fz, floor_texture=cb_ft, floor_tex_scale=sp_fs, lights=lrows, ambient=sp_amb, fclights=ck_fc, hdri_list=cb_hd, floor_tex=cb_ft),
                              status=lbl_st, bar=bar, pct=pct, state=state,
-                             open_mats=open_mats, open_defaults=open_defaults)       # eklenti komutları (commands.py) bunlarla açar
+                             open_mats=open_mats, open_options=open_options)       # eklenti komutları (commands.py) bunlarla açar

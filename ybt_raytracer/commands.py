@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""FreeCAD komutları (eklenti girişi): Render, Malzemeler, Varsayılanlar.
+"""FreeCAD komutları (eklenti girişi): Render, Malzemeler, Seçenekler.
 
 InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Render      ayar panelini açar (render panelin 'Render' düğmesiyle başlar)
   YBT_Materials   Malzemeler (Surface) penceresini açar
-  YBT_Defaults    panelin 'Varsayılanlar' penceresini açar (gerekirse paneli de açar)
+  YBT_Options    panelin 'Seçenekler' penceresini açar (gerekirse paneli de açar)
 
 Komutların asıl yeri tezgâh listesindeki "YBT Raytracer" tezgâhıdır (kendi araç çubuğu ve menüsüyle, InitGui.py içinde
 tanımlanır; `separate_workbench_enabled`, varsayılan açık). Her tezgâhtan erişilebilmesi için ayrıca FreeCAD 1.0+
@@ -14,7 +14,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_Materials", "YBT_Defaults")
+COMMANDS = ("YBT_Render", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -85,11 +85,11 @@ def open_materials():
     open_surface()
 
 
-def open_defaults():
-    dlg = open_panel()                                  # Varsayılanlar penceresi panelin değerlerine dayanır
+def open_options():
+    dlg = open_panel()                                  # Seçenekler penceresi panelin değerlerine dayanır
     api = getattr(dlg, "_raytrace_api", None)
-    if api and api.get("open_defaults"):
-        api["open_defaults"]()
+    if api and api.get("open_options"):
+        api["open_options"]()
 
 
 class _Cmd(object):
@@ -115,7 +115,7 @@ def _commands():
     return {
         "YBT_Render": _Cmd("icon.png", "YBT Raytracer", "Render ayar panelini açar (Render düğmesiyle görüntü alınır)", open_panel),
         "YBT_Materials": _Cmd("materials.svg", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),
-        "YBT_Defaults": _Cmd("defaults.svg", "YBT Varsayılanlar", "Render ayarlarının varsayılanlarını düzenler / kaydeder", open_defaults),
+        "YBT_Options": _Cmd("options.svg", "YBT Seçenekler", "İçerik klasörü ve varsayılan ayarlar", open_options),
     }
 
 

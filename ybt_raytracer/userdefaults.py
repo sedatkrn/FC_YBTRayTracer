@@ -89,13 +89,21 @@ def apply(values):
     return n
 
 
-def path():
+def legacy_path():
+    """Eski saklama yeri (içerik klasörü ayarlanmadan önceki): <FreeCAD kullanıcı verisi>/ybt_raytracer_defaults.json."""
     try:
         import FreeCAD
         d = FreeCAD.getUserAppDataDir()
     except Exception:
         d = os.path.expanduser("~")
     return os.path.join(d, "ybt_raytracer_defaults.json")
+
+
+def path():
+    """Varsayılanlar dosyası: içerik klasörü ayarlıysa <içerik>/settings/, değilse eski yer."""
+    from . import paths as _paths
+    d = _paths.settings_dir()
+    return os.path.join(d, "ybt_raytracer_defaults.json") if d else legacy_path()
 
 
 def load():
@@ -113,6 +121,7 @@ def load():
 
 def _write(d):
     p = path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
     tmp = p + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, indent=1)

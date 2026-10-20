@@ -14,7 +14,7 @@
       <classname>YBTRaytracerWorkbench</classname>
       <icon>ybt_raytracer/icon.png</icon>
       <subdirectory>./</subdirectory>
-      <description>YBT Raytracer workbench with its own toolbar and menu (Render, Materials, Defaults); the commands are also added to the Macro toolbar and menu of every workbench.</description>
+      <description>YBT Raytracer workbench with its own toolbar and menu (Render, Materials, Options); the commands are also added to the Macro toolbar and menu of every workbench.</description>
       <freecadmin>1.0.0</freecadmin>
     </workbench>
   </content>

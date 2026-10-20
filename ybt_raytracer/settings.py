@@ -75,9 +75,7 @@ CULL_OFFSCREEN = False  # True: kadraj dışında kalan nesneler sahneye hiç al
 CULL_MARGIN = 0.1      # kadraj her kenarda bu oranda genişletilir; yalnız bunun da dışındaki nesneler atılır
 DEBUG = False          # Report View'a nesne başına üçgen sayısı / sınır kutusu yaz
 OUT_NAME = None        # None = belgenin yanına <belge>_render.png (yazılamazsa ~/Pictures, sonra ~)
-DIR_OUT = ""           # çıktı klasörü: boş = belgenin yanı; mutlak yol = sabit klasör; göreli ad (ör. render) = belgenin yanında alt klasör
-DIR_TEX = ""           # doku klasörü (dosya seçiciler buradan açılır, görüntüler listede görünür; belgedeki eksik doku yolu burada aranır)
-DIR_HDRI = ""          # HDRI klasörü (aynı mantık)
+OUT_TO = "renders"     # içerik klasörü ayarlıysa çıktı: "renders" = <içerik>/renders, "document" = belgenin yanı (içerik klasörü ayarsızsa hep belgenin yanı)
 # -----------------------------------------------------------------------
 
 _EPS = 1e-12
