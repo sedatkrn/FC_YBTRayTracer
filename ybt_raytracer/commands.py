@@ -7,6 +7,7 @@ InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_DistantLight  sahneye Distant (güneş tipi) ışık nesnesi ekler
   YBT_Camera      sahneye 3B görünümün bakışıyla yeni kamera nesnesi ekler (etkin kamera olur; render bundan alınır)
   YBT_LookThrough 3B görünümü seçili / etkin kameranın bakışına getirir
+  YBT_CameraProperties  Kamera Özellikleri paneli (lens, kadraj, alan derinliği)
   YBT_CameraUpdate  seçili / etkin kamerayı şu anki 3B görünüme eşitler
   YBT_PointLight  sahneye Point (konumlu, her yöne yayılan) ışık ekler
   YBT_SpotLight   sahneye Spot (konumlu, koni içine yayılan) ışık ekler
@@ -22,7 +23,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_PointLight", "YBT_SpotLight", "YBT_Camera", "YBT_LookThrough", "YBT_CameraUpdate", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
+COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_PointLight", "YBT_SpotLight", "YBT_Camera", "YBT_LookThrough", "YBT_CameraUpdate", "YBT_CameraProperties", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -193,7 +194,17 @@ def add_camera():
         obj.Active = True
     finally:
         doc.commitTransaction()
+    try:
+        from . import camera_ui
+        camera_ui.open_panel(select=obj)                    # yeni kamera hemen düzenlenebilsin
+    except Exception:
+        pass
     return obj
+
+
+def open_camera_properties():
+    from . import camera_ui
+    camera_ui.open_panel()
 
 
 def look_through_camera():
@@ -259,6 +270,7 @@ def _commands():
         "YBT_Camera": _Cmd("camera.svg", "YBT Kamera", "Sahneye 3B görünümün bakışıyla kamera ekler; etkin kameradan render alınır", add_camera),
         "YBT_LookThrough": _Cmd("look_camera.svg", "YBT Kameradan Bak", "3B görünümü seçili (ya da etkin) kameranın bakışına getirir", look_through_camera),
         "YBT_CameraUpdate": _Cmd("camera_from_view.svg", "YBT Kamerayı Görünüme Eşitle", "Seçili (ya da etkin) kamerayı şu anki 3B görünümle aynı yapar", update_camera_from_view),
+        "YBT_CameraProperties": _Cmd("camera_props.svg", "YBT Kamera Özellikleri", "Kamera nesnelerinin özelliklerini düzenler (lens, kadraj, alan derinliği)", open_camera_properties),
         "YBT_LightProperties": _Cmd("light_props.svg", "YBT Işık Özellikleri", "Işık nesnelerinin özelliklerini düzenler (renk, şiddet, gölge)", open_light_properties),
         "YBT_Materials": _Cmd("materials.svg", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),
         "YBT_Options": _Cmd("options.svg", "YBT Seçenekler", "İçerik klasörü ve varsayılan ayarlar", open_options),

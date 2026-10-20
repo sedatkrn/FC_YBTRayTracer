@@ -288,7 +288,15 @@ class _CameraView(object):
         menu.addAction(a3)
 
     def doubleClicked(self, vobj):
-        return False                                        # özellik düzenleyici (varsayılan davranış)
+        """Ağaçta çift tıklama: Kamera Özellikleri panelini bu kamerayla açar."""
+        try:
+            from . import camera_ui
+            camera_ui.open_panel(select=vobj.Object)
+        except Exception:
+            import traceback
+            import FreeCAD
+            FreeCAD.Console.PrintError(traceback.format_exc())
+        return True
 
     def __getstate__(self):
         return None
