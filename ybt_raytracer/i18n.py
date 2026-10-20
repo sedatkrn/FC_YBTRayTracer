@@ -623,5 +623,7 @@ EN = {
     'Otomatik (dokunun kendi modu)': "Auto (texture's own mode)",
     'Tekrar (düz döşeme)': 'Repeat (plain tiling)',
     'Ayna (kenarlar aynalanır)': 'Mirror (edges mirrored)',
-    "Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur.": "Tiling: Repeat = tiles side by side as-is (seams may show); Mirror = every other tile is flipped (no seams). Auto: the preset's own setting, mirror for your own files. No tiling while 'Automatic sizing' is on.",
+    "Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez); Tek kez = görüntü bir kez, nesne merkezinde, dışı etkisiz; Kenarı uzat = tek görüntü, kenar pikselleri uzar (düzlemsel/küp için). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur.": "Tiling: Repeat = tiles side by side as-is (seams may show); Mirror = every other tile is flipped (no seams); Once = one image centred on the object, nothing outside it; Extend edge = one image, edge pixels stretch (planar/cubic). Auto: the preset's own setting, mirror for your own files. No tiling while 'Automatic sizing' is on.",
+    'Tek kez (dışı boş)': 'Once (empty outside)',
+    'Kenarı uzat': 'Extend edge',
 }

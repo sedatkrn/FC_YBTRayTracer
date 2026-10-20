@@ -216,19 +216,28 @@ def _tex_uv(tx, tp, Q, per, hext, scene, nl=None):
     return Q[:, a_] / per, Q[:, b_] / (per * tx.aspect), "plane", None
 
 
-def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=False):
-    """Doku değeri: renk (n,3) doğrusal ya da gray=True ise parlaklık (n,) 0..1."""
+def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=False, cov_out=None):
+    """Doku değeri: renk (n,3) doğrusal ya da gray=True ise parlaklık (n,) 0..1.
+    cov_out (liste): "tek kez" dokuda görüntünün kapladığı yerleri (n,) 0..1 olarak ekler."""
     Q, nl, lod, per, hext = _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang)
     n = len(Pc)
     smp = (lambda u, v, l: _sample_gray(tx, u, v, l)) if gray else tx.sample
+    once = bool(getattr(tx, "clamp", False))
+    fitp = bool(tp.get("fit")) and hext is not None
+    shift = 0.5 if (once and not fitp) else 0.0                 # tek kez / kenar: görüntü nesne merkezinde ortalanır
     if tp["proj"] != "cubic":
         u, v, _k, _x = _tex_uv(tx, tp, Q, per, hext, scene, nl)
+        if once and (fitp or tp["proj"] == "planar"):
+            u, v = u + shift, v + shift
+            if cov_out is not None and tx.once:
+                cov_out.append(((u >= 0.0) & (u < 1.0) & (v >= 0.0) & (v < 1.0)).astype(np.float64))
         return smp(u, v, lod)
     fit3 = bool(tp.get("fit")) and hext is not None
     wt3 = np.abs(nl) ** 4                                   # "cubic": üç düzlemli, normale göre ağırlıklı
     wt3 /= wt3.sum(1, keepdims=True)
     tcol = np.zeros(n) if gray else np.zeros((n, 3))
     wsum = np.zeros(n)
+    cvv = np.zeros(n)
     for axx, (a_, b_) in enumerate(_PLANE):
         sl = np.nonzero(wt3[:, axx] > 0.02)[0]
         if len(sl):
@@ -238,9 +247,15 @@ def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=Fals
                 vv = (0.5 - Q[sl, b_] / np.maximum(2.0 * hext[sl, b_], 1e-9)) / float(tx.span)
             else:
                 uu, vv = Q[sl, a_] / per, Q[sl, b_] / (per * tx.aspect)
+            if once:
+                uu, vv = uu + shift, vv + shift
+                if cov_out is not None and tx.once:
+                    cvv[sl] += wt3[sl, axx] * ((uu >= 0.0) & (uu < 1.0) & (vv >= 0.0) & (vv < 1.0))
             sv = smp(uu, vv, lod[sl])
             tcol[sl] += (wt3[sl, axx] * sv) if gray else (wt3[sl, axx][:, None] * sv)
             wsum[sl] += wt3[sl, axx]
+    if tx.once and cov_out is not None:
+        cov_out.append(cvv / np.maximum(wsum, 1e-9))
     return tcol / np.maximum(wsum, 1e-9) if gray else tcol / np.maximum(wsum, 1e-9)[:, None]
 
 
@@ -283,11 +298,11 @@ def _proc_size(scene, ly, hext, n):
     return np.maximum(hext.max(1) * 0.6, 1e-6 * scene.diag)
 
 
-def _layer_val(scene, ly, kind, Pc, ng, Dh, tid, dist, rn, pix_ang):
+def _layer_val(scene, ly, kind, Pc, ng, Dh, tid, dist, rn, pix_ang, cov_out=None):
     """Tek katmanın değeri: kind="color" -> (n,3) doğrusal renk; "gray" -> (n,) 0..1 (ters çevirme uygulanmış)."""
     gray = kind != "color"
     if not ly["proc"]:
-        v = _tex_sample(scene, ly["tx"], ly["tw"], ly["tp"], Pc, ng, Dh, tid, dist, rn, pix_ang, gray=gray)
+        v = _tex_sample(scene, ly["tx"], ly["tw"], ly["tp"], Pc, ng, Dh, tid, dist, rn, pix_ang, gray=gray, cov_out=cov_out)
     else:
         tp = ly["tp"]
         Q, _nl, hext = _tex_space(scene, tp, Pc, ng, tid)
@@ -327,7 +342,13 @@ def _stack(scene, layers, base, kind, ctx):
     """Katmanları alttan üste, blend moduyla yüzey değerinin (base) üzerine uygular."""
     res = base
     for ly in layers:
-        res = _blend(res, _layer_val(scene, ly, kind, *ctx), ly["blend"], ly["op"])
+        cov = [] if (not ly["proc"] and getattr(ly["tx"], "once", False)) else None
+        val = _layer_val(scene, ly, kind, *ctx, cov_out=cov)
+        new = _blend(res, val, ly["blend"], ly["op"])
+        if cov:                                                   # "tek kez": görüntünün dışında katman etkisiz
+            c_ = cov[0] if res.ndim == 1 else cov[0][:, None]
+            new = res + (new - res) * c_
+        res = new
     return res
 
 

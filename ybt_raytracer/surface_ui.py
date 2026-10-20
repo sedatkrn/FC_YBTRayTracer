@@ -676,9 +676,10 @@ def open_surface(on_change=None, is_busy=None):
         b_auto.setCheckable(True)
         b_auto.setToolTip(T("Açıkken görüntü nesnenin yüzüne tam oturur (tek kez, nesnenin boyutuna gerilir). Kapalıyken doku döşenir (tekrar eder). Açınca ölçek 1, konum 0 olur."))
         cb_tile = QtGui.QComboBox()
-        for k_, nm_ in (("auto", "Otomatik (dokunun kendi modu)"), ("repeat", "Tekrar (düz döşeme)"), ("mirror", "Ayna (kenarlar aynalanır)")):
+        for k_, nm_ in (("auto", "Otomatik (dokunun kendi modu)"), ("repeat", "Tekrar (düz döşeme)"), ("mirror", "Ayna (kenarlar aynalanır)"),
+                      ("once", "Tek kez (dışı boş)"), ("edge", "Kenarı uzat")):
             cb_tile.addItem(T(nm_), k_)
-        cb_tile.setToolTip(T("Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur."))
+        cb_tile.setToolTip(T("Döşeme: Tekrar = doku aynen yan yana (dikiş görünebilir); Ayna = her ikinci karo ters çevrilir (dikiş görünmez); Tek kez = görüntü bir kez, nesne merkezinde, dışı etkisiz; Kenarı uzat = tek görüntü, kenar pikselleri uzar (düzlemsel/küp için). Otomatik: hazır dokunun kendi ayarı, kendi dosyalarda ayna. 'Otomatik boyutlandır' açıkken döşeme yoktur."))
         gp2.addWidget(lab("Döşeme"), 3, 0)
         gp2.addWidget(cb_tile, 3, 1, 1, 3)
         gp2.addWidget(b_world, 1, 1, 1, 3)

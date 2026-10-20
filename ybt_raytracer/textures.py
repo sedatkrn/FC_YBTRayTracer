@@ -157,6 +157,10 @@ class Texture(object):
     """Kesintisiz tekrarlanan doku + mip piramidi (doğrusal renk, float32)."""
 
     def __init__(self, rgb8, mode="repeat"):
+        self.once = (mode == "once")                              # "once": görüntü dışı etkisiz (maske render'da)
+        self.clamp = mode in ("edge", "once")                     # "edge": kenar pikselleri uzar; "once": tek kez (dışı etkisiz, render'da maskelenir)
+        if self.clamp:
+            mode = "repeat"
         a = (np.asarray(rgb8, dtype=np.float32) / 255.0) ** 2.2
         self.rel = 0.4                                            # otomatik genişlik (sahne köşegeni oranı)
         self.base_w = a.shape[1]                                  # orijinal görüntü genişliği (texel)
@@ -187,6 +191,9 @@ class Texture(object):
 
     def sample(self, u, v, lod):
         """u,v: doku koordinatı (1.0 = tüm doku, tekrarlı); lod: mip düzeyi (kesirli). Döner (n,3) doğrusal renk."""
+        if self.clamp:
+            u = np.clip(u, 0.0, 1.0 - 1e-7)
+            v = np.clip(v, 0.0, 1.0 - 1e-7)
         u = u - np.floor(u)
         v = v - np.floor(v)
         n = len(u)
@@ -252,10 +259,11 @@ def _read_fast(path):
 
 def load(key, tile=None):
     """Anahtar (hazır doku adı) ya da kayıtlı özel yol -> Texture; bulunamazsa None.
-    tile: None/"auto" = dokunun kendi modu (hazır dokularda listedeki, kendi dosyalarda ayna); "repeat" = düz tekrar; "mirror" = aynalı tekrar."""
+    tile: None/"auto" = dokunun kendi modu (hazır dokularda listedeki, kendi dosyalarda ayna); "repeat" = düz tekrar; "mirror" = aynalı tekrar;
+    "edge" = tek görüntü, kenar pikselleri uzar; "once" = tek görüntü, dışı etkisiz."""
     if not key:
         return None
-    force = tile if tile in ("repeat", "mirror") else None
+    force = tile if tile in ("repeat", "mirror", "edge", "once") else None
     ck = key if force is None else (key, force)
     if ck in _CACHE:
         return _CACHE[ck]
