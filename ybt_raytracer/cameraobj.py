@@ -20,7 +20,7 @@ PROJECTIONS = ("Perspective", "Orthographic")
 
 
 def icon(active=True):
-    return os.path.join(_HERE, "icons", "camera.svg" if active else "camera_off.svg")
+    return os.path.join(_HERE, "icons", "camera.png" if active else "camera_off.png")
 
 
 def is_camera(o):

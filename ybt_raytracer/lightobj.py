@@ -22,9 +22,9 @@ import os
 from . import settings as S
 
 TYPES = {
-    "distant": dict(label="Distant Light", icon="distant_light.svg"),
-    "point": dict(label="Point Light", icon="point_light.svg"),
-    "spot": dict(label="Spot Light", icon="spot_light.svg"),
+    "distant": dict(label="Distant Light", icon="distant_light.png"),
+    "point": dict(label="Point Light", icon="point_light.png"),
+    "spot": dict(label="Spot Light", icon="spot_light.png"),
 }
 FALLOFFS = ("InverseSquare", "Linear", "None")
 _FALL_KEY = {"InverseSquare": "inverse_square", "Linear": "linear", "None": "none"}
