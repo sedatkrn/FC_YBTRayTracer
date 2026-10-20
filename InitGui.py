@@ -5,31 +5,31 @@
 #     Kapatmak için parametre Mod/FCYBTRayTracer/SeparateWorkbench = false (FreeCAD'i yeniden başlatmak gerekir).
 #   * Her tezgâhta: standart "Macro" araç çubuğu ve menüsü (FreeCAD 1.0+; kapatmak için parametre
 #     Mod/FCYBTRayTracer/ShowInAllWorkbenches = false)
-import os
+# NOT: FreeCAD bu dosyayı ayrı globals/locals sözlükleriyle çalıştırır; bu yüzden dosyanın üst düzeyinde tanımlanan
+# adlar sınıf gövdesinden ve yöntemlerden GÖRÜNMEZ. Sınıf içinde yalnızca yerleşik adlar ve yerel içe aktarmalar kullanılır.
 import FreeCAD
 import FreeCADGui as Gui
 
 try:
     from ybt_raytracer import commands as _ybt_commands
     _ybt_commands.register()
+    _ybt_use_workbench = _ybt_commands.separate_workbench_enabled()
 except Exception:
     import traceback
     FreeCAD.Console.PrintError("YBT Raytracer: komutlar kaydedilemedi:\n" + traceback.format_exc())
-    _ybt_commands = None
+    _ybt_use_workbench = False
 
-if _ybt_commands is not None and _ybt_commands.separate_workbench_enabled():
-    import ybt_raytracer as _ybt_pkg
-    _ybt_icon = os.path.join(os.path.dirname(os.path.abspath(_ybt_pkg.__file__)), "icon.png")
-
+if _ybt_use_workbench:
     class YBTRaytracerWorkbench(Workbench):             # noqa: F821  (Workbench FreeCAD tarafından sağlanır)
         MenuText = "YBT Raytracer"
         ToolTip = "Numpy tabanlı yerleşik ışın izleyici"
-        Icon = _ybt_icon
+        Icon = __import__("ybt_raytracer.commands", fromlist=["icon_path"]).icon_path()
 
         def Initialize(self):
-            cmds = list(_ybt_commands.COMMANDS)
-            self.appendToolbar(_ybt_commands.TOOLBAR, cmds)
-            self.appendMenu(_ybt_commands.MENU, cmds)
+            from ybt_raytracer import commands as _c
+            cmds = list(_c.COMMANDS)
+            self.appendToolbar(_c.TOOLBAR, cmds)
+            self.appendMenu(_c.MENU, cmds)
 
         def GetClassName(self):
             return "Gui::PythonWorkbench"

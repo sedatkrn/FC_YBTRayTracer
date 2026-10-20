@@ -24,6 +24,11 @@ _ICONS = os.path.join(_HERE, "icons")
 _state = {"registered": False, "manipulator": False}
 
 
+def icon_path():
+    """Tezgâh / ana komut ikonu (InitGui.py sınıf gövdesinden çağrılır)."""
+    return os.path.join(_HERE, "icon.png")
+
+
 def _tr(s):
     from .i18n import T
     return T(s)
