@@ -479,8 +479,7 @@ def open_surface(on_change=None, is_busy=None):
         d = QtGui.QDialog(dlg)
         d.setWindowTitle(T("Doku Düzenleyici") + " - " + T(_CH_TITLE[chan]))
         _theme.apply(d)
-        d.setMinimumSize(720, 520)
-        d.resize(740, 770)                                         # sol katman bölümü sabit ~345 px, sağ ayar bölümü ~365 px
+        d.resize(790, 770)                                         # sol katman bölümü sabit 345 px; sağ ayar bölümü kalan genişlik (en küçük boyutu yerleşim belirler)
         hl = QtGui.QHBoxLayout(d)
 
         # ---------------- sol: katman listesi
