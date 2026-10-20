@@ -510,12 +510,12 @@ def open_surface(on_change=None, is_busy=None):
         row2.setSpacing(3)
         for _w in (b_cp, b_ps):
             _w.setMinimumWidth(0)
-            _w.setStyleSheet("padding: 3px 4px;")                 # dar sol bölümde düğmeler birbirine girmesin
+            _w.setStyleSheet("padding: 3px 4px; min-width: 0px;")                 # dar sol bölümde düğmeler birbirine girmesin
             _w.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Fixed)
             row2.addWidget(_w, 2)
         for _w in (b_up, b_dn):
             _w.setFixedWidth(26)
-            _w.setStyleSheet("padding: 3px 2px;")
+            _w.setStyleSheet("padding: 3px 2px; min-width: 20px; max-width: 26px;")
             row2.addWidget(_w)
         left_.addLayout(row2)
         tree_l = QtGui.QTreeWidget()
