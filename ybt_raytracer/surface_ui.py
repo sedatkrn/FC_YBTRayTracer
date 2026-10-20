@@ -395,7 +395,9 @@ def open_surface(on_change=None, is_busy=None, select=None, add=False):
             return
         try:
             if fast:
-                img = render_preview(M.normalize(st["mat"]), 140, 105, cb_shape.currentData() or "sphere", fast=True)
+                glassy = float(st["mat"].get("transp", 0.0)) > 0.05            # saydam malzeme (kırılma) pahalı: taslak daha küçük
+                fw, fh = (96, 72) if glassy else (140, 105)
+                img = render_preview(M.normalize(st["mat"]), fw, fh, cb_shape.currentData() or "sphere", fast=True)
             else:
                 img = render_preview(M.normalize(st["mat"]), 280, 210, cb_shape.currentData() or "sphere")
         except Exception as ex:
