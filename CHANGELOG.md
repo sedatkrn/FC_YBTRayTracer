@@ -3,7 +3,7 @@
 ```
 v1.5.0 (2026-10-20):
 
-- **Hızlı Render** (`ybt_raytracer/quickrender.py`, komut `YBT_QuickRender`): panel açmadan, etkin kameranın kadrajında doğrudan 3B görünümün üzerinde render. İki geçiş: kaba önizleme (~%35 genişlik, kenar yumuşatmasız, 8 gölge örneği), sonra panel/belge ayarlarıyla tam kalite. Esc / ✕ kapatır (render sürüyorsa iptal), Kaydet PNG yazar.
+- **Hızlı Render** (`ybt_raytracer/quickrender.py`, komut `YBT_QuickRender`): panel açmadan, etkin kameranın kadrajında doğrudan 3B görünümün üzerinde render. İki geçiş: kaba önizleme (~%35 genişlik, kenar yumuşatmasız, 8 gölge örneği), sonra panel/belge ayarlarıyla tam kalite. Esc / ✕ kapatır (render sürüyorsa iptal), Kaydet PNG yazar. Görüntüye çift tıklamak o yüzeyin nesnesini Malzemeler penceresinde seçer (Ctrl: seçime ekler; boya kovası açıksa malzemeyi atar).
 - **Kamera Özellikleri paneli**, **Shift+tıkla ile odak seçme** (render önizlemesinde), **ReferenceDistance 0 = otomatik** (yeni ışıkların varsayılanı), konumlu ışık yumuşak gölgesinde nokta başına örnek dönüşü (basamaklanma yok), yeni PNG ikon takımı.
 - **Gölge kalitesi (ışık başına)**: Point/Spot ışıkta yeni `ShadowSamples` özelliği (4-32, varsayılan 12) ve Işık Özellikleri > Gölgeler sekmesinde "Gölge kalitesi (örnek)". Hızlı Render kaba geçişinde en çok 8.
 - **Hız**: konumlu ışık gölgesinde kademeli örnekleme ilk kademesi 9 → 5 örnek (uyuşmayan noktalar yine tüm örneklerle); kenar yumuşatma parçaları çekirdek sayısına göre bölünür. Ölçüm (160 px, tek çekirdek): 38,2 → 28,3 sn; sürenin %89'u konumlu ışığın gölge ışınlarındaydı.

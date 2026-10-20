@@ -73,6 +73,7 @@ class _Overlay(object):
         self.alive = True
         self.on_close = on_close
         self.on_save = on_save
+        self.on_double = None                                    # çift tıklama: (u, v, ctrl) -> tıklanan yüzeyin malzemesini seç
         self.img = QtGui.QLabel(host)
         self.img.setGeometry(x, y, w, h)
         self.img.setScaledContents(True)
@@ -140,6 +141,12 @@ class _EscFilter(object):
             def eventFilter(self, obj, ev):
                 if ev.type() == QtCore.QEvent.KeyPress and ev.key() == QtCore.Qt.Key_Escape:
                     ov.on_close()
+                    return True
+                if ev.type() == QtCore.QEvent.MouseButtonDblClick and ev.button() == QtCore.Qt.LeftButton and ov.on_double is not None:
+                    p = ev.position() if hasattr(ev, "position") else ev.pos()
+                    g = ov.img.size()
+                    ctrl = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
+                    ov.on_double(p.x() / float(max(1, g.width())), p.y() / float(max(1, g.height())), ctrl)
                     return True
                 return False
         return F(ov.img)
@@ -212,7 +219,44 @@ def run():
             except Exception as ex:
                 ov.set_status(T("KAYDEDİLEMEDİ (%s)") % ex)
 
+        def on_double(u, v, ctrl):
+            """Çift tıklanan yüzeyi bul; Malzeme penceresini açıp o nesneyi seçer (boya kovası açıksa malzemeyi atar)."""
+            sc = state.get("scene")
+            if sc is None:
+                return
+            from .pick import pick as _pick
+            from . import commands
+            try:
+                w_, h_ = state["size"]
+                hit = _pick(sc, cam, w_, h_, u * w_, v * h_)
+            except Exception:
+                import traceback
+                FreeCAD.Console.PrintError(T("RayTrace hatası:\n") + traceback.format_exc())
+                return
+            if hit is None:
+                ov.set_status(T("Tıklanan yerde nesne yok (arka plan ya da zemin)."))
+                return
+            sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+            try:
+                alive_ = sd is not None and sd.isVisible()
+            except Exception:
+                alive_ = False
+            if not alive_:
+                commands.open_materials()
+                sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+            if sd is None:
+                return
+            sd._ybt_api["pick"](hit[0], ctrl)
+            o = doc.getObject(hit[0])
+            ov.set_status(T("Seçildi: %s") % (o.Label if o is not None else hit[0]))
+            try:
+                sd.raise_()
+                sd.activateWindow()
+            except Exception:
+                pass
+
         ov = _Overlay(host, rect, on_close, on_save)
+        ov.on_double = on_double
         FreeCAD._ybt_quick_overlay = ov
         ov.set_status(T("hazırlanıyor..."))
         QtCore.QCoreApplication.processEvents()
@@ -240,6 +284,8 @@ def run():
         scene, nobj = collect_scene(doc, status, camera=cam, aspect=aspect)
         if not alive():
             raise _Cancelled()
+        state["scene"] = scene
+        state["size"] = (max(64, int(S.WIDTH)), max(1, int(round(max(64, int(S.WIDTH)) / aspect))))
         final_w = max(64, int(S.WIDTH))
         passes = []
         w1 = max(120, int(rect[2] * 0.35))
