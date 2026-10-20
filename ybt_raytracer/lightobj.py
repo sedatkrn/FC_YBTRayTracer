@@ -6,7 +6,7 @@ Nesne bir App::GeometryPython'dır; konumu/yönü FreeCAD'in Yerleşim (Placemen
 (dönüşsüz nesne = aşağı bakan güneş). Özellikler:
   Enabled        açık / kapalı
   Color          ışık rengi
-  Intensity      şiddet, % (100 = beyaz yüzeyi, ışığa dik, malzeme rengiyle aydınlatır; ortam ışığı ayrı)
+  Intensity      şiddet, % (100 = ışığa dik yüzeyi malzeme rengiyle tam aydınlatır; varsayılan 80, ortam ışığıyla patlamasın)
   Shadows        gölge düşürsün
   Softness       gölge yumuşaklığı: ışığın görünür açısı (derece; güneş ~0,5; 0 = sert gölge)
 Render, `collect(doc)` ile bu nesneleri okur; `apply_to_settings(doc)` sonucu settings._OBJ_LIGHTS'a yazar.
@@ -101,7 +101,7 @@ class _Light(object):
         add("App::PropertyString", PROP_TYPE, "Light", "Işık türü", kind, hid=True)
         add("App::PropertyBool", "Enabled", "Light", "Işık açık / kapalı", True)
         add("App::PropertyColor", "Color", "Light", "Işık rengi", (1.0, 1.0, 1.0))
-        add("App::PropertyFloat", "Intensity", "Light", "Şiddet (%). 100 = normal aydınlatma", 100.0)
+        add("App::PropertyFloat", "Intensity", "Light", "Şiddet (%). 100 = beyaz yüzeyi ışığa dik tam aydınlatır (ortam ışığıyla birlikte parlayabilir)", 80.0)
         add("App::PropertyBool", "Shadows", "Light", "Gölge düşürsün", True)
         add("App::PropertyAngle", "Softness", "Light", "Gölge yumuşaklığı: ışığın görünür açısı (derece; 0 = sert gölge)", 0.5)
         add("App::PropertyLength", "SymbolSize", "View", "Görünümdeki ışık simgesinin boyu", 400.0)
