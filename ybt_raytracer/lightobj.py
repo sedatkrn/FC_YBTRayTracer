@@ -7,6 +7,7 @@ Nesne bir App::GeometryPython'dır; konumu/yönü FreeCAD'in Yerleşim (Placemen
   Enabled        açık / kapalı
   Color          ışık rengi
   Intensity      şiddet, % (100 = ışığa dik yüzeyi malzeme rengiyle tam aydınlatır; varsayılan 80, ortam ışığıyla patlamasın)
+  AffectDiffuse / AffectSpecular  yüzeyi aydınlatsın / parlama versin
   Shadows        gölge düşürsün
   Softness       gölge yumuşaklığı: ışığın görünür açısı (derece; güneş ~0,5; 0 = sert gölge)
 Render, `collect(doc)` ile bu nesneleri okur; `apply_to_settings(doc)` sonucu settings._OBJ_LIGHTS'a yazar.
@@ -62,7 +63,7 @@ def collect(doc):
             if power <= 0.0:
                 continue
             res.append(dict(on=True, wdir=(to_light.x, to_light.y, to_light.z), color=col, power=power,
-                            shadow=bool(o.Shadows), soft=max(0.0, float(getattr(o.Softness, "Value", o.Softness))),
+                            diffuse=bool(o.AffectDiffuse), spec=bool(o.AffectSpecular), shadow=bool(o.Shadows), soft=max(0.0, float(getattr(o.Softness, "Value", o.Softness))),
                             name=o.Label, type=o.getPropertyByName(PROP_TYPE)))
         except Exception:
             continue
@@ -103,6 +104,8 @@ class _Light(object):
         add("App::PropertyColor", "Color", "Light", "Işık rengi", (1.0, 1.0, 1.0))
         add("App::PropertyFloat", "Intensity", "Light", "Şiddet (%). 100 = beyaz yüzeyi ışığa dik tam aydınlatır (ortam ışığıyla birlikte parlayabilir)", 80.0)
         add("App::PropertyBool", "Shadows", "Light", "Gölge düşürsün", True)
+        add("App::PropertyBool", "AffectDiffuse", "Light", "Yüzey rengini aydınlatır", True)
+        add("App::PropertyBool", "AffectSpecular", "Light", "Parlama (specular) verir", True)
         add("App::PropertyAngle", "Softness", "Light", "Gölge yumuşaklığı: ışığın görünür açısı (derece; 0 = sert gölge)", 0.5)
         add("App::PropertyLength", "SymbolSize", "View", "Görünümdeki ışık simgesinin boyu", 400.0)
 
@@ -185,6 +188,17 @@ class _LightView(object):
 
     def getIcon(self):
         return icon(getattr(self.Object, PROP_TYPE, "distant"))
+
+    def doubleClicked(self, vobj):
+        """Ağaçta çift tıklama: Işık Özellikleri panelini bu ışıkla açar."""
+        try:
+            from . import light_ui
+            light_ui.open_panel(select=vobj.Object)
+        except Exception:
+            import traceback
+            import FreeCAD
+            FreeCAD.Console.PrintError(traceback.format_exc())
+        return True
 
     def __getstate__(self):
         return None

@@ -428,6 +428,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     env_refl = env is not None and bool(S.ENV_REFLECT)
     lights = []                                              # (yön, doğrusal renk, güç, gölge?)
     soft_deg = []                                            # ışık başına yumuşak gölge açısı (derece; 0 = sert)
+    aff = []                                                 # ışık başına (yüzeyi aydınlatır?, parlama verir?)
     _obj_l = getattr(S, "_OBJ_LIGHTS", None)                  # ışık nesneleri (lightobj.apply_to_settings); None = panelin klasik ışıkları
     _src = list(_obj_l) if _obj_l is not None else list(S.LIGHTS)[:3]
     for lt in ([] if (env_light and not bool(S.ENV_KEEP_LIGHTS) and _obj_l is None) else _src[:16]):
@@ -445,6 +446,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
                        bool(lt.get("shadow", False)) and shadows))
         soft_deg.append(float(lt.get("soft", S.SOFT_SHADOW)))
+        aff.append((1.0 if lt.get("diffuse", True) else 0.0, 1.0 if lt.get("spec", True) else 0.0))
     if env_light and bool(S.ENV_SUN) and env.sun is not None:
         sd = env.sun["dir"]
         a_ = np.radians(env_rot)                              # harita dönüşü: lookup'taki boylam kaymasıyla uyumlu
@@ -452,6 +454,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         sd = np.array([c_ * sd[0] - s_ * sd[1], s_ * sd[0] + c_ * sd[1], sd[2]])
         lights.append((_norm(sd), np.maximum(env.sun["power"], 0.0) * env_i, 1.0, shadows))
         soft_deg.append(float(S.SOFT_SHADOW))
+        aff.append((1.0, 1.0))
     soft_r = float(S.SOFT_SHADOW)
     soft_fast = str(S.SOFT_METHOD) != "sampled"
     soft_on = shadows and any(lt[3] and soft_deg[i_] > 0.0 for i_, lt in enumerate(lights)) and (soft_fast or scene.count <= int(S.SOFT_MAX_TRIS))
@@ -941,14 +944,14 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if (not cast) and ao_buf is not None and depth == 0 and bool(S.AO) and not env_vis:
                     # gölge atmayan (dolgu) ışıklar ortam ışığı gibi davranır: köşe/temas kararması onlara da uygulanır
                     ndl_f = ndl * (1.0 - float(S.AO_STRENGTH) * ao_buf[py[pix[hi]], px[pix[hi]]])
-                    lit += (power * ndl_f)[:, None] * lcol
+                    lit += (aff[li][0] * power * ndl_f)[:, None] * lcol
                 else:
-                    lit += (power * ndl)[:, None] * lcol
+                    lit += (aff[li][0] * power * ndl)[:, None] * lcol
                 Hh = _norm(Ld - Dh)
                 sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * lit_pos
                 if vfac is not None:
                     sp = sp * vfac                               # önceden vis>0 iken parlama tam şiddetteydi: gölge kenarında basamak/patlama yapıyordu
-                spec_sum += (spec_k * min(power / 0.7, 1.5) * sp)[:, None] * lcol
+                spec_sum += (aff[li][1] * spec_k * min(power / 0.7, 1.5) * sp)[:, None] * lcol
             if has_mat:                                         # metal: vurgu yüzey renginde
                 spec_sum = spec_sum * (1.0 - metal_k[:, None] + metal_k[:, None] * np.minimum(albedo_raw * 1.4, 1.0))
             surf = albedo * lit + spec_sum

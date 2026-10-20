@@ -4,6 +4,7 @@
 InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Render      ayar panelini açar (render panelin 'Render' düğmesiyle başlar)
   YBT_DistantLight  sahneye Distant (güneş tipi) ışık nesnesi ekler
+  YBT_LightProperties  Işık Özellikleri panelini açar
   YBT_Materials   Malzemeler (Surface) penceresini açar
   YBT_Options    panelin 'Seçenekler' penceresini açar (gerekirse paneli de açar)
 
@@ -15,7 +16,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_DistantLight", "YBT_Materials", "YBT_Options")
+COMMANDS = ("YBT_Render", "YBT_DistantLight", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -112,7 +113,17 @@ def add_light(kind):
         api = getattr(dlg, "_raytrace_api", None)
         if api and api.get("refresh_light_mode"):
             api["refresh_light_mode"]()
+    try:
+        from . import light_ui
+        light_ui.open_panel(select=obj)                 # yeni ışık hemen düzenlenebilsin
+    except Exception:
+        pass
     return obj
+
+
+def open_light_properties():
+    from . import light_ui
+    light_ui.open_panel()
 
 
 def add_distant_light():
@@ -142,6 +153,7 @@ def _commands():
     return {
         "YBT_Render": _Cmd("icon.png", "YBT Raytracer", "Render ayar panelini açar (Render düğmesiyle görüntü alınır)", open_panel),
         "YBT_DistantLight": _Cmd("distant_light.svg", "YBT Distant Light", "Sahneye güneş tipi (paralel) ışık ekler", add_distant_light),
+        "YBT_LightProperties": _Cmd("light_props.svg", "YBT Işık Özellikleri", "Işık nesnelerinin özelliklerini düzenler (renk, şiddet, gölge)", open_light_properties),
         "YBT_Materials": _Cmd("materials.svg", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),
         "YBT_Options": _Cmd("options.svg", "YBT Seçenekler", "İçerik klasörü ve varsayılan ayarlar", open_options),
     }
