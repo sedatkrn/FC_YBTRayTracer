@@ -1082,6 +1082,7 @@ def main(lang=None):
             QtGui.QWidget.__init__(self)
             self.pm = None
             self.on_click = None                      # f(u, v, ctrl): u,v = görüntü içinde 0..1 konum
+            self.on_focus = None                      # f(u, v): Shift+tıklama = alan derinliği odak noktası
             self.on_view = None                       # f(ölçek): görünüm değişince
             self.scale = 1.0                          # ekran pikseli / görüntü pikseli
             self.ox = self.oy = 0.0                   # görüntünün sol-üst köşesi (widget koordinatı)
@@ -1230,6 +1231,9 @@ def main(lang=None):
             u = (x - self.ox) / (self.pm.width() * self.scale)
             v = (y - self.oy) / (self.pm.height() * self.scale)
             if 0.0 <= u < 1.0 and 0.0 <= v < 1.0:
+                if (ev.modifiers() & QtCore.Qt.ShiftModifier) and self.on_focus is not None:
+                    self.on_focus(u, v)
+                    return
                 self.on_click(u, v, bool(ev.modifiers() & QtCore.Qt.ControlModifier))
 
         def mouseDoubleClickEvent(self, ev):
@@ -1582,7 +1586,33 @@ def main(lang=None):
         o = FreeCAD.ActiveDocument.getObject(hit[0]) if FreeCAD.ActiveDocument else None
         lbl_st.setText(T("Tıklanan: %s") % (o.Label if o is not None else hit[0]))
     lbl.on_click = on_preview_click
-    lbl.setToolTip(T("Render aldıktan sonra bir parçaya tıklayın: Malzemeler penceresinde seçilir (Ctrl: seçime ekle)"))
+
+    def on_preview_focus(u, v):
+        """Shift+tıklama: etkin kameranın odak mesafesini tıklanan noktaya ayarlar (alan derinliği)."""
+        if state["busy"]:
+            return
+        pk = state["pick"]
+        d_ = FreeCAD.ActiveDocument
+        co = _cam.active_camera(d_) if d_ is not None else None
+        if pk is None or co is None:
+            lbl_st.setText(T("Odak seçmek için önce etkin bir kamera nesnesiyle render alın; sonra önizlemede Shift+tıklayın."))
+            return
+        from .pick import depth_at as _depth
+        z = _depth(pk[0], pk[1], pk[2], pk[3], u * pk[2], v * pk[3])
+        if z is None or z <= 0:
+            lbl_st.setText(T("Tıklanan yerde yüzey yok (arka plan)."))
+            return
+        d_.openTransaction("Set focus")
+        try:
+            co.FocusObject = None
+            co.FocusDistance = float(z)
+            if not bool(co.DepthOfField):
+                co.DepthOfField = True
+        finally:
+            d_.commitTransaction()
+        lbl_st.setText(T("Odak mesafesi: %.0f mm (yeniden render alın)") % z)
+    lbl.on_focus = on_preview_focus
+    lbl.setToolTip(T("Render aldıktan sonra bir parçaya tıklayın: Malzemeler penceresinde seçilir (Ctrl: seçime ekle). Shift+tıklama: kameranın odak noktasını oraya ayarlar (alan derinliği)"))
 
     def _save_to_doc(*_a):
         try:

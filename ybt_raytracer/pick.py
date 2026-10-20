@@ -48,3 +48,19 @@ def pick(scene, cam, w, h, fx, fy):
     if k < 0 or k >= len(scene.onames):
         return None
     return scene.onames[k], best_i
+
+
+def depth_at(scene, cam, w, h, fx, fy):
+    """Tıklanan pikselde ilk çarpılan yüzeyin kamera eksenindeki uzaklığı (mm); çarpma yoksa None (alan derinliği odağı için)."""
+    if scene is None or scene.count == 0:
+        return None
+    O, D = _ray(scene, cam, w, h, fx, fy)
+    best_t = np.inf
+    ids_all = np.arange(scene.count, dtype=np.int64)
+    for s in range(0, scene.count, 200000):
+        t = _tri_hits(scene, O[None, :], D[None, :], ids_all[s:s + 200000])[0]
+        best_t = min(best_t, float(np.min(t)))
+    if not np.isfinite(best_t):
+        return None
+    _r, _u, fwd = camera_basis(np.asarray(cam["fwd"], float), np.asarray(cam["up"], float))
+    return best_t * float(np.dot(D, fwd))
