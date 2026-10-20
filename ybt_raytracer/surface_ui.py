@@ -479,8 +479,8 @@ def open_surface(on_change=None, is_busy=None):
         d = QtGui.QDialog(dlg)
         d.setWindowTitle(T("Doku Düzenleyici") + " - " + T(_CH_TITLE[chan]))
         _theme.apply(d)
-        d.setMinimumSize(520, 400)
-        d.resize(730, 770)                                         # makul varsayılan boyut: sol liste + dar sağ panel
+        d.setMinimumSize(720, 520)
+        d.resize(740, 770)                                         # sol katman bölümü sabit ~345 px, sağ ayar bölümü ~365 px
         hl = QtGui.QHBoxLayout(d)
 
         # ---------------- sol: katman listesi
@@ -531,12 +531,11 @@ def open_surface(on_change=None, is_busy=None):
         lb_hint.setWordWrap(True)
         lb_hint.setStyleSheet("color: #85858a;")
         left_.addWidget(lb_hint)
-        left_w = QtGui.QWidget()                                  # sol bölüm yatayda daralabilsin (sağ panel öncelikli)
+        left_w = QtGui.QWidget()                                  # sol katman bölümü sabit genişlikte; pencere büyüyünce yalnız sağ bölüm büyür
         left_w.setLayout(left_)
-        left_w.setMinimumWidth(170)
-        left_w.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Preferred)
+        left_w.setFixedWidth(345)
         left_.setContentsMargins(0, 0, 0, 0)
-        hl.addWidget(left_w, 2)
+        hl.addWidget(left_w, 0)
 
         # ---------------- sağ: katman ayarları
         right_ = QtGui.QVBoxLayout()
@@ -711,7 +710,9 @@ def open_surface(on_change=None, is_busy=None):
             tg.setColumnStretch(1, 1)
             r0 = 0
             if ti_ == 0:
-                tg.addWidget(lab("Doku boyu (mm; 0 = otomatik)"), 0, 0)
+                lb_sz = lab("Doku boyu (mm; 0 = otomatik)")
+                lb_sz.setWordWrap(True)                                   # uzun etiket dar panelde alt satıra insin
+                tg.addWidget(lb_sz, 0, 0)
                 tg.addWidget(sp_size, 0, 1)
                 r0 = 1
             for c_, ax_ in enumerate("xyz"):
@@ -738,16 +739,8 @@ def open_surface(on_change=None, is_busy=None):
         right_w = QtGui.QWidget()
         right_w.setObjectName("ybtpage")
         right_w.setLayout(right_)
-        right_sc = QtGui.QScrollArea()                            # pencere küçülünce üst üste binmesin: kaydırma çubuğu
-        right_sc.setWidgetResizable(True)
-        right_sc.setFrameShape(QtGui.QFrame.NoFrame)
-        right_sc.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
-        right_sc.setWidget(right_w)
-        right_sc.viewport().setAutoFillBackground(False)
-        right_sc.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        right_w.setAutoFillBackground(False)
-        right_w.setStyleSheet("QWidget#ybtpage { background: transparent; }")
-        hl.addWidget(right_sc, 3)
+        right_w.setContentsMargins(0, 0, 0, 0)
+        hl.addWidget(right_w, 1)                                  # sağ ayar bölümü: kalan genişliği alır (kaydırma çubuğu yok, her şey görünür)
 
         common = [cb_type, cb_blend, sp_op, b_inv, sp_bh, cb_proj, cb_tile, cb_img, cb_pt, b_c1, b_c2, b_world, b_auto, sp_size] + ax_b + \
             list(pw.values()) + list(tsp.values())
