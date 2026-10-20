@@ -13,6 +13,7 @@
       <name>FC YBT Raytracer</name>
       <classname>YBTRaytracerWorkbench</classname>
       <icon>ybt_raytracer/icon.png</icon>
+      <subdirectory>./</subdirectory>
       <description>Commands Render / Materials / Defaults in the Macro toolbar and menu of every workbench; optional separate workbench (user parameter Mod/FCYBTRayTracer/SeparateWorkbench).</description>
       <freecadmin>1.0.0</freecadmin>
     </workbench>
