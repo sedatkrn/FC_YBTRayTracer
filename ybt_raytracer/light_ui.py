@@ -186,7 +186,7 @@ def _build(QtCore, QtGui):
     def refill(keep=None):
         """Işık listesini belgeden yeniler."""
         d = _doc()
-        objs = L.lights_in(d) if d is not None else []
+        objs = L.active_lights(d) if d is not None else []
         names = [(o.Name, o.Label) for o in objs]
         keep = keep or (st["obj"].Name if alive() else None)
         st["busy"] = True
@@ -262,7 +262,7 @@ def _build(QtCore, QtGui):
 
     def clear_all():
         d = _doc()
-        objs = L.lights_in(d) if d is not None else []
+        objs = L.active_lights(d) if d is not None else []
         if not objs:
             return
         if QtGui.QMessageBox.question(dlg, T("Tüm ışıkları sil"), T("%d ışık nesnesi silinsin mi?") % len(objs),
@@ -281,7 +281,7 @@ def _build(QtCore, QtGui):
     # -- belge / seçim eşitleme: ışık seçilince panel ona geçer; özellik düzenleyicide değişen değer panele yansır
     def tick():
         d = _doc()
-        objs = L.lights_in(d) if d is not None else []
+        objs = L.active_lights(d) if d is not None else []
         names = [(o.Name, o.Label) for o in objs]
         if names != st["names"]:
             refill()

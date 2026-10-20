@@ -585,7 +585,7 @@ def main(lang=None):
 
     def light_count_text():
         try:
-            n_ = len(_lobj.lights_in(FreeCAD.ActiveDocument))
+            n_ = len(_lobj.active_lights(FreeCAD.ActiveDocument))
         except Exception:
             n_ = 0
         if ck_leg.isChecked():

@@ -3,6 +3,7 @@
 
 InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Render      ayar panelini açar (render panelin 'Render' düğmesiyle başlar)
+  YBT_NewScene    ağaçta yeni "YBTray0N" sahnesi yaratır (ışıklar altında durur)
   YBT_DistantLight  sahneye Distant (güneş tipi) ışık nesnesi ekler
   YBT_LightProperties  Işık Özellikleri panelini açar
   YBT_Materials   Malzemeler (Surface) penceresini açar
@@ -16,7 +17,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_DistantLight", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
+COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -101,9 +102,12 @@ def add_light(kind):
     doc = FreeCAD.ActiveDocument
     if doc is None:
         return None
+    from . import sceneobj
     doc.openTransaction("Add light")
     try:
+        sc = sceneobj.target_scene(doc)                  # seçili / etkin sahne; yoksa YBTray01 yaratılır
         obj = lightobj.create(doc, kind)
+        sc.addObject(obj)
     finally:
         doc.commitTransaction()
     if str(S.LIGHT_MODE) != "objects":
@@ -116,6 +120,27 @@ def add_light(kind):
     try:
         from . import light_ui
         light_ui.open_panel(select=obj)                 # yeni ışık hemen düzenlenebilsin
+    except Exception:
+        pass
+    return obj
+
+
+def new_scene():
+    """Ağaçta yeni YBT sahnesi (YBTray01, 02...) yaratır ve etkin yapar."""
+    import FreeCAD
+    from . import sceneobj
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None
+    doc.openTransaction("New YBT scene")
+    try:
+        obj = sceneobj.create(doc, make_active=True)
+    finally:
+        doc.commitTransaction()
+    try:
+        import FreeCADGui as Gui
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(obj)
     except Exception:
         pass
     return obj
@@ -152,6 +177,7 @@ class _Cmd(object):
 def _commands():
     return {
         "YBT_Render": _Cmd("icon.png", "YBT Raytracer", "Render ayar panelini açar (Render düğmesiyle görüntü alınır)", open_panel),
+        "YBT_NewScene": _Cmd("scene.svg", "YBT Yeni Sahne", "Ağaçta yeni bir YBT sahnesi (YBTray01...) yaratır; ışıklar bunun altına eklenir", new_scene),
         "YBT_DistantLight": _Cmd("distant_light.svg", "YBT Distant Light", "Sahneye güneş tipi (paralel) ışık ekler", add_distant_light),
         "YBT_LightProperties": _Cmd("light_props.svg", "YBT Işık Özellikleri", "Işık nesnelerinin özelliklerini düzenler (renk, şiddet, gölge)", open_light_properties),
         "YBT_Materials": _Cmd("materials.svg", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),

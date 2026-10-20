@@ -45,11 +45,21 @@ def lights_in(doc):
     return out
 
 
+def active_lights(doc):
+    """Render'ın kullanacağı ışık nesneleri: belgede YBT sahnesi varsa etkin sahnenin ışıkları, yoksa tüm (serbest) ışıklar."""
+    from . import sceneobj
+    allv = lights_in(doc)
+    sc = sceneobj.active_scene(doc)
+    if sc is None:
+        return allv
+    return [o for o in allv if sceneobj.scene_of(o) is sc]
+
+
 def collect(doc):
-    """Açık ışık nesnelerini render'ın ışık sözlüklerine çevirir (dünya uzayında)."""
+    """Etkin sahnenin açık ışık nesnelerini render'ın ışık sözlüklerine çevirir (dünya uzayında)."""
     import FreeCAD
     res = []
-    for o in lights_in(doc):
+    for o in active_lights(doc):
         try:
             if not bool(o.Enabled):
                 continue
@@ -73,7 +83,7 @@ def collect(doc):
 def apply_to_settings(doc):
     """Render öncesi: ışık modu "objects" ise ışıkları nesnelerden al (yoksa panelin ışıkları geçerli kalır).
     Döner: (mod, nesne sayısı, kullanılan ışık sayısı)."""
-    n = len(lights_in(doc))
+    n = len(active_lights(doc))
     if str(getattr(S, "LIGHT_MODE", "objects")) != "objects":
         S._OBJ_LIGHTS = None
         return "legacy", n, 0
