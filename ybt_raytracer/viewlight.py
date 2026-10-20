@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """3B görünümde ışık önizlemesi: belgede YBT sahnesi varsa FreeCAD'in kendi ışıkları (Headlight / Backlight / FillLight) kapanır,
-ortam ışığı bizim ortam değerimizi izler ve etkin sahnenin ışık nesneleri görünüme Coin yönlü ışığı olarak eklenir.
+ortam ışığı bizim ortam değerimizi izler ve etkin sahnenin ışık nesneleri görünüme Coin yönlü / nokta / spot ışığı olarak eklenir.
 
 FreeCAD'in ışık ayarları Tercihler > Display > Light Sources ile aynı parametre grubundadır (View/LightSources); bu ayarlar tüm FreeCAD için
 geçerlidir, bu yüzden değişmeden önceki değerler `ViewLightBackup` parametresine saklanır ve şu durumlarda geri yazılır: önizleme kapanınca
@@ -144,7 +144,8 @@ def _sync_nodes():
     from . import lightobj
     sg = Gui.ActiveDocument.ActiveView.getSceneGraph()
     lst = lightobj.collect(FreeCAD.ActiveDocument)[:6]
-    sig = tuple((tuple(round(x, 4) for x in lt["wdir"]), tuple(round(x, 3) for x in lt["color"]), round(lt["power"], 3)) for lt in lst
+    sig = tuple((lt.get("kind", "distant"), tuple(round(x, 4) for x in lt["wdir"]), tuple(round(x, 3) for x in lt["color"]), round(lt["power"], 3),
+                 tuple(round(x, 2) for x in lt.get("wpos", (0, 0, 0))), round(float(lt.get("cone", 45.0)), 2)) for lt in lst
                 if lt.get("diffuse", True))
     if sg is not _st["sg"]:
         _remove_nodes()
@@ -156,9 +157,20 @@ def _sync_nodes():
         return
     sep = _st["sep"]
     sep.removeAllChildren()
-    for wdir, col, power in sig:
-        li = coin.SoDirectionalLight()
-        li.direction.setValue(-wdir[0], -wdir[1], -wdir[2])       # Coin: ışığın gittiği yön (wdir ışığa doğru)
+    import math
+    for kind, wdir, col, power, wpos, cone in sig:
+        if kind == "point":
+            li = coin.SoPointLight()
+            li.location.setValue(*wpos)
+        elif kind == "spot":
+            li = coin.SoSpotLight()
+            li.location.setValue(*wpos)
+            li.direction.setValue(-wdir[0], -wdir[1], -wdir[2])
+            li.cutOffAngle.setValue(math.radians(max(1.0, min(89.0, cone / 2.0))))
+            li.dropOffRate.setValue(0.3)
+        else:
+            li = coin.SoDirectionalLight()
+            li.direction.setValue(-wdir[0], -wdir[1], -wdir[2])       # Coin: ışığın gittiği yön (wdir ışığa doğru)
         li.color.setValue(*col)
         li.intensity.setValue(min(1.0, max(0.0, power)))
         sep.addChild(li)

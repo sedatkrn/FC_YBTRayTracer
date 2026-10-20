@@ -5,6 +5,8 @@ InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Render      ayar panelini açar (render panelin 'Render' düğmesiyle başlar)
   YBT_NewScene    ağaçta yeni "YBTray0N" sahnesi yaratır (ışıklar altında durur)
   YBT_DistantLight  sahneye Distant (güneş tipi) ışık nesnesi ekler
+  YBT_PointLight  sahneye Point (konumlu, her yöne yayılan) ışık ekler
+  YBT_SpotLight   sahneye Spot (konumlu, koni içine yayılan) ışık ekler
   YBT_LightProperties  Işık Özellikleri panelini açar
   YBT_Materials   Malzemeler (Surface) penceresini açar
   YBT_Options    panelin 'Seçenekler' penceresini açar (gerekirse paneli de açar)
@@ -17,7 +19,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
+COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_PointLight", "YBT_SpotLight", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -158,6 +160,14 @@ def add_distant_light():
     return add_light("distant")
 
 
+def add_point_light():
+    return add_light("point")
+
+
+def add_spot_light():
+    return add_light("spot")
+
+
 class _Cmd(object):
     def __init__(self, icon, text, tip, action, needs_doc=True):
         self._icon, self._text, self._tip, self._action, self._needs_doc = icon, text, tip, action, needs_doc
@@ -182,6 +192,8 @@ def _commands():
         "YBT_Render": _Cmd("icon.png", "YBT Raytracer", "Render ayar panelini açar (Render düğmesiyle görüntü alınır)", open_panel),
         "YBT_NewScene": _Cmd("scene.svg", "YBT Yeni Sahne", "Ağaçta yeni bir YBT sahnesi (YBTray01...) yaratır; ışıklar bunun altına eklenir", new_scene),
         "YBT_DistantLight": _Cmd("distant_light.svg", "YBT Distant Light", "Sahneye güneş tipi (paralel) ışık ekler", add_distant_light),
+        "YBT_PointLight": _Cmd("point_light.svg", "YBT Point Light", "Sahneye konumlu, her yöne yayılan ışık ekler (uzaklıkla söner)", add_point_light),
+        "YBT_SpotLight": _Cmd("spot_light.svg", "YBT Spot Light", "Sahneye konumlu, koni içine yayılan ışık ekler", add_spot_light),
         "YBT_LightProperties": _Cmd("light_props.svg", "YBT Işık Özellikleri", "Işık nesnelerinin özelliklerini düzenler (renk, şiddet, gölge)", open_light_properties),
         "YBT_Materials": _Cmd("materials.svg", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),
         "YBT_Options": _Cmd("options.svg", "YBT Seçenekler", "İçerik klasörü ve varsayılan ayarlar", open_options),

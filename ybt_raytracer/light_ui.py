@@ -80,7 +80,7 @@ def _build(QtCore, QtGui):
     cb_type = QtGui.QComboBox()
     for k, v in L.TYPES.items():
         cb_type.addItem(T(v["label"]), k)
-    cb_type.setEnabled(len(L.TYPES) > 1)
+    cb_type.setToolTip(T("Işık türü; değiştirince türe özgü ayarlar eklenir / kalkar"))
     form.addWidget(lab("Işık türü"), 1, 0)
     form.addWidget(cb_type, 1, 1, 1, 2)
     # renk: düğme + R G B
@@ -129,9 +129,52 @@ def _build(QtCore, QtGui):
     sp_soft.setSuffix(" °")
     sp_soft.setToolTip(T("Gölge yumuşaklığı: ışığın görünür açısı (güneş ~0,5°; 0 = sert gölge)"))
     sl.addWidget(ck_sh, 0, 0, 1, 2)
-    sl.addWidget(lab("Yumuşaklık (açı)"), 1, 0)
+    lb_soft = lab("Yumuşaklık (açı)")
+    sl.addWidget(lb_soft, 1, 0)
     sl.addWidget(sp_soft, 1, 1)
-    sl.setRowStretch(2, 1)
+    sp_rad = QtGui.QDoubleSpinBox()
+    sp_rad.setRange(0.0, 100000.0)
+    sp_rad.setDecimals(1)
+    sp_rad.setSingleStep(5.0)
+    sp_rad.setSuffix(" mm")
+    sp_rad.setToolTip(T("Işık kaynağının boyu: büyüdükçe gölge kenarı yumuşar (0 = sert gölge)"))
+    lb_rad = lab("Işık boyu (yarıçap)")
+    sl.addWidget(lb_rad, 2, 0)
+    sl.addWidget(sp_rad, 2, 1)
+    sl.setRowStretch(3, 1)
+    # Falloff sekmesi (Point / Spot)
+    pg_fall = QtGui.QWidget()
+    fl = QtGui.QGridLayout(pg_fall)
+    cb_fall = QtGui.QComboBox()
+    for key, txt in (("InverseSquare", "Ters kare (gerçekçi)"), ("Linear", "Doğrusal"), ("None", "Yok (sönmez)")):
+        cb_fall.addItem(T(txt), key)
+    sp_ref = QtGui.QDoubleSpinBox()
+    sp_ref.setRange(0.1, 1000000.0)
+    sp_ref.setDecimals(1)
+    sp_ref.setSingleStep(50.0)
+    sp_ref.setSuffix(" mm")
+    sp_ref.setToolTip(T("Işığın şiddetinin tam değerinde olduğu uzaklık. Daha yakında parlar, daha uzakta söner"))
+    sp_cone = QtGui.QDoubleSpinBox()
+    sp_cone.setRange(1.0, 178.0)
+    sp_cone.setDecimals(1)
+    sp_cone.setSuffix(" °")
+    sp_cone.setToolTip(T("Spot koninin tam açısı"))
+    sp_edge = QtGui.QDoubleSpinBox()
+    sp_edge.setRange(0.0, 90.0)
+    sp_edge.setDecimals(1)
+    sp_edge.setSuffix(" °")
+    sp_edge.setToolTip(T("Koninin kenarındaki yumuşak geçiş (0 = keskin kenar)"))
+    lb_cone, lb_edge = lab("Koni açısı"), lab("Kenar yumuşaklığı")
+    fl.addWidget(lab("Sönme"), 0, 0)
+    fl.addWidget(cb_fall, 0, 1)
+    fl.addWidget(lab("Referans uzaklık"), 1, 0)
+    fl.addWidget(sp_ref, 1, 1)
+    fl.addWidget(lb_cone, 2, 0)
+    fl.addWidget(sp_cone, 2, 1)
+    fl.addWidget(lb_edge, 3, 0)
+    fl.addWidget(sp_edge, 3, 1)
+    fl.setRowStretch(4, 1)
+    tabs.addTab(pg_fall, T("Sönme / Koni"))
     root.addWidget(tabs)
     ck_view = QtGui.QCheckBox(T("3B görünümü bu ışıklarla aydınlat"))
     ck_view.setToolTip(T("Açıkken YBT sahnesi olan belgelerde FreeCAD'in kendi görünüm ışıkları kapanır ve ışık nesneleri 3B görünümde önizlenir "
@@ -139,12 +182,12 @@ def _build(QtCore, QtGui):
     ck_view.setChecked(bool(getattr(S, "VIEW_LIGHTS", True)))
     ck_view.toggled.connect(lambda v: setattr(S, "VIEW_LIGHTS", bool(v)))
     root.addWidget(ck_view)
-    hint = QtGui.QLabel(T("Konum ve yön: ışık nesnesinin Yerleşim (Placement) özelliği. Işık yerel -Z yönüne yayılır."))
+    hint = QtGui.QLabel(T("Konum ve yön: ışık nesnesinin Yerleşim (Placement) özelliği. Işık yerel -Z yönüne yayılır (Point ışıkta yön önemsizdir)."))
     hint.setWordWrap(True)
     hint.setStyleSheet("color: #85858a;")
     root.addWidget(hint)
 
-    inputs = [cb_type, ck_on, bt_col, sp_int, ck_dif, ck_spc, ck_sh, sp_soft] + sp_rgb
+    inputs = [cb_type, ck_on, bt_col, sp_int, ck_dif, ck_spc, ck_sh, sp_soft, sp_rad, cb_fall, sp_ref, sp_cone, sp_edge] + sp_rgb
 
     def paint_color(rgb):
         bt_col.setStyleSheet("background-color: rgb(%d,%d,%d); border: 1px solid #26262a;" % tuple(rgb))
@@ -156,19 +199,43 @@ def _build(QtCore, QtGui):
         except Exception:
             return False
 
+    def kind_of(o):
+        return getattr(o, L.PROP_TYPE, "distant")
+
+    def val(o, name, default=0.0):
+        try:
+            v = getattr(o, name)
+            return float(getattr(v, "Value", v))
+        except Exception:
+            return default
+
     def snapshot(o):
         try:
-            return (bool(o.Enabled), tuple(o.Color)[:3], float(o.Intensity), bool(o.Shadows), float(o.Softness.Value),
-                    bool(o.AffectDiffuse), bool(o.AffectSpecular))
+            return (bool(o.Enabled), tuple(o.Color)[:3], float(o.Intensity), bool(o.Shadows), val(o, "Softness"),
+                    bool(o.AffectDiffuse), bool(o.AffectSpecular), val(o, "ShadowRadius"), str(getattr(o, "Falloff", "")),
+                    val(o, "ReferenceDistance"), val(o, "ConeAngle"), val(o, "EdgeAngle"), kind_of(o))
         except Exception:
             return None
+
+    def show_for(kind):
+        """Işık türüne göre alanları göster / gizle."""
+        pos = L.is_positional(kind)
+        for w in (lb_soft, sp_soft):
+            w.setVisible(not pos)
+        for w in (lb_rad, sp_rad):
+            w.setVisible(pos)
+        tabs.setTabEnabled(tabs.indexOf(pg_fall), pos)
+        for w in (lb_cone, sp_cone, lb_edge, sp_edge):
+            w.setVisible(kind == "spot")
+        if not pos and tabs.currentWidget() is pg_fall:
+            tabs.setCurrentIndex(0)
 
     def load():
         """Nesnenin özelliklerini araç gereçlere yazar."""
         o = st["obj"]
         has = alive()
         for w in inputs:
-            w.setEnabled(has and (w is not cb_type or len(L.TYPES) > 1))
+            w.setEnabled(has)
         if not has:
             return
         st["busy"] = True
@@ -180,7 +247,16 @@ def _build(QtCore, QtGui):
             paint_color(rgb)
             sp_int.setValue(float(o.Intensity))
             ck_sh.setChecked(bool(o.Shadows))
-            sp_soft.setValue(float(o.Softness.Value))
+            kd = kind_of(o)
+            show_for(kd)
+            sp_soft.setValue(val(o, "Softness"))
+            sp_rad.setValue(val(o, "ShadowRadius"))
+            k2 = cb_fall.findData(str(getattr(o, "Falloff", "InverseSquare")))
+            if k2 >= 0:
+                cb_fall.setCurrentIndex(k2)
+            sp_ref.setValue(val(o, "ReferenceDistance", 1000.0))
+            sp_cone.setValue(val(o, "ConeAngle", 45.0))
+            sp_edge.setValue(val(o, "EdgeAngle", 10.0))
             ck_dif.setChecked(bool(o.AffectDiffuse))
             ck_spc.setChecked(bool(o.AffectSpecular))
             k = cb_type.findData(getattr(o, L.PROP_TYPE, "distant"))
@@ -247,6 +323,29 @@ def _build(QtCore, QtGui):
     ck_spc.toggled.connect(lambda v: put("AffectSpecular", bool(v)))
     sp_int.valueChanged.connect(lambda v: put("Intensity", float(v)))
     sp_soft.valueChanged.connect(lambda v: put("Softness", float(v)))
+    sp_rad.valueChanged.connect(lambda v: put("ShadowRadius", float(v)))
+    sp_ref.valueChanged.connect(lambda v: put("ReferenceDistance", float(v)))
+    sp_cone.valueChanged.connect(lambda v: put("ConeAngle", float(v)))
+    sp_edge.valueChanged.connect(lambda v: put("EdgeAngle", float(v)))
+    cb_fall.currentIndexChanged.connect(lambda i: put("Falloff", str(cb_fall.itemData(i))))
+
+    def type_changed(i):
+        """Işık türünü değiştirir: yeni türün özellikleri eklenir, Placement ve ortak ayarlar korunur."""
+        if st["busy"] or not alive():
+            return
+        o = st["obj"]
+        k = cb_type.itemData(i)
+        if k == kind_of(o) or k not in L.TYPES:
+            return
+        d = o.Document
+        d.openTransaction("Change light type")
+        try:
+            L.change_type(o, k)
+        finally:
+            d.commitTransaction()
+        d.recompute()
+        load()
+    cb_type.currentIndexChanged.connect(type_changed)
 
     def rgb_changed(*_a):
         if st["busy"]:
@@ -319,6 +418,7 @@ def _build(QtCore, QtGui):
     dlg.destroyed.connect(on_close)
     dlg._api = dict(select=select, refill=refill, widgets=dict(current=cb_cur, enabled=ck_on, type=cb_type, rgb=sp_rgb, intensity=sp_int,
                                                                diffuse=ck_dif, specular=ck_spc, shadows=ck_sh, softness=sp_soft,
+                                                               radius=sp_rad, falloff=cb_fall, refdist=sp_ref, cone=sp_cone, edge=sp_edge, tabs=tabs,
                                                                clear=b_clear, count=lb_count))
     _theme.fix_combos(dlg)
     refill()

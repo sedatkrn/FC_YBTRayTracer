@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Işık nesneleri: sahneye eklenen, belgeyle birlikte saklanan FreeCAD nesneleri.
 
-1. aşama: Distant (güneş tipi, sonsuz uzaktan paralel ışık). Point / Spot sonraki aşamada.
+Türler: Distant (güneş tipi, sonsuz uzaktan paralel ışık), Point (konumlu, her yöne yayılan) ve Spot (konumlu, koni içine yayılan).
 Nesne bir App::GeometryPython'dır; konumu/yönü FreeCAD'in Yerleşim (Placement) özelliğidir. Işık yerel -Z yönünde YAYILIR
 (dönüşsüz nesne = aşağı bakan güneş). Özellikler:
   Enabled        açık / kapalı
@@ -9,7 +9,11 @@ Nesne bir App::GeometryPython'dır; konumu/yönü FreeCAD'in Yerleşim (Placemen
   Intensity      şiddet, % (100 = ışığa dik yüzeyi malzeme rengiyle tam aydınlatır; varsayılan 80, ortam ışığıyla patlamasın)
   AffectDiffuse / AffectSpecular  yüzeyi aydınlatsın / parlama versin
   Shadows        gölge düşürsün
-  Softness       gölge yumuşaklığı: ışığın görünür açısı (derece; güneş ~0,5; 0 = sert gölge)
+  Softness       (Distant) gölge yumuşaklığı: ışığın görünür açısı (derece; güneş ~0,5; 0 = sert gölge)
+  Falloff        (Point/Spot) uzaklıkla sönme: InverseSquare (ters kare) / Linear / None
+  ReferenceDistance  (Point/Spot) şiddetin tam değerinde olduğu uzaklık (mm); sönme bu uzaklığa göre ölçülür
+  ShadowRadius   (Point/Spot) ışığın boyutu (mm): gölge kenarı yumuşaklığı; 0 = sert gölge
+  ConeAngle / EdgeAngle  (Spot) koninin tam açısı ve kenarındaki yumuşak geçiş açısı (derece)
 Render, `collect(doc)` ile bu nesneleri okur; `apply_to_settings(doc)` sonucu settings._OBJ_LIGHTS'a yazar.
 Işık modu (settings.LIGHT_MODE): "objects" = yeni sistem, "legacy" = makro dönemi aydınlatma (paneldeki 3 ışık + FreeCAD ışıkları).
 """
@@ -19,7 +23,15 @@ from . import settings as S
 
 TYPES = {
     "distant": dict(label="Distant Light", icon="distant_light.svg"),
+    "point": dict(label="Point Light", icon="point_light.svg"),
+    "spot": dict(label="Spot Light", icon="spot_light.svg"),
 }
+FALLOFFS = ("InverseSquare", "Linear", "None")
+_FALL_KEY = {"InverseSquare": "inverse_square", "Linear": "linear", "None": "none"}
+
+
+def is_positional(kind):
+    return kind in ("point", "spot")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 PROP_TYPE = "YBTLightType"
 
@@ -76,9 +88,26 @@ def collect(doc):
             power = max(0.0, float(o.Intensity)) / 100.0
             if power <= 0.0:
                 continue
-            res.append(dict(on=True, wdir=(to_light.x, to_light.y, to_light.z), color=col, power=power,
-                            diffuse=bool(o.AffectDiffuse), spec=bool(o.AffectSpecular), shadow=bool(o.Shadows), soft=max(0.0, float(getattr(o.Softness, "Value", o.Softness))),
-                            name=o.Label, type=o.getPropertyByName(PROP_TYPE)))
+            kind = o.getPropertyByName(PROP_TYPE)
+            d = dict(on=True, kind=kind, wdir=(to_light.x, to_light.y, to_light.z), color=col, power=power,
+                     diffuse=bool(o.AffectDiffuse), spec=bool(o.AffectSpecular), shadow=bool(o.Shadows),
+                     name=o.Label, type=kind)
+            if is_positional(kind):
+                try:
+                    pl = o.getGlobalPlacement()
+                except Exception:
+                    pl = o.Placement
+                d["wpos"] = (pl.Base.x, pl.Base.y, pl.Base.z)
+                d["axis"] = (-to_light.x, -to_light.y, -to_light.z)           # ışığın gittiği yön
+                d["falloff"] = _FALL_KEY.get(str(o.Falloff), "inverse_square")
+                d["ref"] = max(1e-3, float(getattr(o.ReferenceDistance, "Value", o.ReferenceDistance)))
+                d["radius"] = max(0.0, float(getattr(o.ShadowRadius, "Value", o.ShadowRadius)))
+                if kind == "spot":
+                    d["cone"] = float(getattr(o.ConeAngle, "Value", o.ConeAngle))
+                    d["edge"] = float(getattr(o.EdgeAngle, "Value", o.EdgeAngle))
+            else:
+                d["soft"] = max(0.0, float(getattr(o.Softness, "Value", o.Softness)))
+            res.append(d)
         except Exception:
             continue
     return res
@@ -120,7 +149,18 @@ class _Light(object):
         add("App::PropertyBool", "Shadows", "Light", "Gölge düşürsün", True)
         add("App::PropertyBool", "AffectDiffuse", "Light", "Yüzey rengini aydınlatır", True)
         add("App::PropertyBool", "AffectSpecular", "Light", "Parlama (specular) verir", True)
-        add("App::PropertyAngle", "Softness", "Light", "Gölge yumuşaklığı: ışığın görünür açısı (derece; 0 = sert gölge)", 0.5)
+        if kind == "distant":
+            add("App::PropertyAngle", "Softness", "Light", "Gölge yumuşaklığı: ışığın görünür açısı (derece; 0 = sert gölge)", 0.5)
+        else:
+            if "Falloff" not in obj.PropertiesList:
+                obj.addProperty("App::PropertyEnumeration", "Falloff", "Light", "Uzaklıkla sönme: ters kare (gerçekçi), doğrusal ya da yok")
+                obj.Falloff = list(FALLOFFS)
+                obj.Falloff = "InverseSquare"
+            add("App::PropertyLength", "ReferenceDistance", "Light", "Şiddetin tam değerinde olduğu uzaklık (sönme buna göre ölçülür)", 1000.0)
+            add("App::PropertyLength", "ShadowRadius", "Light", "Işık kaynağının boyu: gölge kenarı yumuşaklığı (0 = sert gölge)", 0.0)
+        if kind == "spot":
+            add("App::PropertyAngle", "ConeAngle", "Light", "Koninin tam açısı", 45.0)
+            add("App::PropertyAngle", "EdgeAngle", "Light", "Koni kenarındaki yumuşak geçiş açısı", 10.0)
         add("App::PropertyLength", "SymbolSize", "View", "Görünümdeki ışık simgesinin boyu", 400.0)
 
     def execute(self, obj):
@@ -171,24 +211,49 @@ class _LightView(object):
         self._rebuild()
 
     def _rebuild(self):
+        import math
         try:
             L = float(getattr(self.Object.SymbolSize, "Value", self.Object.SymbolSize)) or 400.0
             c = tuple(self.Object.Color)[:3]
             self.col.rgb.setValue(float(c[0]), float(c[1]), float(c[2]))
         except Exception:
             L = 400.0
-        r = L * 0.12
-        a = L * 0.10
-        pts = [(0, 0, 0), (0, 0, -L),                                  # 0,1: ışık ekseni
-               (a, 0, -L + a * 1.6), (-a, 0, -L + a * 1.6), (0, a, -L + a * 1.6), (0, -a, -L + a * 1.6),   # 2-5: ok ucu
-               (r, 0, 0), (-r, 0, 0), (0, r, 0), (0, -r, 0),           # 6-9: güneş çarpısı
-               (r * .7, r * .7, 0), (-r * .7, -r * .7, 0), (r * .7, -r * .7, 0), (-r * .7, r * .7, 0)]
-        idx = [0, 1, -1, 1, 2, -1, 1, 3, -1, 1, 4, -1, 1, 5, -1, 6, 7, -1, 8, 9, -1, 10, 11, -1, 12, 13, -1]
+        kind = getattr(self.Object, PROP_TYPE, "distant")
+        if kind == "distant":
+            r = L * 0.12
+            a = L * 0.10
+            pts = [(0, 0, 0), (0, 0, -L),                                  # 0,1: ışık ekseni
+                   (a, 0, -L + a * 1.6), (-a, 0, -L + a * 1.6), (0, a, -L + a * 1.6), (0, -a, -L + a * 1.6),   # 2-5: ok ucu
+                   (r, 0, 0), (-r, 0, 0), (0, r, 0), (0, -r, 0),           # 6-9: güneş çarpısı
+                   (r * .7, r * .7, 0), (-r * .7, -r * .7, 0), (r * .7, -r * .7, 0), (-r * .7, r * .7, 0)]
+            idx = [0, 1, -1, 1, 2, -1, 1, 3, -1, 1, 4, -1, 1, 5, -1, 6, 7, -1, 8, 9, -1, 10, 11, -1, 12, 13, -1]
+        else:
+            r = L * 0.18                                                 # nokta ışığı: küçük yıldız (3 eksen + köşegenler)
+            q = r * 0.7
+            pts = [(r, 0, 0), (-r, 0, 0), (0, r, 0), (0, -r, 0), (0, 0, r), (0, 0, -r),
+                   (q, q, q), (-q, -q, -q), (q, -q, q), (-q, q, -q), (q, q, -q), (-q, -q, q), (-q, q, q), (q, -q, -q)]
+            idx = [0, 1, -1, 2, 3, -1, 4, 5, -1, 6, 7, -1, 8, 9, -1, 10, 11, -1, 12, 13, -1]
+            if kind == "spot":                                           # koni: tepe (0,0,0), -Z'ye açılır
+                try:
+                    half = math.radians(max(1.0, min(89.0, float(getattr(self.Object.ConeAngle, "Value", self.Object.ConeAngle)) / 2.0)))
+                except Exception:
+                    half = math.radians(22.5)
+                ln = L
+                rr = ln * math.tan(half)
+                b = len(pts)
+                ring = [(rr * math.cos(2 * math.pi * k / 24), rr * math.sin(2 * math.pi * k / 24), -ln) for k in range(24)]
+                pts += [(0, 0, -ln)] + ring
+                idx += [0, b, -1]                                         # eksen
+                for k in (0, 6, 12, 18):
+                    idx += [0, b + 1 + k, -1]                             # koni kenar çizgileri
+                idx += [b + 1 + k for k in range(24)] + [b + 1, -1]       # taban çemberi
+            else:
+                idx += []
         self.coords.point.setValues(0, len(pts), pts)
         self.lines.coordIndex.setValues(0, len(idx), idx)
 
     def updateData(self, obj, prop):
-        if prop in ("Color", "SymbolSize") and hasattr(self, "coords"):
+        if prop in ("Color", "SymbolSize", "ConeAngle") and hasattr(self, "coords"):
             self._rebuild()
 
     def getDisplayModes(self, vobj):
@@ -246,17 +311,54 @@ def _scene_anchor(doc):
     return FreeCAD.Vector(bb.Center.x, bb.Center.y, bb.ZMax + bb.DiagonalLength * 0.5), bb.DiagonalLength
 
 
+def change_type(obj, kind):
+    """Işığın türünü değiştirir (Placement, renk, şiddet vb. korunur); yeni türün özellikleri eklenir.
+    Distant -> Point/Spot: konum ve uzaklık sönmesi modele göre ayarlanır, Point/Spot -> Distant: yön korunur."""
+    doc = obj.Document
+    was = getattr(obj, PROP_TYPE, "distant")
+    obj.setEditorMode(PROP_TYPE, 0)
+    setattr(obj, PROP_TYPE, kind)
+    obj.setEditorMode(PROP_TYPE, 2)
+    _Light.add_props(obj, kind)
+    if is_positional(kind) and not is_positional(was):
+        _, diag = _scene_anchor(doc)
+        obj.ReferenceDistance = max(10.0, diag)
+        obj.ShadowRadius = diag * 0.02
+        obj.SymbolSize = max(50.0, diag * (0.3 if kind == "spot" else 0.12))
+    elif not is_positional(kind) and is_positional(was):
+        obj.SymbolSize = max(100.0, _scene_anchor(doc)[1] * 0.4)
+    if obj.Label in [v["label"] for v in TYPES.values()]:
+        obj.Label = TYPES[kind]["label"]
+    try:
+        vp = obj.ViewObject.Proxy
+        vp._rebuild()
+    except Exception:
+        pass
+    return obj
+
+
 def create(doc, kind="distant"):
     """Belgeye bir ışık nesnesi ekler (varsayılan: modelin üstünde, hafif eğik, aşağıya bakan)."""
     import FreeCAD
-    names = dict(distant="DistantLight")
+    names = dict(distant="DistantLight", point="PointLight", spot="SpotLight")
     obj = doc.addObject("App::GeometryPython", names.get(kind, "Light"))
     _Light(obj, kind)
     obj.Label = TYPES[kind]["label"]
     pos, diag = _scene_anchor(doc)
     rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), 35.0) * FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), 40.0)
-    obj.Placement = FreeCAD.Placement(pos, rot)
-    obj.SymbolSize = max(100.0, diag * 0.4)
+    if is_positional(kind):
+        # konumlu ışık: modelin üstünde, biraz yanında; spot model merkezine bakar, uzaklık sönmesi modele göre ayarlı gelir
+        center = FreeCAD.Vector(pos.x, pos.y, pos.z - diag * 0.5)
+        lp = FreeCAD.Vector(center.x + diag * 0.35, center.y - diag * 0.35, center.z + diag * 0.9)
+        v = center - lp
+        rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, -1), v)                  # yerel -Z, merkeze doğru
+        obj.Placement = FreeCAD.Placement(lp, rot)
+        obj.ReferenceDistance = max(10.0, v.Length)
+        obj.ShadowRadius = diag * 0.02
+        obj.SymbolSize = max(50.0, diag * (0.3 if kind == "spot" else 0.12))
+    else:
+        obj.Placement = FreeCAD.Placement(pos, rot)
+        obj.SymbolSize = max(100.0, diag * 0.4)
     try:
         import FreeCADGui as Gui
         if obj.ViewObject is not None:

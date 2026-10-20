@@ -429,12 +429,24 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     lights = []                                              # (yön, doğrusal renk, güç, gölge?)
     soft_deg = []                                            # ışık başına yumuşak gölge açısı (derece; 0 = sert)
     aff = []                                                 # ışık başına (yüzeyi aydınlatır?, parlama verir?)
+    lpos = []                                                # konumlu (Point/Spot) ışıkta ışık konumu (sahne içi), yönlüde None
+    lsp = []                                                 # konumlu ışığın özellikleri (eksen, koni, sönme, yarıçap)
     _obj_l = getattr(S, "_OBJ_LIGHTS", None)                  # ışık nesneleri (lightobj.apply_to_settings); None = panelin klasik ışıkları
     _src = list(_obj_l) if _obj_l is not None else list(S.LIGHTS)[:3]
     for lt in ([] if (env_light and not bool(S.ENV_KEEP_LIGHTS) and _obj_l is None) else _src[:16]):
         if not lt.get("on", True) or float(lt["power"]) <= 0.0:
             continue
-        if "wdir" in lt:
+        lp_, ls_ = None, None
+        if lt.get("kind") in ("point", "spot"):
+            lp_ = np.array(lt["wpos"], dtype=np.float64) - scene.center
+            Ld = np.array([0.0, 0.0, 1.0])                       # yer tutucu: konumlu ışıkta yön noktaya göre hesaplanır
+            ax_ = _norm(np.array(lt.get("axis", (0.0, 0.0, -1.0)), dtype=np.float64))
+            half_ = np.radians(max(0.5, min(float(lt.get("cone", 45.0)), 178.0)) / 2.0)
+            in_ = max(0.0, half_ - np.radians(max(0.0, float(lt.get("edge", 10.0)))))
+            ls_ = dict(spot=lt.get("kind") == "spot", axis=ax_, co=float(np.cos(half_)), ci=float(np.cos(in_)),
+                       fall=str(lt.get("falloff", "inverse_square")), ref=max(1e-6, float(lt.get("ref", scene.diag))),
+                       rad=max(0.0, float(lt.get("radius", 0.0))))
+        elif "wdir" in lt:
             Ld = _norm(np.array(lt["wdir"], dtype=np.float64))   # ışık nesnesi: dünya uzayında ışığa doğru yön
         elif "dir" in lt:
             # FreeCAD'in ışık yönü: kamera uzayında, ışığın GİTTİĞİ yön (x sağ, y yukarı, z gözlemciye doğru)
@@ -445,8 +457,10 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             Ld = _norm(-fwd * (np.cos(vv) * np.cos(hh)) + right * (np.cos(vv) * np.sin(hh)) + up * np.sin(vv))
         lights.append((Ld, np.array(lt["color"], dtype=np.float64) ** 2.2, float(lt["power"]),
                        bool(lt.get("shadow", False)) and shadows))
-        soft_deg.append(float(lt.get("soft", S.SOFT_SHADOW)))
+        soft_deg.append(0.0 if lp_ is not None else float(lt.get("soft", S.SOFT_SHADOW)))
         aff.append((1.0 if lt.get("diffuse", True) else 0.0, 1.0 if lt.get("spec", True) else 0.0))
+        lpos.append(lp_)
+        lsp.append(ls_)
     if env_light and bool(S.ENV_SUN) and env.sun is not None:
         sd = env.sun["dir"]
         a_ = np.radians(env_rot)                              # harita dönüşü: lookup'taki boylam kaymasıyla uyumlu
@@ -455,12 +469,29 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         lights.append((_norm(sd), np.maximum(env.sun["power"], 0.0) * env_i, 1.0, shadows))
         soft_deg.append(float(S.SOFT_SHADOW))
         aff.append((1.0, 1.0))
+        lpos.append(None)
+        lsp.append(None)
     soft_r = float(S.SOFT_SHADOW)
     soft_fast = str(S.SOFT_METHOD) != "sampled"
     soft_on = shadows and any(lt[3] and soft_deg[i_] > 0.0 for i_, lt in enumerate(lights)) and (soft_fast or scene.count <= int(S.SOFT_MAX_TRIS))
     sample_dirs = {}                                         # ışık -> gölge örnek yönleri (0 = merkez); yumuşak gölgede ışık diski üzerinde
     for li_, lt_ in enumerate(lights):
         Ld_ = lt_[0]
+        if lpos[li_] is not None:                            # konumlu ışık: örnekler ışık konumları (yarıçaplı kürenin içi)
+            R_ = lsp[li_]["rad"]
+            K_ = max(4, min(32, int(S.SOFT_SAMPLES)))
+            if not lt_[3] or R_ <= 0.0:
+                sample_dirs[li_] = [lpos[li_]]
+            else:
+                ps_ = [lpos[li_]]
+                for i_ in range(K_ - 1):                     # Fibonacci küresi (yüzeye yakın, içine doğru değişen yarıçap)
+                    zz_ = 1.0 - 2.0 * (i_ + 0.5) / (K_ - 1)
+                    rr_ = np.sqrt(max(0.0, 1.0 - zz_ * zz_))
+                    th_ = i_ * 2.399963 + 0.7 * li_
+                    kk_ = R_ * (0.55 + 0.45 * ((i_ * 0.618034) % 1.0))
+                    ps_.append(lpos[li_] + kk_ * np.array([rr_ * np.cos(th_), rr_ * np.sin(th_), zz_]))
+                sample_dirs[li_] = ps_
+            continue
         if not (soft_on and lt_[3] and soft_deg[li_] > 0.0) or soft_fast:
             sample_dirs[li_] = [Ld_]
             continue
@@ -615,7 +646,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         if len(gcache) > 160:
             gcache.clear()
         for li, lt in enumerate(lights):
-            if lt[3]:
+            if lt[3] and lpos[li] is None:
                 for si, dsi in enumerate(sample_dirs[li]):
                     gk = (dsi.tobytes(), bool(S.GLASS), G_sh)
                     if gk not in gcache:
@@ -626,7 +657,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     ao_on = bool(S.AO) and not brute and scene.count > 0 and int(S.AO_SAMPLES) > 0 and float(S.AO_STRENGTH) > 0.0
     env_vis = env_light and not brute and scene.count > 0 and int(S.ENV_SAMPLES) > 0
     ao_on = ao_on or env_vis
-    if (secondary or ao_on) and not brute:
+    pos_shadow = shadows and not brute and scene.count > 0 and any(lt[3] and lpos[i_] is not None for i_, lt in enumerate(lights))
+    if (secondary or ao_on or pos_shadow) and not brute:
         say(T("yansıma/saydamlık hızlandırıcısı hazırlanıyor..."))
         if "clusters" not in cache:
             cache["clusters"] = _Clusters(scene)
@@ -699,6 +731,21 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         """Yüzey noktalarından li. ışığın si. örnek yönüne giden yol: 0 = açık, 1 = opak engel, 2 = cam engel."""
         Ld = sample_dirs[li][si]
         out = np.zeros(len(Pl), dtype=np.int8)
+        if lpos[li] is not None:                                # konumlu ışık: noktadan ışık konumuna gölge ışını
+            dv = Ld - Pl
+            dd = np.sqrt(_dot(dv, dv))
+            Dn = dv / np.maximum(dd, 1e-12)[:, None]
+            tmx = np.maximum(dd - eps * 2.0, 0.0)
+            if brute:
+                t_, i_ = _closest(scene, Pl, Dn, allids)
+                hit = (i_ >= 0) & (t_ < tmx)
+            else:
+                t_, i_ = _closest_general(scene, clusters, Pl, Dn, tk, float(tmx.max()) if len(tmx) else 0.0)
+                hit = (i_ >= 0) & (t_ < tmx)
+            gl_ = hit & (alpha_t[np.maximum(i_, 0)] < 0.5) & bool(S.GLASS)
+            out[hit] = 1
+            out[gl_] = 2
+            return (out, np.where(hit, t_, np.inf)) if want_t else out
         Dg = np.broadcast_to(Ld, (len(Pl), 3))
         if brute:
             if S.GLASS and has_glass:
@@ -917,11 +964,29 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                     lit += env.sh_light(_rot_z(nrm, -env_rot)) * env_i
             spec_sum = np.zeros((len(hi), 3))
             for li, (Ld, lcol, power, cast) in enumerate(lights):
+                if lpos[li] is not None:                         # konumlu ışık: yön, uzaklık sönmesi ve koni noktaya göre
+                    dv_ = lpos[li] - P
+                    dd_ = np.maximum(np.sqrt(_dot(dv_, dv_)), 1e-9)
+                    Ld = dv_ / dd_[:, None]
+                    sp_ = lsp[li]
+                    if sp_["fall"] == "inverse_square":
+                        att_ = np.minimum((sp_["ref"] / dd_) ** 2, 16.0)
+                    elif sp_["fall"] == "linear":
+                        att_ = np.minimum(sp_["ref"] / dd_, 16.0)
+                    else:
+                        att_ = np.ones(len(dd_))
+                    if sp_["spot"]:
+                        cs_ = -_dot(Ld, sp_["axis"])
+                        x_ = np.clip((cs_ - sp_["co"]) / max(sp_["ci"] - sp_["co"], 1e-6), 0.0, 1.0)
+                        att_ = att_ * (x_ * x_ * (3.0 - 2.0 * x_))
+                    power = power * att_
                 ndl = np.clip(_dot(nrm, Ld), 0, None)
                 lit_pos = ndl > 0                                # ışığa bakan yüzler (gölge çarpanından önce)
                 vfac = None                                      # ışık görünürlüğü (kesirli gölgede parlama da aynı oranda azalır)
                 if cast:
                     lit_idx = np.nonzero(ndl > 0)[0]
+                    if lpos[li] is not None:
+                        lit_idx = lit_idx[power[lit_idx] > 1e-4]   # konisinin dışındaki noktalara gölge ışını atılmaz
                     if len(lit_idx):
                         vis_l = None
                         if ss_on and depth == 0 and li in ss_buf:      # hızlı yumuşak gölge: birincil isabetlerde hazır tampon
@@ -951,7 +1016,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 sp = np.clip(_dot(nrm, Hh), 0, None) ** shin_k * lit_pos
                 if vfac is not None:
                     sp = sp * vfac                               # önceden vis>0 iken parlama tam şiddetteydi: gölge kenarında basamak/patlama yapıyordu
-                spec_sum += (aff[li][1] * spec_k * min(power / 0.7, 1.5) * sp)[:, None] * lcol
+                spec_sum += (aff[li][1] * spec_k * np.minimum(power / 0.7, 1.5) * sp)[:, None] * lcol
             if has_mat:                                         # metal: vurgu yüzey renginde
                 spec_sum = spec_sum * (1.0 - metal_k[:, None] + metal_k[:, None] * np.minimum(albedo_raw * 1.4, 1.0))
             surf = albedo * lit + spec_sum
