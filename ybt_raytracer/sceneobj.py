@@ -11,7 +11,7 @@ MARK = "YBTSceneMark"
 
 
 def icon(active=True):
-    return os.path.join(_HERE, "icons", "scene.svg" if active else "scene_off.svg")
+    return os.path.join(_HERE, "icons", "scene.png" if active else "scene_off.png")
 
 
 def is_scene(o):

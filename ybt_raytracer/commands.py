@@ -263,15 +263,15 @@ class _Cmd(object):
 def _commands():
     return {
         "YBT_Render": _Cmd("render.png", "YBT Raytracer", "Render ayar panelini açar (Render düğmesiyle görüntü alınır)", open_panel),
-        "YBT_NewScene": _Cmd("scene.svg", "YBT Yeni Sahne", "Ağaçta yeni bir YBT sahnesi (YBTray01...) yaratır; ışıklar bunun altına eklenir", new_scene),
+        "YBT_NewScene": _Cmd("scene.png", "YBT Yeni Sahne", "Ağaçta yeni bir YBT sahnesi (YBTray01...) yaratır; ışıklar bunun altına eklenir", new_scene),
         "YBT_DistantLight": _Cmd("distant_light.png", "YBT Distant Light", "Sahneye güneş tipi (paralel) ışık ekler", add_distant_light),
         "YBT_PointLight": _Cmd("point_light.png", "YBT Point Light", "Sahneye konumlu, her yöne yayılan ışık ekler (uzaklıkla söner)", add_point_light),
         "YBT_SpotLight": _Cmd("spot_light.png", "YBT Spot Light", "Sahneye konumlu, koni içine yayılan ışık ekler", add_spot_light),
         "YBT_Camera": _Cmd("camera.png", "YBT Kamera", "Sahneye 3B görünümün bakışıyla kamera ekler; etkin kameradan render alınır", add_camera),
-        "YBT_LookThrough": _Cmd("look_camera.svg", "YBT Kameradan Bak", "3B görünümü seçili (ya da etkin) kameranın bakışına getirir", look_through_camera),
+        "YBT_LookThrough": _Cmd("look_through.png", "YBT Kameradan Bak", "3B görünümü seçili (ya da etkin) kameranın bakışına getirir", look_through_camera),
         "YBT_CameraUpdate": _Cmd("view_to_camera.png", "YBT Kamerayı Görünüme Eşitle", "Seçili (ya da etkin) kamerayı şu anki 3B görünümle aynı yapar", update_camera_from_view),
-        "YBT_CameraProperties": _Cmd("camera_props.svg", "YBT Kamera Özellikleri", "Kamera nesnelerinin özelliklerini düzenler (lens, kadraj, alan derinliği)", open_camera_properties),
-        "YBT_LightProperties": _Cmd("light_props.svg", "YBT Işık Özellikleri", "Işık nesnelerinin özelliklerini düzenler (renk, şiddet, gölge)", open_light_properties),
+        "YBT_CameraProperties": _Cmd("camera_props.png", "YBT Kamera Özellikleri", "Kamera nesnelerinin özelliklerini düzenler (lens, kadraj, alan derinliği)", open_camera_properties),
+        "YBT_LightProperties": _Cmd("light_props.png", "YBT Işık Özellikleri", "Işık nesnelerinin özelliklerini düzenler (renk, şiddet, gölge)", open_light_properties),
         "YBT_Materials": _Cmd("surface_editor.png", "YBT Malzemeler", "Malzemeler (Surface) penceresini açar", open_materials),
         "YBT_Options": _Cmd("options.png", "YBT Seçenekler", "İçerik klasörü ve varsayılan ayarlar", open_options),
     }
