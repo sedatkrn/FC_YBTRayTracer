@@ -26,9 +26,17 @@ def _view_widget():
     """Etkin 3B görünümün Qt bileşeni (üzerine yer paylaşımı eklenecek)."""
     import FreeCADGui as Gui
     QtCore, QtGui = _qt()
+    import FreeCAD
     mw = Gui.getMainWindow()
     mdi = mw.findChild(QtGui.QMdiArea)
-    sub = mdi.activeSubWindow() if mdi is not None else None
+    if mdi is None:
+        return None
+    sub = mdi.currentSubWindow() or mdi.activeSubWindow()
+    if sub is None:                                          # odak başka yerdeyse (panel vb.): belgenin görünür 3B görünümü
+        name = FreeCAD.ActiveDocument.Name if FreeCAD.ActiveDocument else ""
+        cands = [s for s in mdi.subWindowList() if s.widget() is not None and s.isVisible()]
+        by_name = [s for s in cands if name and name in s.windowTitle()]
+        sub = (by_name or cands or [None])[0]
     return sub.widget() if sub is not None else None
 
 
