@@ -3,6 +3,7 @@
 
 InitGui.py bu modülü içe aktarıp `register()` çağırır. Komutlar:
   YBT_Render      ayar panelini açar (render panelin 'Render' düğmesiyle başlar)
+  YBT_QuickRender  render'ı doğrudan 3B görünümün üzerinde, kameranın kadrajında yapar (panel açılmaz)
   YBT_NewScene    ağaçta yeni "YBTray0N" sahnesi yaratır (ışıklar altında durur)
   YBT_DistantLight  sahneye Distant (güneş tipi) ışık nesnesi ekler
   YBT_Camera      sahneye 3B görünümün bakışıyla yeni kamera nesnesi ekler (etkin kamera olur; render bundan alınır)
@@ -23,7 +24,7 @@ Kullanıcı JSON dosyaları ve nesne özellikleri (YBTMaterial / YBTInclude) bu 
 """
 import os
 
-COMMANDS = ("YBT_Render", "YBT_NewScene", "YBT_DistantLight", "YBT_PointLight", "YBT_SpotLight", "YBT_Camera", "YBT_LookThrough", "YBT_CameraUpdate", "YBT_CameraProperties", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
+COMMANDS = ("YBT_Render", "YBT_QuickRender", "YBT_NewScene", "YBT_DistantLight", "YBT_PointLight", "YBT_SpotLight", "YBT_Camera", "YBT_LookThrough", "YBT_CameraUpdate", "YBT_CameraProperties", "YBT_LightProperties", "YBT_Materials", "YBT_Options")
 TOOLBAR = "YBT Raytracer"
 MENU = "YBT Raytracer"
 _PARAM = "User parameter:BaseApp/Preferences/Mod/FCYBTRayTracer"      # i18n.py ile aynı grup
@@ -81,6 +82,11 @@ def open_panel():
     from . import ui
     ui.main()
     return _panel()
+
+
+def quick_render():
+    from . import quickrender
+    quickrender.run()
 
 
 def open_materials():
@@ -263,6 +269,7 @@ class _Cmd(object):
 def _commands():
     return {
         "YBT_Render": _Cmd("render.png", "YBT Raytracer", "Render ayar panelini açar (Render düğmesiyle görüntü alınır)", open_panel),
+        "YBT_QuickRender": _Cmd("quick_render.png", "YBT Hızlı Render", "Render'ı doğrudan 3B görünümde, kameranın kadrajında yapar (önce kaba, sonra tam kalite; Esc: kapat)", quick_render),
         "YBT_NewScene": _Cmd("scene.png", "YBT Yeni Sahne", "Ağaçta yeni bir YBT sahnesi (YBTray01...) yaratır; ışıklar bunun altına eklenir", new_scene),
         "YBT_DistantLight": _Cmd("distant_light.png", "YBT Distant Light", "Sahneye güneş tipi (paralel) ışık ekler", add_distant_light),
         "YBT_PointLight": _Cmd("point_light.png", "YBT Point Light", "Sahneye konumlu, her yöne yayılan ışık ekler (uzaklıkla söner)", add_point_light),
