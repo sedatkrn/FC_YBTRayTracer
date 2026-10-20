@@ -13,4 +13,4 @@ Modüller:
   api            arayüzsüz API: render_document, prepare_scene, orbit_cameras, turntable (animasyon), pick_object
   pick           tıkla-seç: görüntüdeki piksel -> nesne (önizleme tıklaması, boya kovası)
 """
-__version__ = "1.5.0"
+__version__ = "1.5.1"

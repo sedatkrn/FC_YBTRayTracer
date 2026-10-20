@@ -1,6 +1,10 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.5.1 (2026-10-20):
+
+- **API**: `api.camera_from_view()` çıktısı (kamera, en/boy oranı) çifti artık doğrudan `camera=` olarak verilebilir; `render_document` oranı da çiftten alır. Arayüzsüz FreeCAD'de ya da açık 3B görünüm yokken anlaşılır hata mesajı verir (`make_camera` / `fit_camera` kullanın).
+
 v1.5.0 (2026-10-20):
 
 - AO şiddeti varsayılanı %30 → %50.
