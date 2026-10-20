@@ -221,9 +221,10 @@ def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=Fals
     cov_out (liste): "tek kez" dokuda görüntünün kapladığı yerleri (n,) 0..1 olarak ekler."""
     Q, nl, lod, per, hext = _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang)
     n = len(Pc)
-    smp = (lambda u, v, l: _sample_gray(tx, u, v, l)) if gray else tx.sample
-    once = bool(getattr(tx, "clamp", False))
     fitp = bool(tp.get("fit")) and hext is not None
+    nst = not fitp                                              # stokastik döşeme: tek görüntü (sığdır) kullanımında kapalı
+    smp = (lambda u, v, l: _sample_gray(tx, u, v, l, nst)) if gray else (lambda u, v, l: tx.sample(u, v, l, nst))
+    once = bool(getattr(tx, "clamp", False))
     shift = 0.5 if (once and not fitp) else 0.0                 # tek kez / kenar: görüntü nesne merkezinde ortalanır
     if tp["proj"] != "cubic":
         u, v, _k, _x = _tex_uv(tx, tp, Q, per, hext, scene, nl)
