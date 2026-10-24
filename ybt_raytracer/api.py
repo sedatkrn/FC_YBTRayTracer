@@ -177,9 +177,11 @@ def _doc(doc):
 
 # ------------------------------------------------------------------ render
 def render_scene(scene, camera, width=None, height=None, aspect=None, out_path=None, settings=None,
-                 fc_lights=False, progress=None, tick=None, stage=None, **kw):
+                 fc_lights=False, progress=None, tick=None, stage=None, doc=None, **kw):
     """Hazır Scene'den tek kare. Döner: (h, w, 3) uint8 dizi (out_path verilirse PNG de yazılır).
     camera: make_camera/fit_camera/orbit_cameras çıktısı (ya da pos+target(+fov) sözlüğü).
+    doc: ışık nesnelerinin okunacağı belge (None = aktif belge). LIGHT_MODE="objects" iken ve LIGHTS
+         verilmediyse belgedeki ışık nesneleri kullanılır; nesne yoksa varsayılan ışıklar.
     width/height: piksel; yalnız biri verilirse diğeri aspect'ten (varsayılan 16:9) hesaplanır.
     settings: ayar sözlüğü; kw: ayarlar (floor=True ...) -- ikisi birleştirilir."""
     from .render import render
@@ -193,11 +195,25 @@ def render_scene(scene, camera, width=None, height=None, aspect=None, out_path=N
             if K not in given:
                 values[K] = v
     cam = _as_camera(camera)
+    own_lights = "LIGHTS" in {str(k).upper() for k in values}  # ışıklar elle verildiyse ışık nesneleri devreye girmez
     with _Override(values):
         asp = aspect or 16.0 / 9.0
         w = int(width if width else (round(height * asp) if height else S.WIDTH))
         h = int(height if height else max(1, round(w / asp)))
-        out = render(scene, cam, w, h, shadows=S.SHADOWS, progress=progress, tile=S.TILE, tick=tick, stage=stage)
+        prev_obj = getattr(S, "_OBJ_LIGHTS", None)
+        try:
+            S._OBJ_LIGHTS = None
+            if not own_lights:                              # LIGHT_MODE="objects": belgedeki ışık nesneleri (arayüzdeki gibi)
+                try:
+                    d = _doc(doc)
+                except RuntimeError:
+                    d = None
+                if d is not None:
+                    from .lightobj import apply_to_settings
+                    apply_to_settings(d)
+            out = render(scene, cam, w, h, shadows=S.SHADOWS, progress=progress, tile=S.TILE, tick=tick, stage=stage)
+        finally:
+            S._OBJ_LIGHTS = prev_obj
     if out is None:
         return None
     if out_path:
@@ -217,7 +233,8 @@ def render_document(doc=None, out_path=None, width=None, height=None, camera=Non
               oranı; arayüzsüzde sahneyi sığdıran izometrik kamera, oran 16:9 (aspect ile değiştirilir)
     scene     prepare_scene çıktısı (verilirse belge yeniden taranmaz/üçgenlenmez)
     tess_cache  boş sözlük: hareketli parça animasyonunda üçgenleme önbelleği (modül açıklaması)
-    fc_lights True: FreeCAD'in Tercihler > Display > Light Sources ışıklarını kullan
+    fc_lights True: FreeCAD'in Tercihler > Display > Light Sources ışıklarını kullan (False ve LIGHTS verilmediyse
+              LIGHT_MODE="objects" iken belgedeki ışık nesneleri kullanılır)
     **kw      ayarlar (floor=True, shadows=False, aa=3, tess_factor=0.002 ...)"""
     doc = _doc(doc)
     values = dict(settings or {})
@@ -240,7 +257,7 @@ def render_document(doc=None, out_path=None, width=None, height=None, camera=Non
     if camera is None:                                      # arayüzsüz: sahneyi sığdıran izometrik kamera
         camera = fit_camera(scene)
     return render_scene(scene, camera, width=width, height=height, aspect=aspect, out_path=out_path,
-                        settings=values, fc_lights=fc_lights, progress=progress, tick=tick, stage=stage)
+                        settings=values, fc_lights=fc_lights, progress=progress, tick=tick, stage=stage, doc=doc)
 
 
 def pick_object(scene, camera, width, height, x, y):
