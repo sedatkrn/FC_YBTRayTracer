@@ -62,6 +62,7 @@ FLOOR = False           # sanal zemin: sahnenin en alt noktasına (+ ofset) yata
 FLOOR_COLOR = (0.82, 0.82, 0.82)
 FLOOR_OPACITY = 1.0    # 1 = opak, 0 = görünmez
 FLOOR_REFLECT = 0.0    # 0..1; Fresnel'li yansıma (eğik bakışta güçlenir)
+FLOOR_MATERIAL = ""     # "" = yok; Surface malzemesi adı: zemin rengi, doku katmanları, bump, parlaklık, yansıma malzemeden gelir
 FLOOR_TEXTURE = ""      # "" = düz renk; hazır doku anahtarı (travertin, cakil, mermer, tas_duvar, terrakota, siva, ahsap) ya da dosya yolu
 FLOOR_TEX_SCALE = 0.0  # mm; dokunun (orijinal görüntünün) zemindeki genişliği; 0 = otomatik (sahne köşegeninin %40'ı)
 FLOOR_OFFSET = 0.0     # mm; sahnenin en alt z değerine eklenir (eksi = aşağı)

@@ -492,8 +492,26 @@ def main(lang=None):
     fgl.addWidget(cb_ft, 3, 1)
     fgl.addWidget(QtGui.QLabel(T("Doku boyu")), 3, 2)
     fgl.addWidget(sp_fs, 3, 3)
+    # Surface malzemesi: T düğmesi Malzemeler penceresini açar ve "Sanal zemin" satırını seçer
+    lbl_fmat = QtGui.QLabel("")
+    bt_fmat = QtGui.QPushButton("T")
+    bt_fmat.setFixedSize(28, 18)
+    bt_fmat.setStyleSheet("QPushButton { padding: 0px; font-size: 9px; font-weight: bold; }")
+    bt_fmat.setToolTip(T("Zemine Surface malzemesi ata / düzenle (renk, katmanlı doku, bump, yansıma): Malzemeler penceresini açar"))
+
+    def floor_mat_refresh():
+        n_ = str(getattr(S, "FLOOR_MATERIAL", "") or "")
+        lbl_fmat.setText((T(n_) if n_ in _mats.BUILTIN else n_) if n_ else T("Yok (renk / doku ayarları)"))
+        bt_fmat.setStyleSheet("QPushButton { padding: 0px; font-size: 9px; font-weight: bold; %s}"
+                              % ("background-color: #5b7fa6; color: white; " if n_ else ""))
+    floor_mat_refresh()
+    fmr = QtGui.QHBoxLayout()
+    fmr.addWidget(lbl_fmat, 1)
+    fmr.addWidget(bt_fmat)
+    fgl.addWidget(QtGui.QLabel(T("Yüzey")), 4, 0)
+    fgl.addLayout(fmr, 4, 1, 1, 3)
     lv.insertWidget(1, fbox)                                    # Kalite ile Işık arasına
-    floor_widgets = [cb_fl, sp_fo, sp_fr, sp_fz, cb_ft, sp_fs]
+    floor_widgets = [cb_fl, sp_fo, sp_fr, sp_fz, cb_ft, sp_fs, bt_fmat]
 
     def sync_floor(*_a):
         on = ck_fl.isChecked()
@@ -1471,6 +1489,20 @@ def main(lang=None):
             btn_m.setText(txt)
             btn_m.setEnabled(True)
     btn_m.clicked.connect(open_mats)
+
+    def open_floor_mat(*_a):
+        """Zeminin T düğmesi: Malzemeler penceresini aç, 'Sanal zemin' satırını seç."""
+        if state["busy"]:
+            return
+        open_mats()
+        sd = getattr(FreeCAD, "_ybt_surface_dlg", None)
+        try:
+            if sd is not None and "floor" in sd._ybt_api:
+                sd._ybt_api["floor"]()
+        except Exception:
+            pass
+    bt_fmat.clicked.connect(open_floor_mat)
+    dlg._ybt_floor_refresh = floor_mat_refresh
 
     def on_preview_click(u, v, ctrl):
         """Önizlemede tıklanan nesneyi bul; Malzemeler penceresinde seç (boya kovası açıksa malzemeyi ata)."""

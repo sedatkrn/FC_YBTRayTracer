@@ -1,6 +1,13 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.6.1 (2026-10-24):
+
+- **Sanal zemine Surface malzemesi**: Render penceresi > Sanal Zemin'de "Yüzey" satırı ve T düğmesi; Malzemeler penceresini açar, listenin başındaki "Sanal zemin" satırını seçer. Zemin malzemenin rengini, katmanlı dokularını (görüntü / prosedürel), bump'ını, parlaklığını ve yansımasını kullanır (yansıma: malzeme ile zemin ayarından büyük olanı). Belgeyle saklanır (kullanıcı malzemesinin tanımı da). Malzemesiz zemin eskisi gibi (çıktı aynı).
+- **Anizotropik doku süzme**: eğik bakılan yüzeylerde (zemin dokusu ve malzemelerin görüntü katmanları) mip düzeyi pikselin kısa izine göre seçilir, uzun iz boyunca birkaç örnek ortalanır; uzak zemin bulanık lekeye dönmez. Dik bakılan yüzeylerde çıktı aynı.
+- Düzeltme: Surface penceresinde Ad alanı boşken yapılan değişiklikler (doku düzenleyici dahil) seçili nesnelere sessizce uygulanmıyordu; artık otomatik ad verilir ("Yeni yüzey N" / "Zemin yüzeyi").
+- PNG'ye gömülen özette zemin doku boyu ve zemin malzemesi de yazılır.
+
 v1.6.0 (2026-10-24):
 
 - **Resim geçmişi**: ana pencerenin sağında son 10 render alt alta küçük resim olarak listelenir (en yeni üstte; ad: <belge>_001, _002 ...). Tıklayınca önizlemede gösterilir (önceki/sonraki render karşılaştırması); sağ tık: Farklı kaydet / Resmi aç (FreeCAD'de yeni sekmede, Image tezgâhı). Resimler kalıcı kullanıcı klasöründe saklanır (<UserAppData>/YBTRayTracer/history), FreeCAD kapanıp açılınca da durur.

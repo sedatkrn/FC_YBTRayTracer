@@ -145,7 +145,8 @@ def _tex_space(scene, tp, Pc, ng, tid):
         hext = None
     else:
         cen, he = scene.obj_bounds()
-        oi = scene.oid[tid]
+        inside = tid < scene.count                              # sanal zemin (tid = count) nesne değildir: dünya koordinatı
+        oi = np.where(inside, scene.oid[np.minimum(tid, scene.count - 1)], -1)
         okk = (oi >= 0) & (oi < len(cen))
         okk[okk] = ~np.isnan(cen[oi[okk], 0])
         C = np.tile(-scene.center, (n, 1))
@@ -161,12 +162,14 @@ def _tex_space(scene, tp, Pc, ng, tid):
     return Q / tp["s"], nl, hext
 
 
-def _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang):
-    """Görüntü dokusu için: Q, dönmüş normal, mip düzeyi, tekrar genişliği, nesne boyutu."""
+def _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, foot=None):
+    """Görüntü dokusu için: Q, dönmüş normal, mip düzeyi, tekrar genişliği, nesne boyutu.
+    foot: pikselin yüzeydeki izi (verilmezse izotropik: bakış eğikliğiyle büyütülmüş)."""
     Q, nl, hext = _tex_space(scene, tp, Pc, ng, tid)
     per = tw * tx.span
-    cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
-    foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
+    if foot is None:
+        cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.2)
+        foot = dist * pix_ang / cosg * (1.0 + 3.0 * rn)
     if tp.get("fit") and hext is not None:                    # nesneye sığdır: görüntü genişliği = nesnenin (büyük iki) boyutu
         twe = 2.0 * np.sort(hext, axis=1)[:, 1:].mean(1) * float(np.mean(tp["s"]))
         lod = np.log2(np.maximum(foot / np.maximum(twe / tx.base_w, 1e-12), 1.0))
@@ -219,10 +222,10 @@ def _tex_uv(tx, tp, Q, per, hext, scene, nl=None):
     return Q[:, a_] / per, Q[:, b_] / (per * tx.aspect), "plane", None
 
 
-def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=False, cov_out=None):
+def _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=False, cov_out=None, foot=None):
     """Doku değeri: renk (n,3) doğrusal ya da gray=True ise parlaklık (n,) 0..1.
     cov_out (liste): "tek kez" dokuda görüntünün kapladığı yerleri (n,) 0..1 olarak ekler."""
-    Q, nl, lod, per, hext = _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang)
+    Q, nl, lod, per, hext = _tex_setup(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, foot)
     n = len(Pc)
     fitp = bool(tp.get("fit")) and hext is not None
     nst = not fitp                                              # stokastik döşeme: tek görüntü (sığdır) kullanımında kapalı
@@ -302,11 +305,60 @@ def _proc_size(scene, ly, hext, n):
     return np.maximum(hext.max(1) * 0.6, 1e-6 * scene.diag)
 
 
-def _layer_val(scene, ly, kind, Pc, ng, Dh, tid, dist, rn, pix_ang, cov_out=None):
+_AN_TAPS = 4             # anizotropik süzme: eğik yüzeyde pikselin uzun izi boyunca örnek sayısı
+_AN_MIN = 1.5            # iz oranı (1/cos) bunun altındaysa tek örnek (eski, izotropik yol)
+
+
+def _tex_aniso(scene, ly, Pc, ng, Dh, tid, dist, rn, pix_ang, gray, cov_out):
+    """Görüntü katmanı, anizotropik süzmeyle: eğik bakılan yüzeyde mip düzeyi pikselin kısa izine göre seçilir, uzun iz
+    (bakış yönünün yüzeydeki izdüşümü) boyunca _AN_TAPS örnek ortalanır; yüzey uzakta bulanık lekeye dönmez.
+    Dik bakılan pikseller eski tek örnekli yoldan geçer (çıktı aynı)."""
+    tx, tw, tp = ly["tx"], ly["tw"], ly["tp"]
+    n = len(Pc)
+    cosg = np.maximum(np.abs(_dot(ng, Dh)), 0.05)
+    an = np.nonzero(1.0 / cosg > _AN_MIN)[0]
+    if len(an) == 0:
+        return _tex_sample(scene, tx, tw, tp, Pc, ng, Dh, tid, dist, rn, pix_ang, gray=gray, cov_out=cov_out)
+    iso = np.nonzero(1.0 / cosg <= _AN_MIN)[0]
+    out = np.zeros(n) if gray else np.zeros((n, 3))
+    cov_all = np.ones(n) if cov_out is not None else None
+    if len(iso):
+        cv = [] if cov_out is not None else None
+        out[iso] = _tex_sample(scene, tx, tw, tp, Pc[iso], ng[iso], Dh[iso], tid[iso], dist[iso], rn[iso], pix_ang,
+                               gray=gray, cov_out=cv)
+        if cv:
+            cov_all[iso] = cv[0]
+    Pa, na, Da, ta, da, ra = Pc[an], ng[an], Dh[an], tid[an], dist[an], rn[an]
+    f_min = da * pix_ang * (1.0 + 3.0 * ra)                     # pikselin yüzeydeki izinin kısa kenarı
+    f_maj = f_min / cosg[an]                                    # uzun kenar
+    foot = np.maximum(f_min, f_maj / _AN_TAPS)
+    span = np.minimum(f_maj, f_min * _AN_TAPS)
+    td = Da - _dot(Da, na)[:, None] * na                        # uzun kenarın yönü: bakış yönünün yüzeydeki izdüşümü
+    td = td / np.maximum(np.sqrt(_dot(td, td)), 1e-12)[:, None]
+    acc = np.zeros(len(an)) if gray else np.zeros((len(an), 3))
+    cacc = np.zeros(len(an))
+    for k_ in range(_AN_TAPS):
+        o_ = ((k_ + 0.5) / _AN_TAPS - 0.5) * span
+        cv = [] if cov_out is not None else None
+        acc += _tex_sample(scene, tx, tw, tp, Pa + td * o_[:, None], na, Da, ta, da, ra, pix_ang, gray=gray, cov_out=cv, foot=foot)
+        if cv:
+            cacc += cv[0]
+    out[an] = acc / _AN_TAPS
+    if cov_out is not None:
+        cov_all[an] = cacc / _AN_TAPS
+        if getattr(tx, "once", False):
+            cov_out.append(cov_all)
+    return out
+
+
+def _layer_val(scene, ly, kind, Pc, ng, Dh, tid, dist, rn, pix_ang, cov_out=None, aniso=True):
     """Tek katmanın değeri: kind="color" -> (n,3) doğrusal renk; "gray" -> (n,) 0..1 (ters çevirme uygulanmış)."""
     gray = kind != "color"
     if not ly["proc"]:
-        v = _tex_sample(scene, ly["tx"], ly["tw"], ly["tp"], Pc, ng, Dh, tid, dist, rn, pix_ang, gray=gray, cov_out=cov_out)
+        if aniso:
+            v = _tex_aniso(scene, ly, Pc, ng, Dh, tid, dist, rn, pix_ang, gray, cov_out)
+        else:
+            v = _tex_sample(scene, ly["tx"], ly["tw"], ly["tp"], Pc, ng, Dh, tid, dist, rn, pix_ang, gray=gray, cov_out=cov_out)
     else:
         tp = ly["tp"]
         Q, _nl, hext = _tex_space(scene, tp, Pc, ng, tid)
@@ -342,12 +394,12 @@ def _blend(res, v, mode, op):
     return (1.0 - op) * res + op * new if op < 1.0 else new
 
 
-def _stack(scene, layers, base, kind, ctx):
-    """Katmanları alttan üste, blend moduyla yüzey değerinin (base) üzerine uygular."""
+def _stack(scene, layers, base, kind, ctx, aniso=True):
+    """Katmanları alttan üste, blend moduyla yüzey değerinin (base) üzerine uygular. aniso=False: tek örnek (bump türevi)."""
     res = base
     for ly in layers:
         cov = [] if (not ly["proc"] and getattr(ly["tx"], "once", False)) else None
-        val = _layer_val(scene, ly, kind, *ctx, cov_out=cov)
+        val = _layer_val(scene, ly, kind, *ctx, cov_out=cov, aniso=aniso)
         new = _blend(res, val, ly["blend"], ly["op"])
         if cov:                                                   # "tek kez": görüntünün dışında katman etkisiz
             c_ = cov[0] if res.ndim == 1 else cov[0][:, None]
@@ -387,7 +439,7 @@ def _bump_normal(scene, layers, nrm, height, ctx):
     zero = np.zeros(n)
     for sv in _TETRA:
         ctx2 = (Pc + eps[:, None] * sv, ng, Dh, tid, dist, rn, pix_ang)
-        g += sv * _stack(scene, layers, zero, "gray", ctx2)[:, None]
+        g += sv * _stack(scene, layers, zero, "gray", ctx2, aniso=False)[:, None]   # bump: zaten iz boyunda sonlu fark
     g /= (4.0 * eps)[:, None]
     hrel = (height * 0.03 * size_ref)[:, None]                   # kabartı yüksekliği: doku boyunun %3'ü x güç
     nb = nrm - hrel * (g - _dot(g, nrm)[:, None] * nrm)
@@ -485,7 +537,17 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     has_glass = bool((alpha_t < 0.999).any())   # (kanal dokusuyla saydamlık eklenirse aşağıda güncellenir)
     ior = float(min(max(S.IOR, 1.0), 4.0)) if S.REFRACTION else 1.0
     # malzeme tabloları (indeks 0 = malzemesiz üçgen/zemin -> genel ayarlar)
-    mt_ = scene.mtable
+    mt_ = list(scene.mtable)
+    f_mat = None                                              # sanal zeminin Surface malzemesi (varsa tablonun sonuna eklenir)
+    if bool(S.FLOOR) and str(getattr(S, "FLOOR_MATERIAL", "") or ""):
+        try:
+            from .materials import get as _mget
+            f_mat = _mget(str(S.FLOOR_MATERIAL))
+        except Exception:
+            f_mat = None
+        if f_mat is not None:
+            mt_.append(f_mat)
+    f_mid = len(mt_) if f_mat is not None else 0
     dif_tab = np.array([1.0] + [m["diffuse"] for m in mt_])
     spec_tab = np.array([float(S.SPEC)] + [m["spec"] for m in mt_])
     shin_tab = np.array([float(S.SHININESS)] + [_shin(m["gloss"]) for m in mt_])
@@ -511,6 +573,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     f_on = bool(S.FLOOR)
     f_alpha = float(min(max(S.FLOOR_OPACITY, 0.0), 1.0))
     f_refl = float(min(max(S.FLOOR_REFLECT, 0.0), 1.0))
+    if f_mat is not None and refl_on:
+        f_refl = max(f_refl, float(f_mat["refl"]))             # malzemenin yansıması zemine de uygulanır
     if f_on and f_alpha <= S.INVISIBLE_ALPHA:
         f_on = False                                           # görünmez zemin
     has_glass = has_glass or ch_tr
@@ -524,9 +588,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             zc["zmin"] = float(scene.tri[:, :, 2].min())
         zmin_c = zc["zmin"]
         z_floor = zmin_c + float(S.FLOOR_OFFSET)
-        f_col = np.array(S.FLOOR_COLOR, dtype=np.float64)
+        f_col = np.array(f_mat["color"] if (f_mat is not None and f_mat["color"] is not None) else S.FLOOR_COLOR, dtype=np.float64)
         n_ext = np.concatenate([scene.n_unit, [[0.0, 0.0, 1.0]]])
-        mid_ext = np.concatenate([scene.mid, [0]])
+        mid_ext = np.concatenate([scene.mid, [f_mid]])
         col_ext = np.concatenate([scene.colors, [f_col]])
         alpha_ext = np.concatenate([alpha_t, [f_alpha]])
         f_rad2 = (float(S.FLOOR_RADIUS) * scene.diag) ** 2
@@ -846,16 +910,25 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             albedo = col_ext[tid] ** 2.2                        # sRGB -> doğrusal
             if f_on and ftex is not None:
                 isf0 = tid == fid
-                if isf0.any():                                  # zemin dokusu: pikselin izdüşümüne göre mip düzeyi
+                if isf0.any():                                  # zemin dokusu: anizotropik süzme (eğik bakışta bulanıklaşmasın)
                     Pf = P[isf0] + scene.center
-                    cosg = np.maximum(np.abs(Dh[isf0, 2]), 0.2)
+                    Df = Dh[isf0]
+                    cosg = np.maximum(np.abs(Df[:, 2]), 0.05)
                     dist = tb[hi][isf0] if persp else np.ones(int(isf0.sum()))
-                    foot = dist * pix_ang / cosg * (1.0 + 3.0 * RN[hi][isf0])
-                    lod = np.log2(np.maximum(foot / texel, 1.0))
+                    f_min = dist * pix_ang * (1.0 + 3.0 * RN[hi][isf0])   # pikselin zemindeki izinin kısa kenarı
+                    f_maj = f_min / cosg                         # uzun kenar: bakış yönünde, eğiklikle uzar
+                    # mip düzeyi kısa kenara (en çok N_AN örnekle kapatılabilecek kadar) göre; uzun kenar boyunca N_AN örnek ortalanır
+                    N_AN = 6
+                    lod = np.log2(np.maximum(np.maximum(f_min, f_maj / N_AN) / texel, 1.0))
                     per = tex_w * ftex.span                      # bir tekrarın genişliği
-                    u = Pf[:, 0] / per
-                    v = Pf[:, 1] / (per * ftex.aspect)
-                    albedo[isf0] = ftex.sample(u, v, lod)
+                    hd = Df[:, :2]
+                    hd = hd / np.maximum(np.sqrt((hd * hd).sum(1)), 1e-12)[:, None]   # uzun kenarın zemindeki yönü
+                    span_ = np.minimum(f_maj, f_min * N_AN)      # örneklerin yayıldığı uzunluk
+                    acc_f = np.zeros((len(Pf), 3))
+                    for k_ in range(N_AN):
+                        o_ = ((k_ + 0.5) / N_AN - 0.5) * span_
+                        acc_f += ftex.sample((Pf[:, 0] + hd[:, 0] * o_) / per, (Pf[:, 1] + hd[:, 1] * o_) / (per * ftex.aspect), lod)
+                    albedo[isf0] = acc_f / N_AN
             a = alpha_ext[tid]
             mt = mid_ext[tid]                                   # nokta başına malzeme indeksi
             dif_h = spec_h = shin_h = lum_h = refl_h = None

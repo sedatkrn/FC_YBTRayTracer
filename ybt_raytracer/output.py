@@ -71,8 +71,10 @@ def summary():
         "Environment: %s" % ("off" if env == "off" else "%s%s, intensity %d%%, light %s, keep lights %s" % (
             env, (" " + os.path.basename(S.ENV_FILE)) if env == "hdri" and S.ENV_FILE else "", S.ENV_INTENSITY * 100,
             _onoff(S.ENV_LIGHT), _onoff(S.ENV_KEEP_LIGHTS))),
-        "Floor: %s" % (("on, texture %s, reflect %d%%" % (os.path.basename(str(S.FLOOR_TEXTURE)) or "none", S.FLOOR_REFLECT * 100))
-                       if S.FLOOR else "off"),
+        "Floor: %s" % (("on, texture %s (%s), reflect %d%%%s" % (
+            os.path.basename(str(S.FLOOR_TEXTURE)) or "none", ("%g mm" % S.FLOOR_TEX_SCALE) if S.FLOOR_TEX_SCALE > 0 else "auto size",
+            S.FLOOR_REFLECT * 100, (", material " + str(S.FLOOR_MATERIAL)) if getattr(S, "FLOOR_MATERIAL", "") else ""))
+            if S.FLOOR else "off"),
         "Tone mapping %s, exposure %d%%, Fresnel %s" % (S.TONEMAP, S.EXPOSURE * 100, _onoff(S.FRESNEL)),
     ]
     return "\n".join(lines)

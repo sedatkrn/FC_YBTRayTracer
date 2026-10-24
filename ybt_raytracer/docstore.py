@@ -42,7 +42,8 @@ def save(doc):
     ch = _put(doc, K_SET, json.dumps(snap, ensure_ascii=False, sort_keys=True))
     try:
         lib = M.library()
-        names = sorted({n for n in (M.assigned(o) for o in doc.Objects) if n and n in lib})
+        used = {M.assigned(o) for o in doc.Objects} | {str(getattr(S, "FLOOR_MATERIAL", "") or "")}   # sanal zeminin malzemesi de
+        names = sorted(n for n in used if n and n in lib)
         defs = {n: dict(lib[n], color=list(lib[n]["color"]) if lib[n].get("color") else None) for n in names}
         ch = _put(doc, K_MAT, json.dumps(defs, ensure_ascii=False, sort_keys=True)) or ch
     except Exception:

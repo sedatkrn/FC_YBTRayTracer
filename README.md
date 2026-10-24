@@ -14,7 +14,7 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - **"FreeCAD ışık ayarlarını kullan"** seçeneği (seçiliyken kendi ışık ayarları devre dışı)
 - Saydamlık (cam), Fresnel yansıması ve **cam kırılması** (Snell yasası, kırılma indisi ayarlanır), isteğe bağlı yüzey yansıması
 - **Yumuşak yüzeyler**: küre/simit/silindir pürüzsüz gölgelenir, keskin kenarlar korunur
-- **Sanal zemin**: sahnenin en altına otomatik yerleşir; renk, opaklık, yansıma ve yükseklik ofseti ayarlanır; **7 hazır doku** (travertin, çakıl, mermer, taş, terrakota, sıva, ahşap) ya da kendi görüntünüz
+- **Sanal zemin**: sahnenin en altına otomatik yerleşir; renk, opaklık, yansıma ve yükseklik ofseti ayarlanır; **7 hazır doku** (travertin, çakıl, mermer, taş, terrakota, sıva, ahşap) ya da kendi görüntünüz; ya da zemine **Surface malzemesi** (katmanlı doku, bump, yansıma) atanır (T düğmesi)
 - Kenar yumuşatma (yalnızca kenar piksellerinde 2x2 / 3x3 / 4x4)
 - 4 kalite kademesi (Low, **Hızlı** varsayılan, ...); büyük montajlar için hızlı mod
 - Büyük sahnelerde hızlandırma: ekran karoları, otomatik boyutlu ışık ızgarası, küme hiyerarşisi, sahne önbelleği
@@ -129,7 +129,7 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - **"Use FreeCAD light settings"** option (disables the macro's own lights when checked)
 - Transparency (glass) with Fresnel reflection and **refraction** (Snell's law, adjustable IOR), optional surface reflection
 - **Smooth surfaces**: spheres/tori/cylinders shaded smoothly, sharp edges preserved
-- **Virtual floor**: placed at the scene's lowest point automatically; colour, opacity, reflection and height offset adjustable; **7 built-in textures** (travertine, gravel, marble, stone, terracotta, plaster, wood) or your own image
+- **Virtual floor**: placed at the scene's lowest point automatically; colour, opacity, reflection and height offset adjustable; **7 built-in textures** (travertine, gravel, marble, stone, terracotta, plaster, wood) or your own image; or assign a **Surface material** to the floor (layered textures, bump, reflection) with the T button
 - Edge-only anti-aliasing (2x2 / 3x3 / 4x4)
 - 4 quality levels (Low, **Fast** default, ...), suited to large assemblies
 - Large-scene acceleration: screen tiles, auto-sized light-space grid, cluster hierarchy, scene cache

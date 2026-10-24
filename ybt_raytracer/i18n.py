@@ -417,6 +417,15 @@ EN = {
     "görünürlük": "visibility",
     "ortam tıkanıklığı": "ambient occlusion",
     "gökyüzü ışığı": "sky light",
+    "Sanal zemin": "Virtual floor",
+    "Zemin yüzeyi": "Floor surface",
+    "Malzemeye otomatik ad verildi: %s": "Material named automatically: %s",
+    "Sanal zemin (Render penceresi > Sanal Zemin). Malzeme atanınca rengi, dokuları, bump'ı ve yansıması malzemeden gelir.":
+        "Virtual floor (Render window > Virtual Floor). With a material assigned, its colour, textures, bump and reflection come from the material.",
+    "Zemine Surface malzemesi ata / düzenle (renk, katmanlı doku, bump, yansıma): Malzemeler penceresini açar":
+        "Assign / edit a Surface material for the floor (colour, layered textures, bump, reflection): opens the Materials window",
+    "Yok (renk / doku ayarları)": "None (colour / texture settings)",
+    "Yüzey": "Surface",
     "Resim Geçmişi": "Image History",
     "Tıkla: önizlemede göster  ·  Sağ tık: farklı kaydet / resmi aç": "Click: show in preview  ·  Right-click: save as / open image",
     "Son render: %s": "Latest render: %s",

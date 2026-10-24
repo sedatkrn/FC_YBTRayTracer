@@ -25,6 +25,7 @@ _PARAMS = [  # (anahtar, etiket, alt, üst, ipucu)
 ]
 
 
+FLOOR_KEY = "__ybt_floor__"                                   # nesne listesinde sanal zemin satırının anahtarı (nesne adı değil)
 _LAST_DIR = {}                                                # son görüntü klasörü
 _LAYER_CLIP = {}                                             # doku katmanı panosu (kanallar ve malzemeler arasında ortak)
 _T_CSS = "QPushButton { padding: 0px; margin: 0px; min-width: 28px; max-width: 28px; min-height: 14px; max-height: 14px; font-size: 9px; font-weight: bold; }"
@@ -1200,6 +1201,18 @@ def open_surface(on_change=None, is_busy=None):
         st["tlock"] = True                          # onay kutusu değişim sinyali yeniden doldururken çalışmasın
         try:
             tree.clear()
+            fl_lbl = T("Sanal zemin")                      # en üstte: render ayarı olan sanal zemin (nesne değil, onay kutusu yok)
+            fmn = floor_mat()
+            if not flt or flt in fl_lbl.lower() or flt in fmn.lower():
+                it = QtGui.QTreeWidgetItem(["⬚ " + fl_lbl, display_name(fmn) if fmn else "—", ""])
+                it.setData(0, QtCore.Qt.UserRole, FLOOR_KEY)
+                it.setToolTip(0, T("Sanal zemin (Render penceresi > Sanal Zemin). Malzeme atanınca rengi, dokuları, bump'ı ve yansıması malzemeden gelir."))
+                f_ = it.font(0)
+                f_.setItalic(True)
+                it.setFont(0, f_)
+                tree.addTopLevelItem(it)
+                if FLOOR_KEY in sel:
+                    it.setSelected(True)
             for o, tgt, _sig in rows:
                 label = o.Label
                 if flt and flt not in label.lower() and flt not in M.assigned(o).lower():
@@ -1256,12 +1269,45 @@ def open_surface(on_change=None, is_busy=None):
                 add_item(n)
 
     def sel_objects():
-        return [o for o in (doc.getObject(it.data(0, QtCore.Qt.UserRole)) for it in tree.selectedItems()) if o is not None]
+        return [o for o in (doc.getObject(it.data(0, QtCore.Qt.UserRole)) for it in tree.selectedItems()
+                            if it.data(0, QtCore.Qt.UserRole) != FLOOR_KEY) if o is not None]
+
+    def floor_selected(names=None):
+        if names is not None:
+            return FLOOR_KEY in names
+        return any(it.data(0, QtCore.Qt.UserRole) == FLOOR_KEY for it in tree.selectedItems())
+
+    def floor_mat():
+        return str(getattr(S, "FLOOR_MATERIAL", "") or "")
+
+    def set_floor_mat(name):
+        """Sanal zeminin malzemesi (render ayarı; belgeyle saklanır). Ana penceredeki 'Yüzey' etiketi de güncellenir."""
+        S.FLOOR_MATERIAL = name or ""
+        md = getattr(FreeCAD, "_raytrace_dlg", None)
+        try:
+            if md is not None and hasattr(md, "_ybt_floor_refresh"):
+                md._ybt_floor_refresh()
+        except Exception:
+            pass
 
     def changed():
         refresh_tree()
         if on_change is not None:
             on_change()
+
+    def ensure_name(floor=False):
+        """Ad alanı boşsa otomatik ad ver (adsız malzeme atanamıyordu: değişiklikler sessizce kayboluyordu)."""
+        if ed_name.text().strip():
+            return
+        lib = M.library()
+        base = T("Zemin yüzeyi") if floor else T("Yeni yüzey")
+        n, k = base, 1
+        while n in lib:
+            k += 1
+            n = "%s %d" % (base, k)
+        ed_name.setText(n)
+        st["name"] = n
+        msg(T("Malzemeye otomatik ad verildi: %s") % n)
 
     def commit_current():
         """Düzenleyicideki malzemeyi kütüphanede güncel tut; döner: ad."""
@@ -1284,42 +1330,63 @@ def open_surface(on_change=None, is_busy=None):
 
     def do_assign():
         objs = sel_objects()
-        if not objs:
+        fl = floor_selected()
+        if not objs and not fl:
             msg(T("Önce soldaki listeden nesne seçin."))
             return
+        ensure_name(fl and not objs)
         name = commit_current()
         if name is None:
             return
         for o in objs:
             M.assign(o, name)
-        changed()
-        msg(T("%d nesneye atandı: %s") % (len(objs), display_name(name)))
+        if fl:
+            set_floor_mat(name)
+        if objs:
+            changed()
+        else:
+            refresh_tree()
+        msg(T("%d nesneye atandı: %s") % (len(objs) + (1 if fl else 0), display_name(name)))
 
     def do_auto_apply():
         """Düzenleyicide değişiklik yapıldı: malzemeyi kütüphanede güncelle ve seçili nesnelere ata (sessizce)."""
         if not ck_auto.isChecked() or st["lock"]:
             return
-        objs = [o for o in (doc.getObject(n) for n in st.get("auto_names", [])) if o is not None]
-        if not objs or not ed_name.text().strip():
+        an = st.get("auto_names", [])
+        objs = [o for o in (doc.getObject(n) for n in an if n != FLOOR_KEY) if o is not None]
+        fl = floor_selected(an)
+        if not objs and not fl:
             return
+        ensure_name(fl and not objs)
         name = commit_current()
         if name is None:
             return
         for o in objs:
             M.assign(o, name)
-        changed()
-        msg(T("%d nesneye otomatik uygulandı: %s") % (len(objs), display_name(name)))
+        if fl:
+            set_floor_mat(name)
+        if objs:
+            changed()
+        else:
+            refresh_tree()
+        msg(T("%d nesneye otomatik uygulandı: %s") % (len(objs) + (1 if fl else 0), display_name(name)))
 
     def do_clear():
         objs = sel_objects()
+        fl = floor_selected()
         for o in objs:
             M.assign(o, "")
-        changed()
-        msg(T("%d nesnenin ataması kaldırıldı.") % len(objs))
+        if fl:
+            set_floor_mat("")
+        if objs:
+            changed()
+        else:
+            refresh_tree()
+        msg(T("%d nesnenin ataması kaldırıldı.") % (len(objs) + (1 if fl else 0)))
 
     def on_item_changed(it, col):
         """Onay kutusu: nesneyi render'a dahil et / hariç tut."""
-        if st.get("tlock") or col != 0:
+        if st.get("tlock") or col != 0 or it.data(0, QtCore.Qt.UserRole) == FLOOR_KEY:
             return
         o = doc.getObject(it.data(0, QtCore.Qt.UserRole))
         if o is None:
@@ -1347,15 +1414,16 @@ def open_surface(on_change=None, is_busy=None):
             tree.clearSelection()
             it.setSelected(True)
         objs = sel_objects()
-        mn = M.assigned(objs[0]) if objs else ""
+        fl = floor_selected()
+        mn = M.assigned(objs[0]) if objs else (floor_mat() if fl else "")
         mnu = QtGui.QMenu(tree)
         a_cp = mnu.addAction(T("Malzemeyi kopyala"))
         a_cp.setEnabled(bool(mn) and it is not None)
         a_ps = mnu.addAction(T("Yapıştır") + ((": " + display_name(_MAT_CLIP["name"])) if _MAT_CLIP["name"] else ""))
-        a_ps.setEnabled(bool(_MAT_CLIP["name"]) and bool(objs))
+        a_ps.setEnabled(bool(_MAT_CLIP["name"]) and (bool(objs) or fl))
         mnu.addSeparator()
         a_cl = mnu.addAction(T("Atamayı kaldır"))
-        a_cl.setEnabled(bool(objs))
+        a_cl.setEnabled(bool(objs) or fl)
         act = mnu.exec_(tree.viewport().mapToGlobal(pos)) if hasattr(mnu, "exec_") else mnu.exec(tree.viewport().mapToGlobal(pos))
         if act is None:
             return
@@ -1365,8 +1433,13 @@ def open_surface(on_change=None, is_busy=None):
         elif act is a_ps:
             for o in objs:
                 M.assign(o, _MAT_CLIP["name"])
-            changed()
-            msg(T("%d nesneye yapıştırıldı: %s") % (len(objs), display_name(_MAT_CLIP["name"])))
+            if fl:
+                set_floor_mat(_MAT_CLIP["name"])
+            if objs:
+                changed()
+            else:
+                refresh_tree()
+            msg(T("%d nesneye yapıştırıldı: %s") % (len(objs) + (1 if fl else 0), display_name(_MAT_CLIP["name"])))
         elif act is a_cl:
             do_clear()
 
@@ -1497,8 +1570,9 @@ def open_surface(on_change=None, is_busy=None):
             expand_similar()
         its = tree.selectedItems()
         if len(its) == 1:
-            o = doc.getObject(its[0].data(0, QtCore.Qt.UserRole))
-            n = M.assigned(o) if o is not None else ""
+            k_ = its[0].data(0, QtCore.Qt.UserRole)
+            o = doc.getObject(k_) if k_ != FLOOR_KEY else None
+            n = floor_mat() if k_ == FLOOR_KEY else (M.assigned(o) if o is not None else "")
             m = M.get(n) if n else None
             if m is not None:
                 fill_editor(n, m)
@@ -1586,7 +1660,8 @@ def open_surface(on_change=None, is_busy=None):
     dlg._ybt_api = dict(tree=tree, lib=lst, name=ed_name, widgets=widgets, state=st, assign=do_assign, clear=do_clear,
                         save=do_save, preview=do_preview, fill=fill_editor, refresh=refresh_tree, msg=lbl_msg, prev=prev,
                         include=set_selected_included, pick=on_pick, select=select_names, similar=similar_names,
-                        sim_check=ck_sim, paint=btn_paint)
+                        sim_check=ck_sim, paint=btn_paint,
+                        floor=lambda: (ed_filter.clear(), refresh_tree(), select_names({FLOOR_KEY})))
     _theme.fix_combos(dlg)
     place_near_main()
     dlg.show()
