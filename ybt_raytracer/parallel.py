@@ -18,12 +18,27 @@ def _limit_blas(n):
     restores = []
     try:
         import ctypes
+        import os
+        import sys
         paths = set()
-        with open("/proc/self/maps") as f:
-            for line in f:
-                low = line.lower()
-                if ("blas" in low or "mkl_rt" in low) and ".so" in low:
-                    paths.add(line.split()[-1])
+        if sys.platform.startswith("win"):
+            # Windows: süreçte yüklü BLAS DLL'i adıyla açılır (yüklüyse aynı tanıtıcı döner). FreeCAD: bin\openblas.dll;
+            # pip numpy: numpy.libs\libscipy_openblas*.dll
+            paths.update(("openblas.dll", "libopenblas.dll", "mkl_rt.dll"))
+            try:
+                import glob
+                import numpy
+                nd = os.path.dirname(os.path.dirname(numpy.__file__))
+                for pat in ("numpy.libs/*openblas*.dll", "numpy/.libs/*openblas*.dll"):
+                    paths.update(glob.glob(os.path.join(nd, pat)))
+            except Exception:
+                pass
+        else:
+            with open("/proc/self/maps") as f:
+                for line in f:
+                    low = line.lower()
+                    if ("blas" in low or "mkl_rt" in low) and ".so" in low:
+                        paths.add(line.split()[-1])
         for pth in paths:
             try:
                 lib = ctypes.CDLL(pth)

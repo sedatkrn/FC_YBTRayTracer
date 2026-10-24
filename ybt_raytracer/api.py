@@ -30,7 +30,7 @@ import os
 import numpy as np
 
 from . import settings as S
-from .output import write_png
+from .output import render_meta, write_png
 
 
 # ------------------------------------------------------------------ ayarlar
@@ -208,10 +208,17 @@ def render_scene(scene, camera, width=None, height=None, aspect=None, out_path=N
         w = int(width if width else (round(height * asp) if height else S.WIDTH))
         h = int(height if height else max(1, round(w / asp)))
         out = render(scene, cam, w, h, shadows=S.SHADOWS, progress=progress, tile=S.TILE, tick=tick, stage=stage)
+        meta = None
+        if out is not None and out_path:                    # ayarlar geri yüklenmeden: PNG'ye gömülecek bilgiler
+            try:
+                meta = render_meta(os.path.splitext(os.path.basename(out_path))[0],
+                                   {"Size": "%dx%d" % (w, h), "Triangles": scene.count})
+            except Exception:
+                meta = None
     if out is None:
         return None
     if out_path:
-        _write(out_path, out)
+        _write(out_path, out, meta)
     return out
 
 
@@ -282,8 +289,8 @@ def turntable(doc=None, out_dir=".", frames=72, width=960, elevation=20.0, name=
     return paths
 
 
-def _write(path, img):
+def _write(path, img, meta=None):
     d = os.path.dirname(os.path.abspath(path))
     if d and not os.path.isdir(d):
         os.makedirs(d)
-    write_png(path, np.ascontiguousarray(img))
+    write_png(path, np.ascontiguousarray(img), meta)

@@ -416,6 +416,21 @@ EN = {
     "Yarı gölge genişlik çarpanı: 100 % = ışık açısına göre, 300 % = 3 kat daha geniş (daha büyük ışık kaynağı görünümü)": "Penumbra width multiplier: 100 % = from the light angle, 300 % = 3x wider (looks like a larger light source)",
     "görünürlük": "visibility",
     "ortam tıkanıklığı": "ambient occlusion",
+    "gökyüzü ışığı": "sky light",
+    "Resim Geçmişi": "Image History",
+    "Tıkla: önizlemede göster  ·  Sağ tık: farklı kaydet / resmi aç": "Click: show in preview  ·  Right-click: save as / open image",
+    "Son render: %s": "Latest render: %s",
+    "Geçmiş: %s": "History: %s",
+    "Resmi aç": "Open image",
+    "%d üçgen | render %.1f sn": "%d triangles | render %.1f s",
+    "Geçmişteki bir resim gösteriliyor; parça seçmek için son render'a tıklayın ya da yeniden render alın.":
+        "A history image is shown; to pick parts, click the latest render or render again.",
+    "ortam tıkanıklığı + gökyüzü ışığı": "ambient occlusion + sky light",
+    " hesaplanıyor...": ": computing...",
+    "⚠ Ortam / HDRI açık: aşağıdaki ışıklar ve ortam ışığı kullanılmıyor. "
+    "Birlikte kullanmak için Ortam / HDRI bölümünde 'Sahne ışıkları kalsın' kutusunu işaretleyin.":
+        "⚠ Environment / HDRI is on: the lights and ambient light below are not used. "
+        "To use them together, tick 'Keep scene lights' in the Environment / HDRI section.",
     'Aydınlatma': 'Lighting',
     'Özel': 'Custom',
     'Özel ayarlar': 'Custom settings',

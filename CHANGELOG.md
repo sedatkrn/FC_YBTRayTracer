@@ -1,6 +1,19 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.6.0 (2026-10-24):
+
+- **Resim geçmişi**: ana pencerenin sağında son 10 render alt alta küçük resim olarak listelenir (en yeni üstte; ad: <belge>_001, _002 ...). Tıklayınca önizlemede gösterilir (önceki/sonraki render karşılaştırması); sağ tık: Farklı kaydet / Resmi aç (FreeCAD'de yeni sekmede, Image tezgâhı). Resimler kalıcı kullanıcı klasöründe saklanır (<UserAppData>/YBTRayTracer/history), FreeCAD kapanıp açılınca da durur.
+- **Render ayarları PNG'ye gömülür**: kaydedilen her PNG'de (otomatik kayıt, Farklı kaydet, geçmiş, API) Software / Title / Creation Time / Description (okunabilir özet: boyut, üçgen, süre, ışık düzeni, AO, yumuşak gölge, ortam, zemin, ton eşleme ...) ve tüm ayarlar JSON olarak ("YBTRayTracer" anahtarı). output.read_png_meta() ile okunur.
+- **Pencere düzeni**: ayar paneli daraltıldı (sayı/liste kutuları dar, yatay kaydırma çubuğu yok); pencere ~1480x820 açılır, ekranın ortasına konur, küçük ekranda sığacak kadar küçülür.
+- **Düzeltme: sanal zemin + AO / HDRI**: gökyüzü/HDRI ışığı açıkken sanal zemin simsiyah çıkıyordu (süzgeç zeminsiz görünürlük tamponunu kullanıyordu); sanal zemin açıkken AO hiç çalışmıyordu (AO ışınları analitik zemine çarpmıyordu). Artık zemin gökyüzüyle aydınlanır, nesne–zemin temas gölgesi oluşur.
+- **Düzeltme: ince parçalarda siyah benek**: gökyüzü/HDRI ışığında ızgara teli gibi 1-2 piksel genişliğindeki parçalarda örneksiz kalan pikseller siyah çıkıyordu; artık gölgesiz gökyüzü ışığı (SH) alır.
+- **Ortam uyarısı**: Ortam / HDRI sahne ışıklarının yerini aldığında Işık Ayarları'nda uyarı görünür ('Sahne ışıkları kalsın' önerisiyle). İlerleme çubuğu gökyüzü görünürlük hesabını artık "ortam tıkanıklığı" değil "gökyüzü ışığı" olarak gösterir.
+- Düzeltme: tam tepeden/alttan bakan kamerada (make_camera, orbit_cameras(elevation=90)) bozuk (NaN) görüntü.
+- Düzeltme: dikey (portre) görüntülerde nesne dokularının mip düzeyi ve yumuşak gölge genişliği en/boy oranını hesaba katmıyordu (dokular kumlanıyordu).
+- Düzeltme: render bitince kapalı yumuşak gölge / AO ayar kutuları etkin görünüyordu.
+- Windows'ta BLAS (openblas.dll) iş parçacığı sınırı render sırasında uygulanır (çok çekirdekli render'da gereksiz çekişme yok).
+
 v1.5.1 (2026-10-20):
 
 - **API**: `api.camera_from_view()` çıktısı (kamera, en/boy oranı) çifti artık doğrudan `camera=` olarak verilebilir; `render_document` oranı da çiftten alır. Arayüzsüz FreeCAD'de ya da açık 3B görünüm yokken anlaşılır hata mesajı verir (`make_camera` / `fit_camera` kullanın).

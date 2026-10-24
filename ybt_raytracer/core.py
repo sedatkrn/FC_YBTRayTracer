@@ -208,6 +208,11 @@ def _norm(v):
 def camera_basis(fwd, up):
     fwd = fwd / np.linalg.norm(fwd)
     right = np.cross(fwd, up)
-    right /= np.linalg.norm(right)
+    ln = np.linalg.norm(right)
+    if ln < 1e-9 * max(np.linalg.norm(up), 1e-30):        # bakış yönü 'up' ile paralel (tam tepeden/alttan): yedek yukarı yönü
+        alt = np.array([0.0, 1.0, 0.0]) if abs(fwd[1]) < 0.9 else np.array([1.0, 0.0, 0.0])
+        right = np.cross(fwd, alt)
+        ln = np.linalg.norm(right)
+    right /= ln
     up = np.cross(right, fwd)
     return right, up, fwd

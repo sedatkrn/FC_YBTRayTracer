@@ -26,9 +26,10 @@ def _rot_z(v, deg):
     return np.stack([c * v[:, 0] - s * v[:, 1], s * v[:, 0] + c * v[:, 1], v[:, 2]], 1)
 
 
-def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
+def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R, want_ok=False):
     """AO'yu seyrek örneklerden tüm piksellere yayan + gürültüyü azaltan bilateral süzgeç: yalnız ışın atılmış (have),
-    aynı nesnedeki, benzer derinlik ve normaldeki komşular ağırlıkla karışır."""
+    aynı nesnedeki, benzer derinlik ve normaldeki komşular ağırlıkla karışır.
+    want_ok=True: (değer, ok) döner; ok=False olan isabet pikselleri yakınında hiç uygun örnek bulamamıştır (ince parça)."""
     h, w = ao.shape[:2]
     hit = ids >= 0
     obj = np.where(hit, np.where(ids == fid, -2, oid[np.minimum(ids, len(oid) - 1)]), -3).astype(np.int32)
@@ -54,8 +55,10 @@ def _ao_blur(ao, have, ids, ts, n_ext, fid, oid, R):
             wsum += wgt
     ok_ = hit & (wsum > 1e-6)
     if mc:
-        return np.where(ok_[..., None], acc / np.maximum(wsum, 1e-6)[..., None], 0.0)
-    return np.where(ok_, acc / np.maximum(wsum, 1e-6), 0.0)
+        res = np.where(ok_[..., None], acc / np.maximum(wsum, 1e-6)[..., None], 0.0)
+    else:
+        res = np.where(ok_, acc / np.maximum(wsum, 1e-6), 0.0)
+    return (res, ok_) if want_ok else res
 
 
 def _soft_blur(v0, Tb, valid, oid, foot, ndl, tan_t, rmax=48):
@@ -502,7 +505,7 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
     ch_tr = any(("transp" in d_) for d_ in ch_mats.values())
     if any(not ly_["tp"]["world"] for d_ in ch_mats.values() for ls_ in d_.values() for ly_ in ls_):
         scene.obj_bounds()                                    # çatallanmadan önce hesapla (işçiler paylaşır)
-    pix_ang_g = 2.0 * (np.tan(cam["size"] / 2.0) if bool(cam["persp"]) else cam["size"] / 2.0) / max(h, 1)
+    pix_ang_g = 2.0 * half_y / max(h, 1)                       # bir pikselin açısı (ortografikte uzunluğu); dikey görüntüde half_y = base / aspect
     has_glass = has_glass or ch_tr
     refr = bool(S.GLASS and has_glass and float(ior_tab.max()) > 1.0005)   # kırılma: Snell yasası, çıkışta tam iç yansıma
     f_on = bool(S.FLOOR)
@@ -682,7 +685,11 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
         ss_buf = None
     ao_buf = mkbuf(np.float64, 0.0) if ao_on else None
     env_bufs = [mkbuf(np.float64, 0.0) for _ in range(3)] if (ao_on and env_vis) else None
+    env_miss = mkbuf(np.bool_, False) if env_bufs is not None else None
     ao_have = mkbuf(np.float64, 0.0) if ao_on else None        # AO ışını atılan pikseller (kalanlar süzgeçle doldurulur)
+    # süzgeç için zeminli birincil isabetler (görünürlük tamponunda zemin yok: zemin pikselleri süzgeçte sıfırlanıyordu)
+    ao_vt = mkbuf(np.float64, np.inf) if (ao_on and f_on) else None
+    ao_vi = mkbuf(np.int64, -1) if (ao_on and f_on) else None
     ao_step = max(1, int(S.AO_STEP))
 
     def lights_blocked(Pl, li, si=0, want_t=False):
@@ -900,6 +907,9 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 if env_bufs is not None and depth == 0:
                     qy_, qx_ = py[pix[hi]], px[pix[hi]]
                     e_l = np.stack([b_[qy_, qx_] for b_ in env_bufs], 1) * env_i
+                    mq_ = np.nonzero(env_miss[qy_, qx_])[0]
+                    if len(mq_):                                # örneği olmayan ince parça pikseli: siyah kalmasın, gölgesiz gökyüzü ışığı (SH)
+                        e_l[mq_] = env.sh_light(_rot_z(nrm[mq_], -env_rot)) * env_i
                     if bool(S.AO):                              # temas/köşe kararması gökyüzü ışığına da uygulanır
                         e_l = e_l * (1.0 - float(S.AO_STRENGTH) * ao_buf[qy_, qx_])[:, None]
                     lit += e_l
@@ -1273,6 +1283,8 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             ti = vis[(0.5, 0.5)][1][r0:r1].ravel().copy()
             if f_on:
                 floor_apply(O, D, tb, ti)
+                ao_vt[r0:r1] = tb.reshape(nrow, w)
+                ao_vi[r0:r1] = ti.reshape(nrow, w)
             idx = np.nonzero((ti >= 0) & (px % ao_step == 0) & (py % ao_step == 0))[0]
             out = np.zeros(nrow * w)
             hv = np.zeros(nrow * w)
@@ -1300,9 +1312,11 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
                 Ao = np.concatenate(chunks_o)
                 Ad = np.concatenate(chunks_d)
                 t_, i_ = _closest_general(scene, clusters, Ao, Ad, tk, tmax_ray)
+                if f_on:                                                    # sanal zemin de tıkar (nesne dibinde temas gölgesi)
+                    floor_apply(Ao, Ad, t_, i_)
                 if env_vis:
                     v_ = np.where((i_ >= 0) & (t_ < tmax_ao), 1.0 - np.minimum(t_ / tmax_ao, 1.0), 0.0) if bool(S.AO) else np.zeros(len(i_))
-                    free = np.nonzero(i_ < 0)[0]
+                    free = np.nonzero((i_ < 0) | (i_ == fid))[0]            # zemine giden ışın: ortamın alt yarısı (zeminden yansıyan ışığın yerine)
                     rad = np.zeros((len(i_), 3))
                     if len(free):
                         rad[free] = env.lookup(Ad[free], env_level, env_rot)
@@ -1318,15 +1332,24 @@ def render(scene, cam, w, h, shadows=True, progress=None, tile=16, brute=False, 
             ao_buf[r0:r1] = out.reshape(nrow, w)
 
         if ao_on:
-          say(T("ortam tıkanıklığı hesaplanıyor..."))
+          if env_vis and not bool(S.AO):                     # AO kapalı: bu geçiş yalnız gökyüzü ışığının görünürlüğü
+              ao_lbl = T("gökyüzü ışığı")
+          elif env_vis:
+              ao_lbl = T("ortam tıkanıklığı + gökyüzü ışığı")
+          else:
+              ao_lbl = T("ortam tıkanıklığı")
+          say(ao_lbl + T(" hesaplanıyor..."))
           if run_parallel(list(range(ny)), ao_band,
-                          lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), T("ortam tıkanıklığı"))) is False:
+                          lambda n_: True if progress is None else progress(img, 0, n_ / float(ny), ao_lbl)) is False:
               return None
-          ao_buf[:] = _ao_blur(np.array(ao_buf), np.array(ao_have), np.array(vis[(0.5, 0.5)][1]), np.array(vis[(0.5, 0.5)][0]), n_ext,
-                             fid if f_on else -1, scene.oid, 2 * ao_step + 1)
+          b_ids = np.array(ao_vi if f_on else vis[(0.5, 0.5)][1])
+          b_ts = np.array(ao_vt if f_on else vis[(0.5, 0.5)][0])
+          ao_buf[:] = _ao_blur(np.array(ao_buf), np.array(ao_have), b_ids, b_ts, n_ext,
+                               fid if f_on else -1, scene.oid, 2 * ao_step + 1)
           if env_bufs is not None:
-              eb_ = _ao_blur(np.stack([np.array(b_) for b_ in env_bufs], 2), np.array(ao_have), np.array(vis[(0.5, 0.5)][1]),
-                             np.array(vis[(0.5, 0.5)][0]), n_ext, fid if f_on else -1, scene.oid, 2 * ao_step + 1)
+              eb_, eok_ = _ao_blur(np.stack([np.array(b_) for b_ in env_bufs], 2), np.array(ao_have), b_ids, b_ts,
+                                   n_ext, fid if f_on else -1, scene.oid, 2 * ao_step + 1, want_ok=True)
+              env_miss[:] = (b_ids >= 0) & ~eok_         # örneksiz kalan (ince parça) pikseller: trace'te gölgesiz gökyüzü ışığı
               for c_ in range(3):
                   env_bufs[c_][:] = eb_[:, :, c_]
         say(T("ışınlar izleniyor..."))

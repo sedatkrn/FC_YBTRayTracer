@@ -1,4 +1,4 @@
-# Geliştirme notları / Development handoff (v1.5.1)
+# Geliştirme notları / Development handoff (v1.6.0)
 
 Yeni bir oturumda devam etmek için bu dosyayı oku. / Read this first when continuing in a new session.
 
@@ -31,7 +31,12 @@ Kullanıcı: Sedat (Türkçe konuşur; Manjaro/KDE Wayland; FreeCAD 1.1.4; YouTu
 - GitHub: bu ortamda main'e push çalışır; etiket/release oluşturma 403 -> kullanıcı elle yapar (zip verilir).
 
 ## Yapılanlar
-v1.0 ilk sürüm -> v1.1 TR/EN + ikon -> v1.2 malzeme sistemi/Surface penceresi -> v1.2.1 yansıma/kırılma kutuları -> v1.2.2 liste yalnız gerçek nesneler + arama/yenile -> v1.3.0 mesh nesneleri + arayüzsüz API/animasyon + "render'a dahil et" kutusu + kadraj dışı atma.
+v1.0 ilk sürüm -> v1.1 TR/EN + ikon -> v1.2 malzeme sistemi/Surface penceresi -> v1.2.1 yansıma/kırılma kutuları -> v1.2.2 liste yalnız gerçek nesneler + arama/yenile -> v1.3.0 mesh nesneleri + arayüzsüz API/animasyon + "render'a dahil et" kutusu + kadraj dışı atma -> v1.4/1.5 (CHANGELOG) -> v1.6.0 resim geçmişi (`history.py`, `<UserAppData>/YBTRayTracer/history`, eski Temp önbelleği otomatik birleştirilir), PNG'ye gömülü ayarlar (`output.render_meta` / `read_png_meta`), dar panel, zemin+AO/HDRI ve ince parça benek düzeltmeleri.
+
+Notlar (v1.6.0):
+- AO/gökyüzü geçişi (`ao_band`) zemini kendisi uygular; süzgeç (`_ao_blur`) zeminli tamponla (`ao_vt/ao_vi`) çalışır. Örneksiz kalan ince parça pikselleri `env_miss` ile işaretlenir, trace'te SH gökyüzü ışığı alır.
+- Ortam ışığı açık ve ENV_KEEP_LIGHTS kapalıyken sahne ışıkları + ortam ışığı kullanılmaz (tasarım); arayüzde `lbl_envwarn` uyarısı.
+- Windows'ta (kullanıcının eşinin dizüstü, FreeCAD 26.3) test: `FreeCADCmd.exe betik.py` ile arayüzsüz; yollar 260 karakteri aşmasın (%TEMP%\ybtv kullanıldı). Kullanıcının FreeCAD'i açıkken `freecad.exe betik.py` çalıştırma: tek örnek modunda betik açık FreeCAD'e gider.
 
 ## Bekleyen işler, önerilen sıra
 1. **Performans profili**: 300k üçgen, 1920 px, sanal zemin, varsayılanlar ≈ 2 dk (Reddit kullanıcısı). Pompa/buggy ölçümümüz: 634k üçgen 1080 px ≈ 20 sn. Sahne hazırlığı tek çekirdekte (Scene.__init__, smooth_normals); animasyonda kare başına tekrar ediyor.

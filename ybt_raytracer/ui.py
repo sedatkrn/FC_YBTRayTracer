@@ -7,7 +7,7 @@ from .i18n import T
 from . import textures as _textures
 from .parallel import _Cancelled
 from .render import render
-from .output import pick_out_path, write_png
+from .output import pick_out_path, render_meta, write_png
 from .freecad_scene import collect_scene, read_camera, read_freecad_lights
 from . import materials as _mats
 from . import theme as _theme
@@ -182,6 +182,12 @@ def main(lang=None):
     ck_fc.setChecked(bool(getattr(S, "USE_FC_LIGHTS", False)))
     ck_fc.setToolTip(T("İşaretliyse Tercihler > Display > Light Sources ayarları kullanılır; aşağıdaki ayarlar devre dışı kalır"))
     lvb.addWidget(ck_fc)
+    lbl_envwarn = QtGui.QLabel(T("⚠ Ortam / HDRI açık: aşağıdaki ışıklar ve ortam ışığı kullanılmıyor. "
+                                 "Birlikte kullanmak için Ortam / HDRI bölümünde 'Sahne ışıkları kalsın' kutusunu işaretleyin."))
+    lbl_envwarn.setWordWrap(True)
+    lbl_envwarn.setStyleSheet("color: #e0a040;")
+    lbl_envwarn.setVisible(False)
+    lvb.addWidget(lbl_envwarn)
     cb_pre = QtGui.QComboBox()
     for p in _lp.PRESETS:
         cb_pre.addItem(T(p[1]))
@@ -427,6 +433,8 @@ def main(lang=None):
             wd.setEnabled(on_)
         sp_ee.setEnabled(i_ == 1)
         sp_ea.setEnabled(i_ == 1)
+        lbl_envwarn.setVisible(on_ and ck_eli.isChecked() and not ck_ekl.isChecked())   # ortam sahne ışıklarının yerini alıyor
+        QtCore.QTimer.singleShot(0, lambda: fix_left_height())     # fix_left_height aşağıda tanımlı: adı geç çözülsün
 
     def pick_env():
         res = QtGui.QFileDialog.getOpenFileName(dlg, T("HDRI / ortam haritası seç"), os.path.dirname(env_state["file"]) or os.path.expanduser("~"),
@@ -437,6 +445,8 @@ def main(lang=None):
             lbl_envf.setText(os.path.basename(path))
     btn_envf.clicked.connect(pick_env)
     cb_env.currentIndexChanged.connect(sync_env)
+    ck_eli.toggled.connect(sync_env)
+    ck_ekl.toggled.connect(sync_env)
     sync_env()
     lv.addWidget(lbox)
     lv.addWidget(ebox)
@@ -593,10 +603,14 @@ def main(lang=None):
     collapsible(ebox, T("Ortam / HDRI"))
     lv.addStretch(1)
 
-    sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel kaydırılır
+    # dar ayar paneli (1080p ekranda geçmiş paneliyle birlikte sığsın): sayı/liste kutuları gereksiz yere genişlemesin
+    _wide = (cb_pre, cb_env, cb_tm, cb_ft)
+    for _w in left.findChildren(QtGui.QAbstractSpinBox) + left.findChildren(QtGui.QComboBox):
+        _w.setMaximumWidth(200 if _w in _wide else 140)
+    sc_left = QtGui.QScrollArea()                     # ekran küçükse sol panel dikeyde kaydırılır
     sc_left.setWidget(left)
     sc_left.setWidgetResizable(True)
-    sc_left.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)   # içerik sığmazsa kırpmak yerine kaydır
+    sc_left.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # kutular dar: yatay kaydırma çubuğu çıkmasın
     lcol = QtGui.QVBoxLayout()                        # üstte sabit: başlık + düğmeler, altta kaydırılabilir ayarlar
     head = QtGui.QLabel(T("Settings"))
     head.setStyleSheet("font-weight: bold; font-size: 14px;")
@@ -1088,14 +1102,120 @@ def main(lang=None):
     rw = QtGui.QWidget()
     rw.setLayout(right)
     split.addWidget(rw)
+
+    # ================= EN SAĞ: Resim geçmişi (son 10 render, en yeni üstte) =================
+    from . import history as _hist
+    hw = QtGui.QWidget()
+    hvl = QtGui.QVBoxLayout(hw)
+    hvl.setContentsMargins(4, 0, 0, 0)
+    htitle = QtGui.QLabel(T("Resim Geçmişi"))
+    htitle.setAlignment(QtCore.Qt.AlignCenter)
+    htitle.setStyleSheet("font-weight: bold; font-size: 15px; color: #e8e8ea;")
+    hvl.addWidget(htitle)
+    hlist = QtGui.QListWidget()
+    hlist.setViewMode(QtGui.QListView.IconMode)               # küçük resim, adı altında
+    hlist.setFlow(QtGui.QListView.TopToBottom)                 # alt alta
+    hlist.setWrapping(False)
+    hlist.setMovement(QtGui.QListView.Static)
+    hlist.setResizeMode(QtGui.QListView.Adjust)
+    hlist.setIconSize(QtCore.QSize(200, 120))
+    hlist.setSpacing(6)
+    hlist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    hlist.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+    hlist.setToolTip(T("Tıkla: önizlemede göster  ·  Sağ tık: farklı kaydet / resmi aç"))
+    hvl.addWidget(hlist, 1)
+    hw.setMinimumWidth(230)
+    hw.setMaximumWidth(320)
+
+    def hist_refill():
+        hlist.blockSignals(True)
+        try:
+            hlist.clear()
+            for it_ in _hist.load()["items"]:
+                p_ = _hist.path_of(it_)
+                pm_ = QtGui.QPixmap(p_)
+                if pm_.isNull():
+                    continue
+                li = QtGui.QListWidgetItem(QtGui.QIcon(pm_.scaled(200, 120, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)),
+                                           it_["name"])
+                li.setData(QtCore.Qt.UserRole, p_)
+                li.setToolTip("%s\n%s  |  %dx%d%s" % (it_["name"], it_.get("ts", ""), it_.get("w", 0), it_.get("h", 0),
+                                                       ("\n" + it_["info"]) if it_.get("info") else ""))
+                hlist.addItem(li)
+            if hlist.count() and state.get("last_hist") == hlist.item(0).data(QtCore.Qt.UserRole):
+                hlist.setCurrentRow(0)
+        finally:
+            hlist.blockSignals(False)
+
+    def hist_show(li):
+        """Geçmişteki resmi önizlemede göster (karşılaştırma için). Tıkla-seç yalnız son render'da çalışır."""
+        if state["busy"] or li is None:
+            return
+        p_ = li.data(QtCore.Qt.UserRole)
+        pm_ = QtGui.QPixmap(p_)
+        if pm_.isNull():
+            return
+        lbl.set_pixmap_full(pm_)
+        latest = p_ == state.get("last_hist")
+        state["hist_view"] = not latest
+        if latest:
+            state["pick"] = state.get("pick_last")
+        lbl_st.setText((T("Son render: %s") if latest else T("Geçmiş: %s")) % li.text())
+
+    def hist_menu(pos):
+        li = hlist.itemAt(pos)
+        if li is None:
+            return
+        p_ = li.data(QtCore.Qt.UserRole)
+        mnu = QtGui.QMenu(hlist)
+        a_sv = mnu.addAction(T("Farklı kaydet..."))
+        a_op = mnu.addAction(T("Resmi aç"))
+        act = mnu.exec_(hlist.viewport().mapToGlobal(pos)) if hasattr(mnu, "exec_") else mnu.exec(hlist.viewport().mapToGlobal(pos))
+        if act is a_sv:
+            start = os.path.join(os.path.dirname(state["path"]) if state["path"] else os.path.expanduser("~"), li.text() + ".png")
+            res = QtGui.QFileDialog.getSaveFileName(dlg, T("Render'ı kaydet"), start, "PNG (*.png)")
+            dst = res[0] if isinstance(res, (tuple, list)) else res
+            if dst:
+                if not dst.lower().endswith(".png"):
+                    dst += ".png"
+                try:
+                    import shutil
+                    shutil.copyfile(p_, dst)
+                    lbl_st.setText(T("kaydedildi: %s") % dst)
+                except Exception as ex:
+                    lbl_st.setText(T("KAYDEDİLEMEDİ (%s)") % ex)
+        elif act is a_op:
+            try:                                          # FreeCAD içinde yeni sekmede (Image tezgâhı)
+                import ImageGui
+                ImageGui.open(p_)
+            except Exception:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(p_))
+
+    hlist.itemClicked.connect(hist_show)
+    hlist.customContextMenuRequested.connect(hist_menu)
+    split.addWidget(hw)
     split.setStretchFactor(0, 0)
     split.setStretchFactor(1, 1)
+    split.setStretchFactor(2, 0)
     outer.addWidget(split, 1)
-    # ayar paneli, içeriğinin gerçek genişliğine (+ kaydırma çubuğu) göre açılır; kullanıcı çubukla değiştirebilir
-    pw = max(460, left.sizeHint().width() + sc_left.verticalScrollBar().sizeHint().width() + 24)
-    pw = min(pw, 620)
-    dlg.resize(pw + 880, 820)
-    split.setSizes([pw, 880])
+    # pencere ~1480x820 açılır (1080p ekranı tam kaplamaz), ekran küçükse sığacak kadar küçülür; ekranın ortasına konur
+    pw = max(400, left.sizeHint().width() + sc_left.verticalScrollBar().sizeHint().width() + 24)
+    pw = min(pw, 470)
+    hwid = 250
+    try:
+        try:
+            avail = Gui.getMainWindow().screen().availableGeometry()
+        except Exception:
+            avail = QtGui.QApplication.desktop().availableGeometry(Gui.getMainWindow())
+    except Exception:
+        avail = None
+    W, H = 1480, 820
+    if avail is not None:
+        W, H = min(W, avail.width() - 40), min(H, avail.height() - 40)
+    dlg.resize(W, H)
+    split.setSizes([pw, max(400, W - pw - hwid - 30), hwid])
+    if avail is not None:
+        dlg.move(avail.x() + (avail.width() - W) // 2, avail.y() + (avail.height() - H) // 2)
 
     def sync_enabled(*_a):
         gl = ck_gl.isChecked()
@@ -1106,7 +1226,7 @@ def main(lang=None):
     sync_enabled()
 
     state = {"scene": None, "key": None, "busy": False, "cancel": False, "last": 0.0,
-             "out": None, "path": None, "pick": None}
+             "out": None, "path": None, "pick": None, "pick_last": None, "last_hist": None, "hist_view": False, "meta": None}
 
     def alive():
         return dlg.isVisible() and not state["cancel"]
@@ -1145,6 +1265,8 @@ def main(lang=None):
             sync_enabled()
             sync_lights()
             sync_floor()
+            sync_soft()                                 # yumuşak gölge kapalıysa yarıçap/çarpan kutuları pasif kalsın
+            sync_ao()
             btn_k.setEnabled(state["out"] is not None)
 
     def apply_basic():
@@ -1252,12 +1374,28 @@ def main(lang=None):
                 raise _Cancelled()
             state["out"] = out
             state["pick"] = (state["scene"], cam, w, h)     # tıkla-seç: gösterilen görüntüye ait sahne/kamera (sahne sonradan sıfırlansa da)
+            state["pick_last"], state["hist_view"] = state["pick"], False
             put(out, w, h)
+            doc_nm = os.path.splitext(os.path.basename(d.FileName))[0] if d.FileName else d.Label
+            rt = time.time() - t1
+            try:                                            # PNG'ye gömülen render ayarları (Description + tüm ayarlar JSON)
+                state["meta"] = render_meta(doc_nm, {"Size": "%dx%d" % (w, h), "Triangles": state["scene"].count,
+                                                     "Render time": "%.1f s" % rt,
+                                                     "Lighting preset": "FreeCAD" if ck_fc.isChecked() else cb_pre.currentText()})
+            except Exception as ex:
+                state["meta"] = None
+                FreeCAD.Console.PrintWarning("RayTrace: meta: %s\n" % ex)
+            try:                                            # resim geçmişi (son 10, en yeni üstte)
+                hi_ = _hist.add(out, doc_nm, T("%d üçgen | render %.1f sn") % (state["scene"].count, rt), state["meta"])
+                state["last_hist"] = _hist.path_of(hi_)
+                hist_refill()
+            except Exception as ex:
+                FreeCAD.Console.PrintWarning("RayTrace: history: %s\n" % ex)
             msg = ""
             if ck_sv.isChecked():
                 path = pick_out_path(d.FileName)
                 try:
-                    write_png(path, out)
+                    write_png(path, out, state["meta"])
                     state["path"] = path
                     msg = T(" | kaydedildi: %s") % path
                 except Exception as ex:
@@ -1295,7 +1433,7 @@ def main(lang=None):
         if not path.lower().endswith(".png"):
             path += ".png"
         try:
-            write_png(path, state["out"])
+            write_png(path, state["out"], state.get("meta"))
             state["path"] = path
             lbl_st.setText(T("kaydedildi: %s") % path)
         except Exception as ex:
@@ -1338,6 +1476,9 @@ def main(lang=None):
         """Önizlemede tıklanan nesneyi bul; Malzemeler penceresinde seç (boya kovası açıksa malzemeyi ata)."""
         if state["busy"]:
             return
+        if state.get("hist_view"):
+            lbl_st.setText(T("Geçmişteki bir resim gösteriliyor; parça seçmek için son render'a tıklayın ya da yeniden render alın."))
+            return
         pk = state["pick"]
         if pk is None:
             lbl_st.setText(T("Önce bir render alın; sonra önizlemede parçaya tıklayabilirsiniz."))
@@ -1379,6 +1520,10 @@ def main(lang=None):
     FreeCAD._raytrace_dlg = dlg
     dlg._raytrace_handlers = (do_render, do_stop, do_save, do_refresh, status, tick, show)  # referansları canlı tut
     _theme.fix_combos(dlg)
+    try:
+        hist_refill()
+    except Exception as ex:
+        FreeCAD.Console.PrintWarning("RayTrace: history: %s\n" % ex)
     dlg.show()
     # test/otomasyon için dışarıdan tetikleme
     dlg._raytrace_api = dict(render=do_render, widgets=dict(width=sp_w, quality=cb_q, ao=ck_ao, soft=ck_soft, soft_radius=sp_softr, soft_scale=sp_softk, tonemap=cb_tm, exposure=sp_exp, fresnel=ck_fr, ao_strength=sp_aos, ao_radius=sp_aor, ao_samples=sp_aon, shadows=ck_sh, glass=ck_gl, smooth=ck_sm, cull=ck_cull, reflections=ck_rf,

@@ -32,6 +32,8 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - **Prosedürel dokular**: türbülans, fraktal, damar, mermer, ahşap, dama, ızgara, nokta, tuğla, dalga (görüntü gerekmez)
 - **Belgeyle saklama**: panel ayarları ve kullanılan malzeme tanımları FCStd içine yazılır; belge başka bilgisayarda açılınca geri gelir
 - Ayar paneli ile açılan pencere, alt kısımda ilerleme çubuğu, durdurma, farklı kaydet; pencereler görev çubuğunda görünür ve küçültülebilir
+- **Resim geçmişi**: son 10 render pencerenin sağında alt alta (en yeni üstte); tıkla = önizlemede karşılaştır, sağ tık = farklı kaydet / FreeCAD'de aç
+- **Render ayarları PNG'ye gömülür**: kaydedilen resimde kullanılan ayarların özeti (AO, yumuşak gölge, ortam, zemin, süre ...) ve tamamı (JSON) saklanır
 
 ![Sanal zemin ve ayar paneli](docs/sanal_zemin.png)
 ![Cam ve yansıma](docs/cam_yansima.png)
@@ -143,6 +145,8 @@ A fast, **dependency-free** ray-tracer macro for FreeCAD (just FreeCAD's own Pyt
 - **Procedural textures**: turbulence, fractal noise, veins, marble, wood, checker, grid, dots, bricks, ripples (no image needed)
 - **Stored with the document**: panel settings and the definitions of the materials in use are saved inside the FCStd and restored on any machine
 - Settings panel opens first; progress bar, stop button, save-as; windows show in the taskbar and can be minimised
+- **Image history**: the last 10 renders stacked on the right of the window (newest on top); click = compare in the preview, right-click = save as / open in FreeCAD
+- **Render settings embedded in the PNG**: saved images carry a readable summary (AO, soft shadows, environment, floor, time ...) and the full settings (JSON)
 
 ### Install
 
