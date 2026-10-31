@@ -14,6 +14,14 @@ import numpy as np
 
 SKY_UP = 0.45
 SUN_CAP = 1.0
+REFL_CAP = 6.0          # yansımada görünen en yüksek ortam parlaklığı
+
+
+def gloss_level(gloss, width):
+    """Malzeme parlaklığı (0..1) -> yansımada ortam haritasının bulanıklık düzeyi; 2048 px genişliğe göre, çeyrek adımlı."""
+    g = np.clip(gloss, 0.0, 1.0)
+    lv = 8.0 * (1.0 - g) ** 1.5 - np.log2(2048.0 / max(int(width), 1))
+    return np.round(np.maximum(lv, 0.0) * 4.0) / 4.0
 
 # SH9 (irradiance/pi) evrişim katsayıları: l=0,1,2
 _A = (1.0, 2.0 / 3.0, 0.25)
@@ -202,7 +210,13 @@ class Env(object):
     def lookup(self, d, level=0.0, rot=0.0):
         """Yön (m,3) -> radyans (m,3) (normalleştirilmiş, yoğunluk uygulanmamış). rot: derece (boylam kaydırma)."""
         d = np.asarray(d, dtype=np.float64)
-        lon = np.arctan2(d[:, 1], d[:, 0]) / (2.0 * np.pi) + 0.5 - rot / 360.0
+        if np.ndim(level):                                         # ışın başına düzey
+            out = np.zeros((len(d), 3))
+            for lv_ in np.unique(level):
+                m_ = level == lv_
+                out[m_] = self.lookup(d[m_], float(lv_), rot)
+            return out
+        lon =np.arctan2(d[:, 1], d[:, 0]) / (2.0 * np.pi) + 0.5 - rot / 360.0
         lat = np.arcsin(np.clip(d[:, 2], -1.0, 1.0))
         u = lon - np.floor(lon)
         v = np.clip(0.5 - lat / np.pi, 0.0, 1.0)
