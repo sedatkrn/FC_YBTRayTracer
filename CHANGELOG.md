@@ -1,6 +1,13 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+v1.6.2 (2026-10-31):
+
+- **HDR'de noktalanma giderildi**: ışığı küçük lambalarda toplanan haritalarda (stüdyo / iç mekân HDR) yüzeylerde benekler çıkıyordu. Gökyüzü ışığının miktarı artık gürültüsüz SH hesabından gelir, ışınlar yalnız görünen oranı verir; ışın deseni 4x4 tekrar eder ve süzgeç penceresinde birbirini tamamlar. Örnek sayısını artırmak gerekmez.
+- **Yansımada lamba parlaklığı sınırı** (`envmap.REFL_CAP`): yansıyan / kırılan ışınlar çok parlak ortam piksellerini sınırlı görür; cam kenarlarındaki tek piksellik beyaz noktalar azalır.
+- **Yansıma bulanıklığı parlaklığa bağlı**: opak malzemelerde parlaklık (gloss) düştükçe ortam yansıması bulanıklaşır, lamba deseni ayna gibi çıkmaz. Cam ve sanal zemin keskin kalır.
+- **Önizlemede parçaya tıklama**: Surface penceresi kapalıyken tıklanan parça, pencere açılınca seçili gelmiyordu (seçim isteği boş listede kayboluyordu); zeminin T düğmesinde de aynı hata vardı.
+
 v1.6.1 (2026-10-24):
 
 - **Sanal zemine Surface malzemesi**: Render penceresi > Sanal Zemin'de "Yüzey" satırı ve T düğmesi; Malzemeler penceresini açar, listenin başındaki "Sanal zemin" satırını seçer. Zemin malzemenin rengini, katmanlı dokularını (görüntü / prosedürel), bump'ını, parlaklığını ve yansımasını kullanır (yansıma: malzeme ile zemin ayarından büyük olanı). Belgeyle saklanır (kullanıcı malzemesinin tanımı da). Malzemesiz zemin eskisi gibi (çıktı aynı).
