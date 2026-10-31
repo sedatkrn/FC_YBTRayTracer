@@ -7,6 +7,8 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 
 ![Gün batımında kafe](docs/render_cafe_gunbatimi.png)
 
+![Arayüz](docs/arayuz.jpg)
+
 ## Özellikler
 
 - Doğrudan ışık, gölge, ortam ışığı ve parlama (Whitted tarzı: gürültüsüz, hızlı)
