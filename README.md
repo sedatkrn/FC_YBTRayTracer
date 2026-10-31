@@ -5,7 +5,7 @@
 FreeCAD için, **harici program gerektirmeyen** (yalnızca FreeCAD'in kendi Python'u ve numpy) hızlı bir ışın izleyici makrosu.
 Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede gösterir ve PNG olarak kaydeder.
 
-![Arayüz](docs/arayuz.png)
+![Gün batımında kafe, HDRI ortam ışığı](docs/render_cafe_gunbatimi.png)
 
 ## Özellikler
 
@@ -35,12 +35,15 @@ Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede 
 - **Resim geçmişi**: son 10 render pencerenin sağında alt alta (en yeni üstte); tıkla = önizlemede karşılaştır, sağ tık = farklı kaydet / FreeCAD'de aç
 - **Render ayarları PNG'ye gömülür**: kaydedilen resimde kullanılan ayarların özeti (AO, yumuşak gölge, ortam, zemin, süre ...) ve tamamı (JSON) saklanır
 
-![Sanal zemin ve ayar paneli](docs/sanal_zemin.png)
-![Cam ve yansıma](docs/cam_yansima.png)
+| Cam ve yansıma | Cam şişe, ahşap doku |
+|---|---|
+| ![Cam vazo ve HDRI yansımaları](docs/render_cam_vazo.png) | ![Cam şişe ve ahşap masa](docs/render_parfum.png) |
+| ![Araba gövdesi](docs/render_araba.png) | ![Gece ışıkları](docs/render_cafe_gece.png) |
+
 ![Zemin dokuları](docs/floor_textures.png)
 ![Yumuşak yüzeyler: önce / sonra](docs/smooth_shading.png)
 ![Cam kırılması: IOR kapalı / 1.5](docs/refraction.png)
-![Işıklar](docs/bim_isiklar.png)
+![Gece sahnesinde kamyon](docs/render_kamyon.png)
 
 ### Ortam / HDRI
 
@@ -186,6 +189,11 @@ Cameras: `api.make_camera(pos, target, fov=40)`, `api.fit_camera(scene)`, `api.o
 Pass a fresh dict as `tess_cache` when shape parameters change. Ready-made example: [`examples/FC_ybt_turntable.FCMacro`](examples/FC_ybt_turntable.FCMacro) (camera turntable or rotating part; frame sequence → video with `ffmpeg`).
 
 ### Screenshots
+
+| Glass and reflections | Glass bottle, wood texture |
+|---|---|
+| ![Glass vase with HDRI reflections](docs/render_cam_vazo.png) | ![Glass bottle on a wooden table](docs/render_parfum.png) |
+| ![Car body](docs/render_araba.png) | ![Night lights](docs/render_cafe_gece.png) |
 
 | HDRI sky | Standard lights |
 |---|---|
