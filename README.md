@@ -5,7 +5,7 @@
 FreeCAD için, **harici program gerektirmeyen** (yalnızca FreeCAD'in kendi Python'u ve numpy) hızlı bir ışın izleyici makrosu.
 Aktif 3B görünümün kamerasından sahneyi render eder, önizlemeyi pencerede gösterir ve PNG olarak kaydeder.
 
-![Gün batımında kafe, HDRI ortam ışığı](docs/render_cafe_gunbatimi.png)
+![Gün batımında kafe](docs/render_cafe_gunbatimi.png)
 
 ## Özellikler
 
