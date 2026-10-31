@@ -1,10 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-FC_ybt_raytracer.FCMacro -- başlatıcı (v1.0)
+FC_ybt_raytracer.FCMacro -- başlatıcı
 FreeCAD içinde yerleşik numpy ışın izleyici. Asıl kod yanındaki `ybt_raytracer/` klasöründedir;
 bu dosya ve klasör AYNI yerde (Macro klasörü) durmalıdır.
 Kullanım: Macro > Macros... > bu dosyayı çalıştır.
 """
+__Name__ = "FC YBT Raytracer"
+__Comment__ = "Dependency-free numpy ray tracer: shadows, glass, reflections, HDRI lighting, materials and textures"
+__Author__ = "sedatkrn"
+__Date__ = "2026-10-31"
+__Version__ = "1.6.2"
+__License__ = "MIT"
+__Web__ = "https://github.com/sedatkrn/FC_YBTRayTracer"
+__Icon__ = "FC_ybt_raytracer.png"
+__Help__ = "Run the macro, set the options in the panel and press Render"
+__Status__ = "Stable"
+__Communication__ = "https://github.com/sedatkrn/FC_YBTRayTracer/issues"
+
 import os
 import sys
 import importlib

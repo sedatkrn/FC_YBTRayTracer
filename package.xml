@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>FC YBT Raytracer</name>
-  <description>FreeCAD için bağımlılıksız numpy ışın izleyici: gölge, cam, yansıma, HDRI ortam ışığı, AO, malzeme ve katmanlı doku düzenleyici, sanal zemin, çok çekirdekli render.</description>
+  <description>Dependency-free numpy ray tracer for FreeCAD: shadows, glass, reflections, HDRI environment lighting, AO, material and layered texture editor, virtual floor, multi-core rendering.</description>
   <version>1.6.2</version>
   <date>2026-10-31</date>
   <maintainer email="sedatkuran@gmail.com">sedatkrn</maintainer>
@@ -29,6 +29,11 @@
       <file>ybt_raytracer/api.py</file>
       <file>ybt_raytracer/pick.py</file>
       <file>ybt_raytracer/theme.py</file>
+      <file>ybt_raytracer/docstore.py</file>
+      <file>ybt_raytracer/envmap.py</file>
+      <file>ybt_raytracer/history.py</file>
+      <file>ybt_raytracer/procedural.py</file>
+      <file>ybt_raytracer/userdefaults.py</file>
       <file>ybt_raytracer/icons/down.png</file>
       <file>ybt_raytracer/icons/up.png</file>
       <file>ybt_raytracer/icons/check.png</file>
