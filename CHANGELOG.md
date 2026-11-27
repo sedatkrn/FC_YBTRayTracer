@@ -1,6 +1,11 @@
 # Değişiklik geçmişi / Changelog
 
 ```
+Yayınlanmamış / Unreleased:
+
+- **Montaj (Assembly) yanlış dizilimi düzeltildi** (#1): Assembly bir TechDraw görünümü, BOM ya da patlatılmış görünüm tarafından referans edildiğinde kök nesne sayılmıyordu; yedek tarama Link'leri atlıyor, gövdeleri montajdaki yerine değil kendi yerel konumlarına çiziyordu. Artık üst düzeydeki her kapsayıcı (Assembly, App::Part, Link) yerleşimiyle gezilir; kapsayıcı çocukları tek başına eklenmez (gizli App::Part'ın görünür gövdesi de çizilmez).
+- Düz klasör (Std Group) içindeki Assembly'de App::Part'a bağlı Link'lerin parçaları yanlış yol çözümlemesi yüzünden kayboluyordu; klasör çocukları artık kendi kökleri olarak gezilir.
+
 v1.6.2 (2026-10-31):
 
 - **HDR'de noktalanma giderildi**: ışığı küçük lambalarda toplanan haritalarda (stüdyo / iç mekân HDR) yüzeylerde benekler çıkıyordu. Gökyüzü ışığının miktarı artık gürültüsüz SH hesabından gelir, ışınlar yalnız görünen oranı verir; ışın deseni 4x4 tekrar eder ve süzgeç penceresinde birbirini tamamlar. Örnek sayısını artırmak gerekmez.
