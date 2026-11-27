@@ -1,7 +1,7 @@
 # Değişiklik geçmişi / Changelog
 
 ```
-Yayınlanmamış / Unreleased:
+v1.6.3 (2026-11-27):
 
 - **Montaj (Assembly) yanlış dizilimi düzeltildi** (#1): Assembly bir TechDraw görünümü, BOM ya da patlatılmış görünüm tarafından referans edildiğinde kök nesne sayılmıyordu; yedek tarama Link'leri atlıyor, gövdeleri montajdaki yerine değil kendi yerel konumlarına çiziyordu. Artık üst düzeydeki her kapsayıcı (Assembly, App::Part, Link) yerleşimiyle gezilir; kapsayıcı çocukları tek başına eklenmez (gizli App::Part'ın görünür gövdesi de çizilmez).
 - Düz klasör (Std Group) içindeki Assembly'de App::Part'a bağlı Link'lerin parçaları yanlış yol çözümlemesi yüzünden kayboluyordu; klasör çocukları artık kendi kökleri olarak gezilir.
