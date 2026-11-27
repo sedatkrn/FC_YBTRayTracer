@@ -38,6 +38,39 @@ def _is_origin_feature(x):
         return False
 
 
+def _is_plain_group(x):
+    """Yerleşimi olmayan düz klasör (Std Group, Draft/Arch klasörü). Bu klasörün altındaki 'Klasör.Montaj.Link.Gövde.'
+    gibi yollar FreeCAD'de yanlış çözülüyor (getSubObjectList [Klasör, Montaj, Montaj, Montaj] döndürüyor); klasör dönüşüm
+    eklemediğinden çocukları kendi kökleri olarak gezilir."""
+    try:
+        return bool(x.isDerivedFrom("App::DocumentObjectGroup")) and \
+            not x.hasExtension("App::GeoFeatureGroupExtension")
+    except Exception:
+        return False
+
+
+def _claimed(o):
+    """Nesne bir kapsayıcının çocuğu mu? (grup / App::Part / Body / Assembly / Link dizisi elemanı)
+    Öyleyse yalnız kapsayıcısı üzerinden (onun yerleşimi ve görünürlüğüyle) çizilir; tek başına kök sayılmaz.
+    Bir Link'in bağlandığı nesne sahiplenilmiş sayılmaz: FreeCAD ağacında üst düzeyde durur, görünürse kendisi de çizilir."""
+    try:
+        if o.TypeId == "App::LinkElement":
+            return True
+        if o.getParentGeoFeatureGroup() is not None or o.getParentGroup() is not None:
+            return True
+    except Exception:
+        pass
+    for x in getattr(o, "InList", ()):
+        try:
+            if o in (getattr(x, "ElementList", None) or ()):
+                return True
+            if x.getLinkedObject(True) is x and o in (getattr(x, "Group", None) or ()):
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def _sane_bbox(shp):
     """Sonlu ve makul boyutlu mu? (NaN/inf karşılaştırması False döner)"""
     try:
@@ -337,6 +370,10 @@ def _gather(doc, log, status=_nostatus):
                     all(hasattr(g, "Name") for g in grp):
                 # Arch/Draft kapsayıcıları (Site, Building, Floor, klasör): çocuklara doğrudan in,
                 # kapsayıcının kendi (tüm çocukları birleştiren, çok yavaş) şeklini ASLA isteme.
+                if _is_plain_group(tgt):                  # düz klasör: dönüşüm yok, çocuklar kendi kökleri
+                    for g in grp:
+                        rec(g, "", depth + 1)
+                    return
                 for g in grp:
                     rec(root, subname + g.Name + ".", depth + 1, known=g)
                 return
@@ -379,42 +416,15 @@ def _gather(doc, log, status=_nostatus):
     for r in doc.RootObjects:
         rec(r, "", 0)
 
-    # Yedek: yukarıdaki gezintide hiç uğranmayan görünür nesneler (gruba bağlı olmayanlar)
+    # Ağacın üst düzeyinde olup RootObjects'te bulunmayanlar: başka bir nesnenin referans verdiği kapsayıcılar
+    # (TechDraw görünümü / BOM / patlatılmış görünüm referans verdiği Assembly, Link'lerin bağlandığı gövdeler, ...).
+    # Bunlar da kök gibi gezilir: Assembly/App::Part/Link yerleşimleri korunur. Bir kapsayıcının çocukları burada ASLA
+    # tek başına alınmaz (kendi yerel konumlarında, montaj dışı çizilirlerdi; kapsayıcıları gizliyse hiç çizilmemeliler).
     for o in doc.Objects:
-        if o.Name in seen or not (hasattr(o, "Shape") or _is_mesh(o)):
+        if o.Name in seen or _claimed(o):
             continue
         status(T("yedek tarama... %d nesne") % len(items))
-        try:
-            if not o.Visibility:
-                continue
-            vo = o.ViewObject
-            if vo is not None and hasattr(vo, "Visibility") and not vo.Visibility:
-                continue
-            par = o.getParentGeoFeatureGroup()
-            if par is not None and _is_body(par):
-                continue                                  # Body kendi şeklini zaten çiziyor
-            if _is_origin_feature(o):
-                continue
-            grp = getattr(o, "Group", None)
-            if not _is_body(o) and isinstance(grp, (list, tuple)) and any(hasattr(g, "Shape") for g in grp):
-                continue                                  # Assembly/Arch kapsayıcısı: kendi birleşik şekli çocuklarının kopyası
-            if _is_mesh(o):
-                shp = _mesh_geom(o, "", o, o, o)
-                if shp is None or not _sane_bbox(shp):
-                    continue
-            else:
-                shp = o.Shape
-                if shp.isNull() or not shp.Faces or not _sane_bbox(shp):
-                    continue
-                shp = shp.copy()
-                if hasattr(o, "getGlobalPlacement"):
-                    shp.Placement = o.getGlobalPlacement()
-        except Exception as ex:
-            log("! %s: yedek tarama hatası (%s)" % (o.Name, ex))
-            continue
-        if dup(o, shp):
-            continue
-        items.append((o, o, shp, ""))
+        rec(o, "", 0)
     return items
 
 
